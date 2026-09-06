@@ -3,22 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
+import { SIDEBAR_LINKS } from "@/lib/permissions";
 import { cls } from "@/lib/utils";
-
-const allLinks = [
-  { href: "/", label: "Dashboard", icon: "📊", perm: "dashboard" },
-  { href: "/students", label: "Students", icon: "👨‍🎓", perm: "students.view" },
-  { href: "/teachers", label: "Teachers", icon: "👨‍🏫", perm: "teachers.view" },
-  { href: "/classes", label: "Classes", icon: "🏫", perm: "classes.view" },
-  { href: "/subjects", label: "Subjects", icon: "📚", perm: "subjects.view" },
-  { href: "/attendance", label: "Attendance", icon: "✅", perm: "attendance.view" },
-  { href: "/grades", label: "Grades", icon: "📝", perm: "grades.view" },
-  { href: "/fees", label: "Fees", icon: "💰", perm: "fees.view" },
-];
-
-const adminLinks = [
-  { href: "/admin", label: "Admin Panel", icon: "⚙️" },
-];
 
 function Brand() {
   return (
@@ -38,9 +24,15 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { user, hasPerm, logout } = useAuth();
 
-  // Filter links based on permissions
-  const links = allLinks.filter((l) => hasPerm(l.perm));
   const isAdmin = user?.role === "admin";
+  const links = SIDEBAR_LINKS.filter((l) => hasPerm(l.perm));
+
+  // Group links
+  const grouped: Record<string, typeof links> = {};
+  for (const l of links) {
+    if (!grouped[l.group]) grouped[l.group] = [];
+    grouped[l.group].push(l);
+  }
 
   return (
     <>
@@ -48,27 +40,18 @@ export default function Sidebar() {
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <Brand />
-          <button
-            onClick={logout}
-            className="rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white hover:bg-white/20"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Link href="/admin" className="rounded-lg bg-amber-500/20 px-2.5 py-1.5 text-xs font-bold text-amber-300 hover:bg-amber-500/30">
+                ⚙️ Admin
+              </Link>
+            )}
+            <button onClick={logout} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-white/20">
+              Logout
+            </button>
+          </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto px-3 pb-2">
-          {isAdmin && (
-            <Link
-              href="/admin"
-              className={cls(
-                "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                pathname.startsWith("/admin")
-                  ? "bg-amber-500 text-white"
-                  : "bg-white/5 text-amber-300 hover:bg-white/10",
-              )}
-            >
-              ⚙️ Admin
-            </Link>
-          )}
           {links.map((l) => {
             const active = pathname === l.href || (l.href !== "/" && pathname.startsWith(l.href));
             return (
@@ -92,56 +75,60 @@ export default function Sidebar() {
 
       {/* Desktop */}
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-slate-950 lg:flex">
-        <div className="px-5 pb-4 pt-6">
+        <div className="px-5 pb-2 pt-6">
           <Brand />
         </div>
-        <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
+
+        <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-2">
           {/* Admin link */}
-          {isAdmin &&
-            adminLinks.map((l) => {
-              const active = pathname.startsWith(l.href);
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={cls(
-                    "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition",
-                    active
-                      ? "bg-amber-500/20 text-amber-300 ring-1 ring-inset ring-amber-400/30"
-                      : "text-amber-300/80 hover:bg-white/5 hover:text-amber-200",
-                  )}
-                >
-                  <span className="text-lg">{l.icon}</span>
-                  <span>{l.label}</span>
-                  {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />}
-                </Link>
-              );
-            })}
-
-          {isAdmin && <div className="my-2 border-t border-white/10" />}
-
-          {/* Feature links */}
-          {links.map((l) => {
-            const active = pathname === l.href || (l.href !== "/" && pathname.startsWith(l.href));
-            return (
+          {isAdmin && (
+            <>
               <Link
-                key={l.href}
-                href={l.href}
+                href="/admin"
                 className={cls(
                   "group flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-semibold transition",
-                  active
-                    ? "bg-indigo-500/20 text-white ring-1 ring-inset ring-indigo-400/30"
-                    : "text-indigo-200/80 hover:bg-white/5 hover:text-white",
+                  pathname.startsWith("/admin")
+                    ? "bg-amber-500/20 text-amber-300 ring-1 ring-inset ring-amber-400/30"
+                    : "text-amber-300/80 hover:bg-white/5 hover:text-amber-200",
                 )}
               >
-                <span className={cls("text-lg transition", active ? "" : "opacity-80 group-hover:opacity-100")}>
-                  {l.icon}
-                </span>
-                <span className="whitespace-nowrap">{l.label}</span>
-                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-indigo-400" />}
+                <span className="text-lg">⚙️</span>
+                <span>Admin Panel</span>
+                {pathname.startsWith("/admin") && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />}
               </Link>
-            );
-          })}
+              <div className="my-2 border-t border-white/10" />
+            </>
+          )}
+
+          {/* Grouped links */}
+          {Object.entries(grouped).map(([group, items]) => (
+            <div key={group} className="mt-3 first:mt-0">
+              <p className="mb-1 px-3.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                {group}
+              </p>
+              {items.map((l) => {
+                const active = pathname === l.href || (l.href !== "/" && pathname.startsWith(l.href));
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    className={cls(
+                      "group flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm font-semibold transition",
+                      active
+                        ? "bg-indigo-500/20 text-white ring-1 ring-inset ring-indigo-400/30"
+                        : "text-indigo-200/80 hover:bg-white/5 hover:text-white",
+                    )}
+                  >
+                    <span className={cls("text-base transition", active ? "" : "opacity-80 group-hover:opacity-100")}>
+                      {l.icon}
+                    </span>
+                    <span className="whitespace-nowrap">{l.label}</span>
+                    {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-indigo-400" />}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* User info + logout */}
@@ -154,7 +141,7 @@ export default function Sidebar() {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white">{user.name}</p>
                 <p className="truncate text-[11px] text-indigo-300/70">
-                  {user.role === "admin" ? "🛡️ Admin" : "👤 Member"}
+                  {user.role === "admin" ? "🛡️ Administrator" : "👤 Member"}
                 </p>
               </div>
               <button

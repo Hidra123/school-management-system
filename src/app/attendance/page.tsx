@@ -10,6 +10,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, postJSON, todayStr, useFetch } from "@/lib/utils";
 
 type ClassRow = { id: number; name: string; section: string };
@@ -106,6 +107,7 @@ export default function AttendancePage() {
   const selClass = classList.find((c2) => String(c2.id) === classId);
 
   return (
+    <AppShell permission="attendance.view">
     <div>
       <PageHeader icon="✅" title="Attendance" subtitle="Mark attendance for a class and date" />
 
@@ -227,5 +229,6 @@ export default function AttendancePage() {
         )}
       </div>
     </div>
+    </AppShell>
   );
 }

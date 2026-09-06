@@ -1,4 +1,5 @@
 import {
+  boolean,
   date,
   doublePrecision,
   index,
@@ -6,6 +7,7 @@ import {
   pgEnum,
   pgTable,
   serial,
+  text,
   timestamp,
   uniqueIndex,
   varchar,
@@ -26,8 +28,32 @@ export const examTypeEnum = pgEnum("exam_type", [
   "final",
   "project",
 ]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
 
-// ---------- Tables ----------
+// ---------- Auth Tables ----------
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  email: varchar("email", { length: 120 }).notNull().unique(),
+  password: text("password").notNull(),
+  role: userRoleEnum("role").notNull().default("member"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userPermissions = pgTable(
+  "user_permissions",
+  {
+    id: serial("id").primaryKey(),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    permission: varchar("permission", { length: 60 }).notNull(),
+  },
+  (t) => [uniqueIndex("user_perm_idx").on(t.userId, t.permission)],
+);
+
+// ---------- School Tables ----------
 export const classes = pgTable("classes", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 60 }).notNull(),
@@ -126,6 +152,8 @@ export const fees = pgTable("fees", {
 });
 
 // ---------- Types ----------
+export type UserRow = typeof users.$inferSelect;
+export type UserPermRow = typeof userPermissions.$inferSelect;
 export type ClassRow = typeof classes.$inferSelect;
 export type TeacherRow = typeof teachers.$inferSelect;
 export type SubjectRow = typeof subjects.$inferSelect;

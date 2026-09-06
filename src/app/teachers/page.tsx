@@ -12,6 +12,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
 
 type Teacher = {
@@ -116,6 +117,7 @@ export default function TeachersPage() {
   }
 
   return (
+    <AppShell permission="teachers.view">
     <div>
       <PageHeader icon="👨‍🏫" title="Teachers" subtitle={`${list.length} teacher${list.length === 1 ? "" : "s"}`}>
         <button onClick={openAdd} className={btnPrimary}>
@@ -271,5 +273,6 @@ export default function TeachersPage() {
         </form>
       </Modal>
     </div>
+    </AppShell>
   );
 }

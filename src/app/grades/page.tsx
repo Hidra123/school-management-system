@@ -12,6 +12,7 @@ import {
   inputCls,
   scoreTone,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, delJSON, postJSON, shortDate, useFetch } from "@/lib/utils";
 
 type ClassRow = { id: number; name: string; section: string };
@@ -152,6 +153,7 @@ export default function GradesPage() {
   const canEnter = classId && subjectId && studentList.length > 0;
 
   return (
+    <AppShell permission="grades.view">
     <div className="space-y-6">
       <PageHeader icon="📝" title="Grades" subtitle="Enter and manage exam and assessment scores" />
 
@@ -363,5 +365,6 @@ export default function GradesPage() {
         )}
       </section>
     </div>
+    </AppShell>
   );
 }

@@ -11,6 +11,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type ClassRow = {
@@ -85,6 +86,7 @@ export default function ClassesPage() {
   }
 
   return (
+    <AppShell permission="classes.view">
     <div>
       <PageHeader icon="🏫" title="Classes" subtitle={`${list.length} class${list.length === 1 ? "" : "es"}`}>
         <button onClick={openAdd} className={btnPrimary}>
@@ -201,5 +203,6 @@ export default function ClassesPage() {
         </form>
       </Modal>
     </div>
+    </AppShell>
   );
 }

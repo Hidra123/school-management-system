@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import AppShell from "@/components/AppShell";
 import { Avatar, Badge, EmptyState, Loader, StatCard } from "@/components/ui";
 import { cls, longDate, money, useFetch } from "@/lib/utils";
 
@@ -32,10 +33,10 @@ type Stats = {
 export default function DashboardPage() {
   const { data, loading, error, refresh } = useFetch<Stats>("/api/stats");
 
-  if (loading && !data) return <Loader label="Loading school statistics..." />;
+  if (loading && !data) return <AppShell permission="dashboard"><Loader label="Loading school statistics..." /></AppShell>;
   if (error && !data)
-    return <EmptyState icon="⚠️" title="Failed to load data" message={error} />;
-  if (!data) return <EmptyState icon="📭" title="No data" message="Click Refresh to reload." />;
+    return <AppShell permission="dashboard"><EmptyState icon="⚠️" title="Failed to load data" message={error} /></AppShell>;
+  if (!data) return <AppShell permission="dashboard"><EmptyState icon="📭" title="No data" message="Click Refresh to reload." /></AppShell>;
 
   const { counts, fees, attendance, recentStudents } = data;
   const recorded = attendance.present + attendance.absent + attendance.late + attendance.excused;
@@ -43,6 +44,7 @@ export default function DashboardPage() {
   const collectPct = fees.expected > 0 ? Math.round((fees.collected / fees.expected) * 100) : 0;
 
   return (
+    <AppShell permission="dashboard">
     <div className="space-y-6">
       {/* Welcome */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-6 text-white shadow-lg sm:p-8">
@@ -196,5 +198,6 @@ export default function DashboardPage() {
         </button>
       </div>
     </div>
+    </AppShell>
   );
 }

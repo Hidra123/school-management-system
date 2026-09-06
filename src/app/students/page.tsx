@@ -13,6 +13,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
 
 type Student = {
@@ -122,6 +123,7 @@ export default function StudentsPage() {
   const filtered = data ?? [];
 
   return (
+    <AppShell permission="students.view">
     <div>
       <PageHeader
         icon="👨‍🎓"
@@ -312,5 +314,6 @@ export default function StudentsPage() {
         </form>
       </Modal>
     </div>
+    </AppShell>
   );
 }

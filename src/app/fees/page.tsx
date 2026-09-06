@@ -13,6 +13,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { cls, delJSON, money, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
 
 type FeeRow = {
@@ -172,6 +173,7 @@ export default function FeesPage() {
   const payBalance = payFor ? payFor.amount - payFor.paidAmount : 0;
 
   return (
+    <AppShell permission="fees.view">
     <div>
       <PageHeader icon="💰" title="Fees" subtitle="Manage school fees and payments">
         <button onClick={openAdd} className={btnPrimary}>
@@ -443,5 +445,6 @@ export default function FeesPage() {
         )}
       </Modal>
     </div>
+    </AppShell>
   );
 }

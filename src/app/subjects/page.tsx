@@ -13,6 +13,7 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
+import AppShell from "@/components/AppShell";
 import { delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type SubjectRow = {
@@ -82,6 +83,7 @@ export default function SubjectsPage() {
   }
 
   return (
+    <AppShell permission="subjects.view">
     <div>
       <PageHeader icon="📚" title="Subjects" subtitle={`${list.length} subject${list.length === 1 ? "" : "s"}`}>
         <button onClick={openAdd} className={btnPrimary}>
@@ -186,5 +188,6 @@ export default function SubjectsPage() {
         </form>
       </Modal>
     </div>
+    </AppShell>
   );
 }

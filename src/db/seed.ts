@@ -8,6 +8,7 @@ import {
   students,
   subjects,
   teachers,
+  users,
 } from "./schema";
 
 function todayStr(): string {
@@ -54,8 +55,24 @@ const phoneBase = ["+255 712", "+255 713", "+255 754", "+255 765", "+255 716", "
 async function main() {
   console.log("🧹 Clearing old data...");
   await db.execute(
-    sql`TRUNCATE TABLE attendance, fees, grades, students, subjects, teachers, classes RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE user_permissions, users, attendance, fees, grades, students, subjects, teachers, classes RESTART IDENTITY CASCADE`,
   );
+
+  console.log("🔐 Admin user...");
+  // Hash password "admin123" using SHA-256
+  const encoder = new TextEncoder();
+  const data = encoder.encode("admin123" + "shulehub_salt_2025");
+  const hashBuf = await crypto.subtle.digest("SHA-256", data);
+  const adminHash = Array.from(new Uint8Array(hashBuf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+  await db.insert(users).values({
+    name: "System Admin",
+    email: "admin@shulehub.com",
+    password: adminHash,
+    role: "admin",
+    active: true,
+  });
 
   console.log("🏫 Classes...");
   const classDefs = [

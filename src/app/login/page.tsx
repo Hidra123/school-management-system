@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useAuth } from "@/components/AuthProvider";
 import { btnPrimary, inputCls } from "@/components/ui";
 
 export default function LoginPage() {
@@ -9,7 +9,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const { user, loading: authLoading, refresh } = useAuth();
+
+  // If already logged in, go to dashboard
+  useEffect(() => {
+    if (!authLoading && user) {
+      window.location.href = "/";
+    }
+  }, [authLoading, user]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -26,8 +33,8 @@ export default function LoginPage() {
         setError(data.error || "Login failed.");
         return;
       }
-      router.push("/");
-      router.refresh();
+      // Force full page reload to pick up the cookie
+      window.location.href = "/";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
     } finally {
@@ -69,6 +76,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="admin@school.ac.tz"
                 required
+                autoComplete="email"
                 className={inputCls}
               />
             </div>
@@ -80,6 +88,7 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
+                autoComplete="current-password"
                 className={inputCls}
               />
             </div>

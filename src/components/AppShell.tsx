@@ -1,20 +1,18 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import Sidebar from "@/components/Sidebar";
 import { Loader } from "@/components/ui";
 
 export default function AppShell({ children, permission }: { children: ReactNode; permission?: string }) {
   const { user, loading, hasPerm } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/login");
+      window.location.href = "/login";
     }
-  }, [loading, user, router]);
+  }, [loading, user]);
 
   if (loading) {
     return (

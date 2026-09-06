@@ -29,7 +29,7 @@ export default function AppShell({ children, permission }: { children: ReactNode
       <>
         <Sidebar />
         <div className="lg:pl-64">
-          <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+          <main className="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center">
               <div className="text-5xl">🔒</div>
               <h2 className="mt-4 text-xl font-bold text-slate-800">Access Denied</h2>
@@ -47,7 +47,7 @@ export default function AppShell({ children, permission }: { children: ReactNode
     <>
       <Sidebar />
       <div className="lg:pl-64">
-        <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <main className="w-full px-4 py-4 sm:px-6 lg:px-6 lg:py-6">
           {children}
         </main>
       </div>

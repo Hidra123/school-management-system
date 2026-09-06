@@ -20,7 +20,6 @@ pnpm-debug.log*
 
 # Deploy tooling
 .vercel/
-.netlify/
 
 # OS files
 .DS_Store

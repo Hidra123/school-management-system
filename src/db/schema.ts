@@ -29,6 +29,7 @@ export const examTypeEnum = pgEnum("exam_type", [
   "project",
 ]);
 export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
+export const attendanceSessionEnum = pgEnum("attendance_session", ["morning", "afternoon"]);
 
 // ---------- Auth Tables ----------
 export const users = pgTable("users", {
@@ -41,6 +42,9 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull().default("member"),
   active: boolean("active").notNull().default(true),
   mustChangePassword: boolean("must_change_password").notNull().default(true),
+  // Human-readable staff role key (e.g. "class_teacher", "teacher", "academic_master",
+  // "accountant", "sports", "lab", "librarian") used to show a role badge in the UI.
+  staffRole: varchar("staff_role", { length: 40 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -137,12 +141,14 @@ export const attendance = pgTable(
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
     date: date("date", { mode: "string" }).notNull(),
+    // Attendance is taken twice a day: morning and afternoon.
+    session: attendanceSessionEnum("session").notNull().default("morning"),
     status: attendanceStatusEnum("status").notNull().default("present"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index("attendance_class_date_idx").on(t.classId, t.date),
-    uniqueIndex("attendance_student_date_idx").on(t.studentId, t.date),
+    uniqueIndex("attendance_student_date_session_idx").on(t.studentId, t.date, t.session),
   ],
 );
 

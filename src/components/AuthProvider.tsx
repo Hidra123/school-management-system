@@ -9,6 +9,7 @@ type User = {
   role: "admin" | "member";
   mustChangePassword: boolean;
   permissions: string[];
+  staffRole: string | null;
 } | null;
 
 type AuthCtx = {

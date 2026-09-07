@@ -59,6 +59,11 @@ export async function POST(req: Request) {
     return Response.json({ error: "Username (Check Number) is required." }, { status: 400 });
   }
 
+  const staffRoleKey: keyof typeof ROLE_PRESETS =
+    typeof body.staffRole === "string" && body.staffRole in ROLE_PRESETS
+      ? (body.staffRole as keyof typeof ROLE_PRESETS)
+      : "teacher";
+
   // 1) Create the login account (default password + must change on first login)
   const account = await createMemberAccount({
     name: body.name,
@@ -67,7 +72,8 @@ export async function POST(req: Request) {
     password: typeof body.password === "string" ? body.password : undefined,
     permissions: Array.isArray(body.permissions)
       ? body.permissions
-      : [...ROLE_PRESETS.teacher.permissions],
+      : [...ROLE_PRESETS[staffRoleKey].permissions],
+    staffRole: staffRoleKey,
   });
   if ("error" in account) {
     return Response.json({ error: account.error }, { status: account.status });

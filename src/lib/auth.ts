@@ -37,6 +37,7 @@ export async function createMemberAccount(opts: {
   email?: string;
   password?: string;
   permissions?: string[];
+  staffRole?: string;
 }): Promise<{ id: number; username: string; rawPassword: string } | { error: string; status: number }> {
   const username = opts.username.trim();
   if (!username) return { error: "Username (Check Number) is required.", status: 400 };
@@ -60,6 +61,7 @@ export async function createMemberAccount(opts: {
       role: "member",
       active: true,
       mustChangePassword: true,
+      staffRole: opts.staffRole ?? null,
     })
     .returning({ id: users.id, username: users.username, rawPassword: users.rawPassword });
 
@@ -127,6 +129,7 @@ export type SessionUser = {
   role: "admin" | "member";
   mustChangePassword: boolean;
   permissions: string[];
+  staffRole: string | null;
 };
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -144,6 +147,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
       role: "admin",
       mustChangePassword: false,
       permissions: ["*"],
+      staffRole: null,
     };
   }
 
@@ -159,6 +163,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     role: "member",
     mustChangePassword: user.mustChangePassword,
     permissions: perms.map((p) => p.permission),
+    staffRole: user.staffRole,
   };
 }
 

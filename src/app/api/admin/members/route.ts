@@ -31,6 +31,7 @@ export async function GET() {
       active: u.active,
       rawPassword: u.rawPassword,
       mustChangePassword: u.mustChangePassword,
+      staffRole: u.staffRole,
       permissions: u.role === "admin" ? ["*"] : (permMap.get(u.id) ?? []),
       createdAt: u.createdAt,
     })),
@@ -61,6 +62,8 @@ export async function POST(req: Request) {
     return Response.json({ error: "A user with this username already exists." }, { status: 409 });
   }
 
+  const staffRole = typeof body.staffRole === "string" && body.staffRole ? body.staffRole : null;
+
   const hash = await createPasswordHash(password);
   const [newUser] = await db
     .insert(users)
@@ -72,12 +75,13 @@ export async function POST(req: Request) {
       rawPassword: password,
       role,
       mustChangePassword: role !== "admin",
+      staffRole,
     })
     .returning();
 
   // Teaching roles also get a teacher profile so they appear in "Manage Teachers"
   const TEACHING_ROLES = ["academic_master", "class_teacher", "teacher"];
-  if (role === "member" && typeof body.staffRole === "string" && TEACHING_ROLES.includes(body.staffRole)) {
+  if (role === "member" && staffRole && TEACHING_ROLES.includes(staffRole)) {
     await db.insert(teachers).values({ userId: newUser.id, name, email, hireDate: new Date().toISOString().slice(0, 10) });
   }
 
@@ -97,6 +101,7 @@ export async function POST(req: Request) {
       active: newUser.active,
       rawPassword: newUser.rawPassword,
       mustChangePassword: newUser.mustChangePassword,
+      staffRole: newUser.staffRole,
       permissions: role === "admin" ? ["*"] : permissions,
       createdAt: newUser.createdAt,
     },

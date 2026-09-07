@@ -130,6 +130,19 @@ export const ROLE_PRESETS = {
   },
 } as const;
 
+/** Human label for a member's staffRole key, used for role badges in the UI. */
+export function staffRoleLabel(key: string | null | undefined): string | null {
+  if (!key) return null;
+  if (key in ROLE_PRESETS) return ROLE_PRESETS[key as keyof typeof ROLE_PRESETS].label;
+  const EXTRA: Record<string, string> = {
+    accountant: "💰 Accountant",
+    sports: "⚽ Sports Manager",
+    lab: "🔬 Lab Technician",
+    librarian: "📚 Librarian",
+  };
+  return EXTRA[key] ?? null;
+}
+
 // ========================================
 // ADMIN sidebar — only admin sees these
 // ========================================

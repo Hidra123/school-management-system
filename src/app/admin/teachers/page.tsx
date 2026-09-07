@@ -120,6 +120,7 @@ export default function AdminManageTeachersPage() {
         const t = await postJSON<Teacher>("/api/teachers", {
           ...body,
           permissions: [...ROLE_PRESETS[form.preset].permissions],
+          staffRole: form.preset,
         });
         setCreated(t);
       }

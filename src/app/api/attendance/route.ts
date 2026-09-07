@@ -6,7 +6,8 @@ import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
-const VALID = ["present", "absent", "late", "excused"];
+const VALID_STATUS = ["present", "absent", "late", "excused"];
+const VALID_SESSION = ["morning", "afternoon"];
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
@@ -32,6 +33,7 @@ export async function GET(req: Request) {
       studentId: attendance.studentId,
       classId: attendance.classId,
       date: attendance.date,
+      session: attendance.session,
       status: attendance.status,
       studentName: students.name,
       admissionNo: students.admissionNo,
@@ -67,17 +69,24 @@ export async function POST(req: Request) {
     return Response.json({ error: "No students were selected." }, { status: 400 });
   }
 
-  const rows = records
-    .filter((r: { studentId?: unknown; status?: unknown }) => {
-      const sid = Number(r?.studentId);
-      return Number.isFinite(sid) && VALID.includes(String(r?.status));
-    })
-    .map((r: { studentId?: unknown; status?: unknown }) => ({
-      studentId: Number(r.studentId),
-      classId,
-      date,
-      status: String(r.status) as "present" | "absent" | "late" | "excused",
-    }));
+  // Each record carries a status per session: { studentId, morning, afternoon }
+  const rows: Array<{ studentId: number; classId: number; date: string; session: "morning" | "afternoon"; status: "present" | "absent" | "late" | "excused" }> = [];
+  for (const r of records as Array<{ studentId?: unknown; morning?: unknown; afternoon?: unknown; status?: unknown; session?: unknown }>) {
+    const sid = Number(r?.studentId);
+    if (!Number.isFinite(sid)) continue;
+
+    // Support both the new {morning, afternoon} shape and the legacy {status, session} shape.
+    if (typeof r?.morning === "string" && VALID_STATUS.includes(r.morning)) {
+      rows.push({ studentId: sid, classId, date, session: "morning", status: r.morning as "present" | "absent" | "late" | "excused" });
+    }
+    if (typeof r?.afternoon === "string" && VALID_STATUS.includes(r.afternoon)) {
+      rows.push({ studentId: sid, classId, date, session: "afternoon", status: r.afternoon as "present" | "absent" | "late" | "excused" });
+    }
+    if (typeof r?.status === "string" && VALID_STATUS.includes(r.status)) {
+      const session = typeof r?.session === "string" && VALID_SESSION.includes(r.session) ? (r.session as "morning" | "afternoon") : "morning";
+      rows.push({ studentId: sid, classId, date, session, status: r.status as "present" | "absent" | "late" | "excused" });
+    }
+  }
 
   if (rows.length === 0) {
     return Response.json({ error: "Attendance data is invalid." }, { status: 400 });

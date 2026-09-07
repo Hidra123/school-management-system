@@ -1,18 +1,29 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance, students } from "@/db/schema";
+import { getSessionUser, requirePermission } from "@/lib/auth";
+import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
 const VALID = ["present", "absent", "late", "excused"];
 
 export async function GET(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "attendance.view");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const url = new URL(req.url);
   const classId = Number(url.searchParams.get("classId"));
   const date = url.searchParams.get("date");
 
   if (!Number.isFinite(classId) || !date) {
     return Response.json({ error: "classId and date are required." }, { status: 400 });
+  }
+  if (!classAllowed(scope, classId)) {
+    return Response.json({ error: "You are not assigned to this class." }, { status: 403 });
   }
 
   const rows = await db
@@ -33,6 +44,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "attendance.manage");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
 
@@ -42,6 +59,9 @@ export async function POST(req: Request) {
 
   if (!Number.isFinite(classId) || !date) {
     return Response.json({ error: "Class and date are required." }, { status: 400 });
+  }
+  if (!classAllowed(scope, classId)) {
+    return Response.json({ error: "You are not assigned to this class." }, { status: 403 });
   }
   if (records.length === 0) {
     return Response.json({ error: "No students were selected." }, { status: 400 });

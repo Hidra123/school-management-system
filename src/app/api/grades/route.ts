@@ -1,24 +1,45 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { grades, students, subjects } from "@/db/schema";
+import { getSessionUser, requirePermission } from "@/lib/auth";
+import { classAllowed, getTeacherScope, subjectAllowed } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
 const EXAM_TYPES = ["assignment", "quiz", "midterm", "final", "project"];
 
 export async function GET(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "grades.view");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const url = new URL(req.url);
   const classIdRaw = url.searchParams.get("classId");
   const subjectIdRaw = url.searchParams.get("subjectId");
   const examType = url.searchParams.get("examType");
   const studentIdRaw = url.searchParams.get("studentId");
 
+  const classId = classIdRaw && Number.isFinite(Number(classIdRaw)) ? Number(classIdRaw) : null;
+  const subjectId = subjectIdRaw && Number.isFinite(Number(subjectIdRaw)) ? Number(subjectIdRaw) : null;
+
+  if (classId !== null && !classAllowed(scope, classId)) return Response.json([]);
+  if (subjectId !== null && !subjectAllowed(scope, subjectId)) return Response.json([]);
+  // Scoped teacher browsing without a subject filter → restrict to their own subjects.
+  if (scope.scoped && subjectId === null && scope.subjectIds.length === 0) return Response.json([]);
+
   const conditions = [];
-  if (classIdRaw && Number.isFinite(Number(classIdRaw))) {
-    conditions.push(eq(students.classId, Number(classIdRaw)));
+  if (classId !== null) {
+    conditions.push(eq(students.classId, classId));
+  } else if (scope.scoped) {
+    // No explicit class chosen — keep results limited to the teacher's assigned classes.
+    conditions.push(inArray(students.classId, scope.classIds.length > 0 ? scope.classIds : [-1]));
   }
-  if (subjectIdRaw && Number.isFinite(Number(subjectIdRaw))) {
-    conditions.push(eq(grades.subjectId, Number(subjectIdRaw)));
+  if (subjectId !== null) {
+    conditions.push(eq(grades.subjectId, subjectId));
+  } else if (scope.scoped) {
+    conditions.push(inArray(grades.subjectId, scope.subjectIds.length > 0 ? scope.subjectIds : [-1]));
   }
   if (examType && EXAM_TYPES.includes(examType)) {
     conditions.push(eq(grades.examType, examType as (typeof grades.examType)["enumValues"][number]));
@@ -56,6 +77,12 @@ function scoreOf(v: unknown): number | null {
 }
 
 export async function POST(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "grades.submit");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
 
@@ -67,6 +94,10 @@ export async function POST(req: Request) {
     if (!Number.isFinite(subjectId) || !EXAM_TYPES.includes(examType)) {
       return Response.json({ error: "Subject or exam type is invalid." }, { status: 400 });
     }
+    if (!subjectAllowed(scope, subjectId)) {
+      return Response.json({ error: "You are not assigned to this subject." }, { status: 403 });
+    }
+
     const entries: Array<{ studentId: number; score: number }> = [];
     for (const e of body.entries as Array<{ studentId?: unknown; score?: unknown }>) {
       const sid = Number(e?.studentId);
@@ -76,6 +107,19 @@ export async function POST(req: Request) {
     if (entries.length === 0) {
       return Response.json({ error: "No valid scores were provided." }, { status: 400 });
     }
+
+    if (scope.scoped) {
+      // Make sure every student belongs to one of the teacher's assigned classes.
+      const studentRows = await db
+        .select({ id: students.id, classId: students.classId })
+        .from(students)
+        .where(inArray(students.id, entries.map((e) => e.studentId)));
+      const badStudent = studentRows.find((s) => !classAllowed(scope, s.classId));
+      if (badStudent || studentRows.length !== entries.length) {
+        return Response.json({ error: "One or more students are outside your assigned classes." }, { status: 403 });
+      }
+    }
+
     await db.transaction(async (tx) => {
       await tx
         .delete(grades)
@@ -112,6 +156,15 @@ export async function POST(req: Request) {
     return Response.json({ error: "Grade data is invalid." }, { status: 400 });
   }
   if (score === null) return Response.json({ error: "Score is required (0-100)." }, { status: 400 });
+  if (!subjectAllowed(scope, subjectId)) {
+    return Response.json({ error: "You are not assigned to this subject." }, { status: 403 });
+  }
+  if (scope.scoped) {
+    const [student] = await db.select({ classId: students.classId }).from(students).where(eq(students.id, studentId)).limit(1);
+    if (!student || !classAllowed(scope, student.classId)) {
+      return Response.json({ error: "This student is outside your assigned classes." }, { status: 403 });
+    }
+  }
 
   const [row] = await db
     .insert(grades)

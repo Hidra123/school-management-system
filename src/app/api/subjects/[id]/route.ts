@@ -1,12 +1,17 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teachers } from "@/db/schema";
+import { getSessionUser, requirePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PUT(req: Request, ctx: Ctx) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "subjects.manage");
+  if (err) return err;
+
   const { id } = await ctx.params;
   const num = Number(id);
   if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
@@ -39,6 +44,10 @@ export async function PUT(req: Request, ctx: Ctx) {
 }
 
 export async function DELETE(_req: Request, ctx: Ctx) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "subjects.manage");
+  if (err) return err;
+
   const { id } = await ctx.params;
   const num = Number(id);
   if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });

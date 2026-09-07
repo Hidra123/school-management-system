@@ -90,6 +90,24 @@ export const subjects = pgTable("subjects", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Which classes a teacher is assigned to (many-to-many).
+// A teacher only sees students/attendance/grades for their assigned classes,
+// and only the subjects assigned to them (subjects.teacherId).
+export const teacherClasses = pgTable(
+  "teacher_classes",
+  {
+    id: serial("id").primaryKey(),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("teacher_class_idx").on(t.teacherId, t.classId)],
+);
+
 export const students = pgTable(
   "students",
   {
@@ -164,6 +182,7 @@ export type UserPermRow = typeof userPermissions.$inferSelect;
 export type ClassRow = typeof classes.$inferSelect;
 export type TeacherRow = typeof teachers.$inferSelect;
 export type SubjectRow = typeof subjects.$inferSelect;
+export type TeacherClassRow = typeof teacherClasses.$inferSelect;
 export type StudentRow = typeof students.$inferSelect;
 export type AttendanceRow = typeof attendance.$inferSelect;
 export type GradeRow = typeof grades.$inferSelect;

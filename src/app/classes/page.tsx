@@ -12,6 +12,7 @@ import {
   inputCls,
 } from "@/components/ui";
 import AppShell from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { cls, delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type ClassRow = {
@@ -35,6 +36,7 @@ const colors = [
 ];
 
 export default function ClassesPage() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -88,6 +90,11 @@ export default function ClassesPage() {
   return (
     <AppShell permission="classes.view">
     <div>
+      {user?.role === "member" && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-violet-50 px-4 py-2.5 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-100">
+          🏫 Showing only the class(es) assigned to you by the admin.
+        </div>
+      )}
       <PageHeader icon="🏫" title="Classes" subtitle={`${list.length} class${list.length === 1 ? "" : "es"}`}>
         <button onClick={openAdd} className={btnPrimary}>
           + Add Class

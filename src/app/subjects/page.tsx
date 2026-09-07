@@ -14,6 +14,7 @@ import {
   inputCls,
 } from "@/components/ui";
 import AppShell from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type SubjectRow = {
@@ -30,6 +31,7 @@ type Teacher = { id: number; name: string; subject: string };
 const emptyForm = { name: "", code: "", teacherId: "" };
 
 export default function SubjectsPage() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -85,6 +87,11 @@ export default function SubjectsPage() {
   return (
     <AppShell permission="subjects.view">
     <div>
+      {user?.role === "member" && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">
+          📖 Showing only the subject(s) assigned to you by the admin.
+        </div>
+      )}
       <PageHeader icon="📚" title="Subjects" subtitle={`${list.length} subject${list.length === 1 ? "" : "s"}`}>
         <button onClick={openAdd} className={btnPrimary}>
           + Add Subject

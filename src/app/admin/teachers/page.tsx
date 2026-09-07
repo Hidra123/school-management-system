@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import AppShell from "@/components/AppShell";
+import AssignSubjectsClassesModal from "@/components/AssignSubjectsClassesModal";
 import {
   Avatar,
   Badge,
@@ -32,6 +33,8 @@ type Teacher = {
   mustChangePassword: boolean | null;
   accountActive: boolean | null;
   hasAccount: boolean;
+  subjectCount: number;
+  classCount: number;
 };
 
 type PresetKey = keyof typeof ROLE_PRESETS;
@@ -63,6 +66,7 @@ export default function AdminManageTeachersPage() {
   const [showPwd, setShowPwd] = useState<Record<number, boolean>>({});
   const [busyId, setBusyId] = useState<number | null>(null);
   const [created, setCreated] = useState<Teacher | null>(null);
+  const [assignTarget, setAssignTarget] = useState<Teacher | null>(null);
 
   const { data, loading, error, refresh } = useFetch<Teacher[]>("/api/teachers");
 
@@ -219,6 +223,8 @@ export default function AdminManageTeachersPage() {
                       ) : (
                         <Badge tone="emerald">Active</Badge>
                       )}
+                      <Badge tone={t.subjectCount > 0 ? "indigo" : "slate"}>📖 {t.subjectCount} subject{t.subjectCount === 1 ? "" : "s"}</Badge>
+                      <Badge tone={t.classCount > 0 ? "violet" : "slate"}>🏫 {t.classCount} class{t.classCount === 1 ? "" : "es"}</Badge>
                     </div>
                   </div>
                   <button onClick={() => remove(t)} className="rounded-lg px-2 py-1 text-xs text-rose-500 hover:bg-rose-50" title="Remove teacher">🗑️</button>
@@ -274,6 +280,11 @@ export default function AdminManageTeachersPage() {
                     </button>
                   )}
                 </div>
+                {t.hasAccount && (
+                  <button onClick={() => setAssignTarget(t)} className="mt-2 w-full rounded-xl border border-violet-100 bg-violet-50/60 px-3 py-2 text-sm font-bold text-violet-700 transition hover:bg-violet-100">
+                    📚 Assign Subjects &amp; Classes
+                  </button>
+                )}
                 {t.hasAccount && (
                   <button onClick={() => toggleActive(t)} disabled={busy} className={cls("mt-2 w-full rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-60", t.accountActive === false ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "text-slate-500 hover:bg-slate-100")}>
                     {t.accountActive === false ? "✅ Re-activate login" : "⛔ Deactivate login"}
@@ -348,6 +359,15 @@ export default function AdminManageTeachersPage() {
           </div>
         )}
       </Modal>
+
+      {/* Assign Subjects & Classes modal */}
+      <AssignSubjectsClassesModal
+        teacherId={assignTarget?.id ?? null}
+        teacherName={assignTarget?.name ?? ""}
+        open={!!assignTarget}
+        onClose={() => setAssignTarget(null)}
+        onSaved={refresh}
+      />
     </AppShell>
   );
 }

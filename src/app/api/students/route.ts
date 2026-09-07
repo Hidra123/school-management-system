@@ -1,6 +1,8 @@
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, students } from "@/db/schema";
+import { getSessionUser, requirePermission } from "@/lib/auth";
+import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,13 +14,33 @@ function todayStr(): string {
 }
 
 export async function GET(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "students.view");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const url = new URL(req.url);
   const classIdRaw = url.searchParams.get("classId");
   const q = url.searchParams.get("q")?.trim() ?? "";
 
+  const requestedClassId =
+    classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw)) ? Number(classIdRaw) : null;
+
+  // A scoped teacher asking for a class outside their assignment gets nothing.
+  if (requestedClassId !== null && !classAllowed(scope, requestedClassId)) {
+    return Response.json([]);
+  }
+  // A scoped teacher with no assigned classes at all has nothing to see.
+  if (scope.scoped && scope.classIds.length === 0) {
+    return Response.json([]);
+  }
+
   const conditions = [];
-  if (classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw))) {
-    conditions.push(eq(students.classId, Number(classIdRaw)));
+  if (requestedClassId !== null) {
+    conditions.push(eq(students.classId, requestedClassId));
+  } else if (scope.scoped) {
+    conditions.push(inArray(students.classId, scope.classIds));
   }
   if (q) {
     conditions.push(
@@ -53,6 +75,12 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "students.create");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body.name !== "string" || !body.name.trim()) {
     return Response.json({ error: "Student name is required." }, { status: 400 });
@@ -66,6 +94,11 @@ export async function POST(req: Request) {
     body.classId === "" || body.classId === null || body.classId === undefined
       ? null
       : Number(body.classId);
+
+  if (scope.scoped && !classAllowed(scope, classId)) {
+    return Response.json({ error: "You can only add students to your assigned classes." }, { status: 403 });
+  }
+
   const gender = body.gender === "female" ? "female" : "male";
   const enrollmentDate =
     typeof body.enrollmentDate === "string" && body.enrollmentDate

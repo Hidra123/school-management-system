@@ -1,11 +1,39 @@
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, students } from "@/db/schema";
+import { classes, students, teacherClasses } from "@/db/schema";
+import { getSessionUser, requirePermission } from "@/lib/auth";
+import { getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const all = await db.select().from(classes).orderBy(asc(classes.name));
+  const user = await getSessionUser();
+  const err = requirePermission(user, "classes.view");
+  if (err) return err;
+
+  const scope = await getTeacherScope(user);
+
+  let all: (typeof classes.$inferSelect)[];
+  if (scope.scoped) {
+    if (scope.classIds.length === 0) {
+      return Response.json([]);
+    }
+    all = await db
+      .select({
+        id: classes.id,
+        name: classes.name,
+        section: classes.section,
+        capacity: classes.capacity,
+        createdAt: classes.createdAt,
+      })
+      .from(classes)
+      .innerJoin(teacherClasses, eq(teacherClasses.classId, classes.id))
+      .where(inArray(classes.id, scope.classIds))
+      .orderBy(asc(classes.name));
+  } else {
+    all = await db.select().from(classes).orderBy(asc(classes.name));
+  }
+
   const counts = await db
     .select({ classId: students.classId, n: count() })
     .from(students)
@@ -17,6 +45,10 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
+  const user = await getSessionUser();
+  const err = requirePermission(user, "classes.manage");
+  if (err) return err;
+
   const body = await req.json().catch(() => null);
   if (!body || typeof body.name !== "string" || !body.name.trim()) {
     return Response.json({ error: "Class name is required." }, { status: 400 });

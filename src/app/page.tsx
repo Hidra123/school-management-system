@@ -30,6 +30,8 @@ type Stats = {
   };
   attendance: { date: string; present: number; absent: number; late: number; excused: number };
   recentStudents: RecentStudent[];
+  scoped?: boolean;
+  canSeeFees?: boolean;
 };
 
 export default function DashboardPage() {
@@ -47,6 +49,8 @@ export default function DashboardPage() {
   if (!data) return <AppShell permission="dashboard"><EmptyState icon="📭" title="No data" message="Click Refresh to reload." /></AppShell>;
 
   const { counts, fees, attendance, recentStudents } = data;
+  const scoped = data.scoped === true;
+  const canSeeFees = data.canSeeFees !== false && (user?.permissions?.includes("fees.view") ?? true);
   const recorded = attendance.present + attendance.absent + attendance.late + attendance.excused;
   const notRecorded = Math.max(0, counts.students - recorded);
   const collectPct = fees.expected > 0 ? Math.round((fees.collected / fees.expected) * 100) : 0;
@@ -54,6 +58,11 @@ export default function DashboardPage() {
   return (
     <AppShell permission="dashboard">
     <div className="space-y-6">
+      {scoped && (
+        <div className="flex items-center gap-2 rounded-xl bg-indigo-50 px-4 py-2.5 text-xs font-semibold text-indigo-700 ring-1 ring-inset ring-indigo-100">
+          🎯 You are viewing only the classes and subjects assigned to you by the admin.
+        </div>
+      )}
       {/* Welcome */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 p-6 text-white shadow-lg sm:p-8">
         <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
@@ -62,11 +71,12 @@ export default function DashboardPage() {
           <div>
             <p className="text-sm font-medium text-indigo-200">{longDate()}</p>
             <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Welcome back! 👋
+              {scoped ? `Welcome back, ${user?.name ?? "Teacher"}! 👋` : "Welcome back! 👋"}
             </h1>
             <p className="mt-2 max-w-xl text-sm text-indigo-100/90">
-              Here is your school at a glance — students, teachers, attendance, grades and fees,
-              all in one place.
+              {scoped
+                ? "Here is a summary of the classes and subjects assigned to you by the admin."
+                : "Here is your school at a glance — students, teachers, attendance, grades and fees, all in one place."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -88,15 +98,36 @@ export default function DashboardPage() {
 
       {/* Counts */}
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard icon="👨‍🎓" label="Students" value={counts.students} sub={`${counts.grades} grade records`} tone="indigo" />
-        <StatCard icon="👨‍🏫" label="Teachers" value={counts.teachers} sub="Registered teachers" tone="violet" />
-        <StatCard icon="🏫" label="Classes" value={counts.classes} sub="Total classes" tone="blue" />
-        <StatCard icon="📚" label="Subjects" value={counts.subjects} sub="Subjects taught" tone="emerald" />
+        <StatCard
+          icon="👨‍🎓"
+          label={scoped ? "My Students" : "Students"}
+          value={counts.students}
+          sub={`${counts.grades} grade records`}
+          tone="indigo"
+        />
+        {!scoped && (
+          <StatCard icon="👨‍🏫" label="Teachers" value={counts.teachers} sub="Registered teachers" tone="violet" />
+        )}
+        <StatCard
+          icon="🏫"
+          label={scoped ? "My Classes" : "Classes"}
+          value={counts.classes}
+          sub={scoped ? "Assigned to me" : "Total classes"}
+          tone="blue"
+        />
+        <StatCard
+          icon="📚"
+          label={scoped ? "My Subjects" : "Subjects"}
+          value={counts.subjects}
+          sub={scoped ? "Assigned to me" : "Subjects taught"}
+          tone="emerald"
+        />
       </section>
 
       {/* Detail row */}
       <section className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Fees */}
+        {canSeeFees && (
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-slate-900">💰 Fees Overview</h2>
@@ -135,11 +166,12 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+        )}
 
         {/* Attendance */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">✅ Today&apos;s Attendance</h2>
+            <h2 className="text-base font-bold text-slate-900">{scoped ? "✅ Today's Attendance (My Classes)" : "✅ Today's Attendance"}</h2>
             <Link href="/attendance" className="text-sm font-semibold text-indigo-600 hover:underline">
               Open →
             </Link>
@@ -169,13 +201,13 @@ export default function DashboardPage() {
         {/* Recent students */}
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">🆕 Recently Added Students</h2>
+            <h2 className="text-base font-bold text-slate-900">{scoped ? "🆕 Recent Students (My Classes)" : "🆕 Recently Added Students"}</h2>
             <Link href="/students" className="text-sm font-semibold text-indigo-600 hover:underline">
               View all →
             </Link>
           </div>
           {recentStudents.length === 0 ? (
-            <p className="mt-6 text-sm text-slate-500">No students yet.</p>
+            <p className="mt-6 text-sm text-slate-500">{scoped ? "No students in your assigned classes yet." : "No students yet."}</p>
           ) : (
             <ul className="mt-3 divide-y divide-slate-100">
               {recentStudents.map((s) => (

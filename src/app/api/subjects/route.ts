@@ -1,41 +1,86 @@
-import { asc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { subjects, teachers } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function GET() {
-  const rows = await db
-    .select({
-      id: subjects.id,
-      name: subjects.name,
-      code: subjects.code,
-      teacherId: subjects.teacherId,
-      teacherName: teachers.name,
-      createdAt: subjects.createdAt,
-    })
-    .from(subjects)
-    .leftJoin(teachers, eq(subjects.teacherId, teachers.id))
-    .orderBy(asc(subjects.name));
-  return Response.json(rows);
+    const allSubjects = await db.select().from(subjects).orderBy(subjects.id);
+
+    // Enrich with teacher names
+    const enrichedSubjects = await Promise.all(
+      allSubjects.map(async (subject) => {
+        if (subject.teacherId) {
+          const [teacher] = await db
+            .select({ name: teachers.name })
+            .from(teachers)
+            .where(eq(teachers.id, subject.teacherId))
+            .limit(1);
+          return { ...subject, teacherName: teacher?.name };
+        }
+        return subject;
+      })
+    );
+
+    return NextResponse.json({ subjects: enrichedSubjects });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.name !== "string" || !body.name.trim()) {
-    return Response.json({ error: "Subject name is required." }, { status: 400 });
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { name, code, teacherId } = await request.json();
+
+    if (!name || !code) {
+      return NextResponse.json(
+        { error: "Name and code are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if code exists
+    const [existing] = await db
+      .select()
+      .from(subjects)
+      .where(eq(subjects.code, code))
+      .limit(1);
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Subject code already exists" },
+        { status: 400 }
+      );
+    }
+
+    const [newSubject] = await db
+      .insert(subjects)
+      .values({
+        name,
+        code,
+        teacherId: teacherId || null,
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, subject: newSubject });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  const teacherId =
-    body.teacherId === "" || body.teacherId === null || body.teacherId === undefined
-      ? null
-      : Number(body.teacherId);
-  const [row] = await db
-    .insert(subjects)
-    .values({
-      name: body.name.trim(),
-      code: typeof body.code === "string" ? body.code.trim().toUpperCase() : "",
-      teacherId: Number.isFinite(teacherId) ? teacherId : null,
-    })
-    .returning();
-  return Response.json({ ...row, teacherName: null }, { status: 201 });
 }

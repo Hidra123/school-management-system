@@ -1,53 +1,93 @@
-import { desc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { classes, fees, students } from "@/db/schema";
+import { fees, students } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function GET() {
-  const rows = await db
-    .select({
-      id: fees.id,
-      studentId: fees.studentId,
-      description: fees.description,
-      amount: fees.amount,
-      paidAmount: fees.paidAmount,
-      dueDate: fees.dueDate,
-      createdAt: fees.createdAt,
-      studentName: students.name,
-      admissionNo: students.admissionNo,
-      className: classes.name,
-    })
-    .from(fees)
-    .innerJoin(students, eq(fees.studentId, students.id))
-    .leftJoin(classes, eq(students.classId, classes.id))
-    .orderBy(desc(fees.createdAt));
-  return Response.json(rows);
+    const { searchParams } = new URL(request.url);
+    const studentId = searchParams.get("studentId");
+    const status = searchParams.get("status");
+
+    let whereClause = undefined;
+    if (studentId || status) {
+      const conditions = [];
+      if (studentId) conditions.push(eq(fees.studentId, parseInt(studentId)));
+      if (status) conditions.push(eq(fees.status, status));
+      whereClause = and(...conditions);
+    }
+
+    const query = whereClause
+      ? db.select().from(fees).where(whereClause)
+      : db.select().from(fees);
+
+    const allFees = await query;
+
+    // Enrich with student names
+    const enrichedFees = await Promise.all(
+      allFees.map(async (record) => {
+        const [student] = await db
+          .select({ name: students.name, admissionNo: students.admissionNo })
+          .from(students)
+          .where(eq(students.id, record.studentId))
+          .limit(1);
+
+        return {
+          ...record,
+          studentName: student?.name,
+          admissionNo: student?.admissionNo,
+        };
+      })
+    );
+
+    return NextResponse.json({ fees: enrichedFees });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const studentId = Number(body.studentId);
-  const amount = Number(body.amount);
-  if (!Number.isFinite(studentId) || !Number.isFinite(amount) || amount <= 0) {
-    return Response.json({ error: "Student and fee amount are required." }, { status: 400 });
+    const { studentId, description, amount, dueDate } = await request.json();
+
+    if (!studentId || !description || !amount) {
+      return NextResponse.json(
+        { error: "studentId, description, and amount are required" },
+        { status: 400 }
+      );
+    }
+
+    const [newFee] = await db
+      .insert(fees)
+      .values({
+        studentId: parseInt(studentId),
+        description,
+        amount: parseInt(amount),
+        paidAmount: 0,
+        dueDate: dueDate || null,
+        status: "pending",
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, fee: newFee });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  const paidAmount = Number.isFinite(Number(body.paidAmount)) ? Math.max(0, Number(body.paidAmount)) : 0;
-
-  const [row] = await db
-    .insert(fees)
-    .values({
-      studentId,
-      description:
-        typeof body.description === "string" && body.description.trim()
-          ? body.description.trim()
-          : "School fee",
-      amount,
-      paidAmount: Math.min(paidAmount, amount),
-      dueDate: typeof body.dueDate === "string" && body.dueDate ? body.dueDate : null,
-    })
-    .returning();
-  return Response.json(row, { status: 201 });
 }

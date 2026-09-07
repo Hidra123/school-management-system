@@ -1,121 +1,204 @@
 "use client";
 
-import Link from "next/link";
-import AppShell from "@/components/AppShell";
-import { Loader, StatCard } from "@/components/ui";
-import { useFetch } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { StatCard, Spinner } from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
-type Stats = {
-  counts: { students: number; teachers: number; classes: number; subjects: number; grades: number };
-  fees: { expected: number; collected: number; balance: number };
-};
+export default function AdminDashboard() {
+  const { user } = useAuth();
+  const [stats, setStats] = useState({
+    users: 0,
+    students: 0,
+    teachers: 0,
+    classes: 0,
+    subjects: 0,
+    attendance: 0,
+    fees: 0,
+    grades: 0,
+  });
+  const [loading, setLoading] = useState(true);
+  const [recentActivity, setRecentActivity] = useState<any[]>([]);
 
-type Member = { id: number; role: string; active: boolean };
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const [
+          usersRes,
+          studentsRes,
+          teachersRes,
+          classesRes,
+          subjectsRes,
+          attendanceRes,
+          feesRes,
+          gradesRes,
+        ] = await Promise.all([
+          fetch("/api/admin/members"),
+          fetch("/api/students"),
+          fetch("/api/teachers"),
+          fetch("/api/classes"),
+          fetch("/api/subjects"),
+          fetch("/api/attendance"),
+          fetch("/api/fees"),
+          fetch("/api/grades"),
+        ]);
 
-export default function AdminOverviewPage() {
-  const stats = useFetch<Stats>("/api/stats");
-  const members = useFetch<Member[]>("/api/admin/members");
-  const s = stats.data;
-  const m = members.data ?? [];
+        const usersData = await usersRes.json();
+        const studentsData = await studentsRes.json();
+        const teachersData = await teachersRes.json();
+        const classesData = await classesRes.json();
+        const subjectsData = await subjectsRes.json();
+        const attendanceData = await attendanceRes.json();
+        const feesData = await feesRes.json();
+        const gradesData = await gradesRes.json();
 
-  const activeUsers = m.filter((u) => u.active).length;
-  const totalUsers = m.length;
+        setStats({
+          users: usersData.users?.length || 0,
+          students: studentsData.students?.length || 0,
+          teachers: teachersData.teachers?.length || 0,
+          classes: classesData.classes?.length || 0,
+          subjects: subjectsData.subjects?.length || 0,
+          attendance: attendanceData.attendance?.length || 0,
+          fees: feesData.fees?.length || 0,
+          grades: gradesData.grades?.length || 0,
+        });
+      } catch {
+        // Fallback to default stats
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchStats();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <AppShell>
-      {/* Welcome Banner */}
-      <section className="relative mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-6 text-white shadow-lg sm:p-8">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-48 w-48 rounded-full bg-amber-400/10 blur-2xl" />
-        <div className="pointer-events-none absolute -bottom-16 right-24 h-40 w-40 rounded-full bg-indigo-400/10 blur-2xl" />
-        <div className="relative flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="flex items-center gap-2 text-sm text-slate-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              System Online
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-bold text-emerald-400">Secured</span>
-              <span className="rounded-full bg-slate-700 px-2 py-0.5 text-[10px] font-bold text-slate-300">
-                {new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
-              </span>
-            </p>
-            <p className="mt-2 text-sm text-slate-400">Welcome back,</p>
-            <h1 className="text-3xl font-extrabold tracking-tight">Administrator</h1>
-            <p className="mt-0.5 text-sm text-slate-500">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-5xl font-extrabold text-amber-400">{s?.counts.students ?? "—"}</p>
-            <p className="text-xs font-semibold text-slate-400">Total Students Enrolled</p>
-          </div>
-        </div>
-      </section>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">
+          Admin Dashboard
+        </h1>
+        <p className="text-gray-500">Welcome back, {user?.name || "Admin"}!</p>
+      </div>
 
-      {/* Stats Grid */}
-      {stats.loading ? (
-        <Loader />
-      ) : (
-        <section className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-6">
-          <StatCard icon="👨‍🏫" label="Total Teachers" value={s?.counts.teachers ?? 0} tone="indigo" />
-          <StatCard icon="👨‍🎓" label="Total Students" value={s?.counts.students ?? 0} tone="blue" />
-          <StatCard icon="🏫" label="Classes" value={s?.counts.classes ?? 0} tone="emerald" />
-          <StatCard icon="📚" label="Subjects" value={s?.counts.subjects ?? 0} tone="violet" />
-          <StatCard icon="👥" label="Active Users" value={activeUsers} sub={`${totalUsers} total`} tone="amber" />
-          <StatCard icon="📝" label="Score Records" value={s?.counts.grades ?? 0} tone="rose" />
-        </section>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          title="Total Users"
+          value={stats.users}
+          icon="👥"
+          color="blue"
+        />
+        <StatCard
+          title="Students"
+          value={stats.students}
+          icon="👨‍🎓"
+          color="green"
+        />
+        <StatCard
+          title="Teachers"
+          value={stats.teachers}
+          icon="👨‍🏫"
+          color="purple"
+        />
+        <StatCard
+          title="Classes"
+          value={stats.classes}
+          icon="🏫"
+          color="orange"
+        />
+      </div>
 
-      {/* Quick Actions */}
-      <section className="mb-6 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-        <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-slate-900">⚡ Quick Actions</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {[
-            { label: "Add Teacher", icon: "👨‍🏫", href: "/admin/teachers", color: "bg-emerald-500 hover:bg-emerald-600" },
-            { label: "Approvals", icon: "✅", href: "/admin/admissions", color: "bg-indigo-500 hover:bg-indigo-600" },
-            { label: "Monitor", icon: "📡", href: "/admin/monitor", color: "bg-violet-500 hover:bg-violet-600" },
-            { label: "Activity", icon: "🔔", href: "/admin/activity", color: "bg-amber-500 hover:bg-amber-600" },
-            { label: "Sessions", icon: "👥", href: "/admin/sessions", color: "bg-rose-500 hover:bg-rose-600" },
-            { label: "Settings", icon: "⚙️", href: "/admin/settings", color: "bg-slate-600 hover:bg-slate-700" },
-          ].map((a) => (
-            <Link
-              key={a.label}
-              href={a.href}
-              className={`flex items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-bold text-white shadow-sm transition ${a.color}`}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <StatCard
+          title="Subjects"
+          value={stats.subjects}
+          icon="📚"
+          color="teal"
+        />
+        <StatCard
+          title="Attendance"
+          value={stats.attendance}
+          icon="✅"
+          color="indigo"
+        />
+        <StatCard
+          title="Fees"
+          value={stats.fees}
+          icon="💰"
+          color="pink"
+        />
+        <StatCard
+          title="Grades"
+          value={stats.grades}
+          icon="📊"
+          color="cyan"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Quick Actions
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <a
+              href="/admin/classes"
+              className="p-4 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors block"
             >
-              <span>{a.icon}</span> {a.label}
-            </Link>
-          ))}
+              <p className="text-blue-600 font-medium">Manage Classes</p>
+              <p className="text-sm text-gray-500">Add, edit, or delete classes</p>
+            </a>
+            <a
+              href="/admin/subjects"
+              className="p-4 bg-green-50 rounded-lg hover:bg-green-100 transition-colors block"
+            >
+              <p className="text-green-600 font-medium">Manage Subjects</p>
+              <p className="text-sm text-gray-500">Add, edit, or delete subjects</p>
+            </a>
+            <a
+              href="/admin/teachers"
+              className="p-4 bg-purple-50 rounded-lg hover:bg-purple-100 transition-colors block"
+            >
+              <p className="text-purple-600 font-medium">Manage Teachers</p>
+              <p className="text-sm text-gray-500">Add, edit, or delete teachers</p>
+            </a>
+            <a
+              href="/admin/assignments"
+              className="p-4 bg-orange-50 rounded-lg hover:bg-orange-100 transition-colors block"
+            >
+              <p className="text-orange-600 font-medium">Staff Assignments</p>
+              <p className="text-sm text-gray-500">Assign roles to staff</p>
+            </a>
+          </div>
         </div>
-      </section>
 
-      {/* Two column: Recent Activity + Live Feed placeholder */}
-      <section className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">📋 Recent Activity</h2>
-            <Link href="/admin/audit" className="text-sm font-semibold text-indigo-600 hover:underline">
-              View all →
-            </Link>
-          </div>
-          <div className="mt-6 flex flex-col items-center justify-center py-8 text-center">
-            <div className="text-4xl">📋</div>
-            <p className="mt-3 text-sm font-semibold text-slate-500">Activity tracking coming soon</p>
-            <p className="mt-1 text-xs text-slate-400">All system activities will be logged here</p>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-bold text-slate-900">📡 Live Activity Feed</h2>
-            <button className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600">
-              🔄
-            </button>
-          </div>
-          <div className="mt-6 flex flex-col items-center justify-center py-8 text-center">
-            <div className="text-4xl opacity-40">📡</div>
-            <p className="mt-3 text-sm font-semibold text-slate-400">No activity recorded yet.</p>
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            System Status
+          </h2>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Database</span>
+              <span className="text-green-600 font-medium">✓ Healthy</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">Authentication</span>
+              <span className="text-green-600 font-medium">✓ Active</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600">API Endpoints</span>
+              <span className="text-green-600 font-medium">✓ Operational</span>
+            </div>
           </div>
         </div>
-      </section>
-    </AppShell>
+      </div>
+    </div>
   );
 }

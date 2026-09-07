@@ -1,72 +1,120 @@
-import { and, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { attendance, students } from "@/db/schema";
+import { attendance, students, classes } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-const VALID = ["present", "absent", "late", "excused"];
+    const { searchParams } = new URL(request.url);
+    const date = searchParams.get("date");
+    const classId = searchParams.get("classId");
+    const studentId = searchParams.get("studentId");
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const classId = Number(url.searchParams.get("classId"));
-  const date = url.searchParams.get("date");
+    let whereClause = undefined;
+    if (date || classId || studentId) {
+      const conditions = [];
+      if (date) conditions.push(eq(attendance.date, date as string));
+      if (classId) conditions.push(eq(attendance.classId, parseInt(classId)));
+      if (studentId) conditions.push(eq(attendance.studentId, parseInt(studentId)));
+      whereClause = and(...conditions);
+    }
 
-  if (!Number.isFinite(classId) || !date) {
-    return Response.json({ error: "classId and date are required." }, { status: 400 });
+    const query = whereClause
+      ? db.select().from(attendance).where(whereClause)
+      : db.select().from(attendance);
+
+    const allAttendance = await query;
+
+    // Enrich with student and class names
+    const enrichedAttendance = await Promise.all(
+      allAttendance.map(async (record) => {
+        const [student] = await db
+          .select({ name: students.name, admissionNo: students.admissionNo })
+          .from(students)
+          .where(eq(students.id, record.studentId))
+          .limit(1);
+
+        const [cls] = await db
+          .select({ name: classes.name, section: classes.section })
+          .from(classes)
+          .where(eq(classes.id, record.classId))
+          .limit(1);
+
+        return {
+          ...record,
+          studentName: student?.name,
+          admissionNo: student?.admissionNo,
+          className: cls ? `${cls.name} ${cls.section || ""}`.trim() : null,
+        };
+      })
+    );
+
+    return NextResponse.json({ attendance: enrichedAttendance });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  const rows = await db
-    .select({
-      id: attendance.id,
-      studentId: attendance.studentId,
-      classId: attendance.classId,
-      date: attendance.date,
-      status: attendance.status,
-      studentName: students.name,
-      admissionNo: students.admissionNo,
-    })
-    .from(attendance)
-    .innerJoin(students, eq(attendance.studentId, students.id))
-    .where(and(eq(attendance.classId, classId), eq(attendance.date, date)));
-
-  return Response.json(rows);
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const classId = Number(body.classId);
-  const date = typeof body.date === "string" ? body.date : "";
-  const records = Array.isArray(body.records) ? body.records : [];
+    const { studentId, classId, date, status } = await request.json();
 
-  if (!Number.isFinite(classId) || !date) {
-    return Response.json({ error: "Class and date are required." }, { status: 400 });
+    if (!studentId || !classId || !date || !status) {
+      return NextResponse.json(
+        { error: "studentId, classId, date, and status are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if attendance already exists for this student, class, and date
+    const [existing] = await db
+      .select()
+      .from(attendance)
+      .where(
+        and(
+          eq(attendance.studentId, parseInt(studentId)),
+          eq(attendance.classId, parseInt(classId)),
+          eq(attendance.date, date as string)
+        )
+      )
+      .limit(1);
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Attendance already recorded for this student on this date" },
+        { status: 400 }
+      );
+    }
+
+    const [newAttendance] = await db
+      .insert(attendance)
+      .values({
+        studentId: parseInt(studentId),
+        classId: parseInt(classId),
+        date: date as string,
+        status,
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, attendance: newAttendance });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  if (records.length === 0) {
-    return Response.json({ error: "No students were selected." }, { status: 400 });
-  }
-
-  const rows = records
-    .filter((r: { studentId?: unknown; status?: unknown }) => {
-      const sid = Number(r?.studentId);
-      return Number.isFinite(sid) && VALID.includes(String(r?.status));
-    })
-    .map((r: { studentId?: unknown; status?: unknown }) => ({
-      studentId: Number(r.studentId),
-      classId,
-      date,
-      status: String(r.status) as "present" | "absent" | "late" | "excused",
-    }));
-
-  if (rows.length === 0) {
-    return Response.json({ error: "Attendance data is invalid." }, { status: 400 });
-  }
-
-  await db.transaction(async (tx) => {
-    await tx.delete(attendance).where(and(eq(attendance.classId, classId), eq(attendance.date, date)));
-    await tx.insert(attendance).values(rows);
-  });
-
-  return Response.json({ saved: rows.length }, { status: 201 });
 }

@@ -1,319 +1,294 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  Avatar,
-  Badge,
-  EmptyState,
-  Field,
-  Loader,
   Modal,
-  PageHeader,
-  btnGhost,
-  btnPrimary,
-  inputCls,
-} from "@/components/ui";
-import AppShell from "@/components/AppShell";
-import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
-
-type Student = {
-  id: number;
-  admissionNo: string;
-  name: string;
-  gender: "male" | "female";
-  classId: number | null;
-  className: string | null;
-  guardianName: string;
-  guardianPhone: string;
-  enrollmentDate: string | null;
-  createdAt: string;
-};
-
-type ClassRow = { id: number; name: string; section: string };
-
-const emptyForm = {
-  admissionNo: "",
-  name: "",
-  gender: "male",
-  classId: "",
-  guardianName: "",
-  guardianPhone: "",
-  enrollmentDate: "",
-};
+  Field,
+  SelectField,
+  Spinner,
+  EmptyState,
+} from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function StudentsPage() {
-  const [search, setSearch] = useState("");
-  const [classFilter, setClassFilter] = useState("");
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Student | null>(null);
-  const [form, setForm] = useState({ ...emptyForm });
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [students, setStudents] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    admissionNo: "",
+    name: "",
+    gender: "",
+    classId: "",
+    guardianName: "",
+    guardianPhone: "",
+  });
 
-  const url = useMemo(() => {
-    const p = new URLSearchParams();
-    if (classFilter) p.set("classId", classFilter);
-    if (search.trim()) p.set("q", search.trim());
-    const qs = p.toString();
-    return qs ? `/api/students?${qs}` : "/api/students";
-  }, [classFilter, search]);
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-  const { data, loading, error, refresh } = useFetch<Student[]>(url);
-  const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const classList = classesFetch.data ?? [];
-
-  function openAdd() {
-    setEditing(null);
-    setForm({ ...emptyForm, enrollmentDate: todayStr() });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  function openEdit(s: Student) {
-    setEditing(s);
-    setForm({
-      admissionNo: s.admissionNo,
-      name: s.name,
-      gender: s.gender,
-      classId: s.classId ? String(s.classId) : "",
-      guardianName: s.guardianName ?? "",
-      guardianPhone: s.guardianPhone ?? "",
-      enrollmentDate: s.enrollmentDate ?? "",
-    });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setFormError(null);
+  async function fetchData() {
     try {
-      const body = {
-        admissionNo: form.admissionNo,
-        name: form.name,
-        gender: form.gender,
-        classId: form.classId,
-        guardianName: form.guardianName,
-        guardianPhone: form.guardianPhone,
-        enrollmentDate: form.enrollmentDate,
-      };
-      if (editing) await putJSON(`/api/students/${editing.id}`, body);
-      else await postJSON("/api/students", body);
-      setOpen(false);
-      refresh();
-      classesFetch.refresh();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save.");
+      const [studentsRes, classesRes] = await Promise.all([
+        fetch("/api/students"),
+        fetch("/api/classes"),
+      ]);
+      const studentsData = await studentsRes.json();
+      const classesData = await classesRes.json();
+      setStudents(studentsData.students || []);
+      setClasses(classesData.classes || []);
+    } catch {
+      // Error
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  async function remove(s: Student) {
-    if (!window.confirm(`Are you sure you want to delete ${s.name}?`)) return;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     try {
-      await delJSON(`/api/students/${s.id}`);
-      refresh();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to delete.");
+      const payload: Record<string, any> = { ...formData };
+      // Convert classId to number
+      if (payload.classId) {
+        payload.classId = parseInt(payload.classId);
+      }
+
+      if (editingStudent) {
+        await fetch(`/api/students/${editingStudent.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        await fetch("/api/students", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+      fetchData();
+      setIsModalOpen(false);
+      setFormData({
+        admissionNo: "",
+        name: "",
+        gender: "",
+        classId: "",
+        guardianName: "",
+        guardianPhone: "",
+      });
+      setEditingStudent(null);
+    } catch {
+      // Error
     }
   }
 
-  const filtered = data ?? [];
+  function openModal(student?: any) {
+    if (student) {
+      setEditingStudent(student);
+      setFormData({
+        admissionNo: student.admissionNo,
+        name: student.name,
+        gender: student.gender || "",
+        classId: student.classId ? student.classId.toString() : "",
+        guardianName: student.guardianName || "",
+        guardianPhone: student.guardianPhone || "",
+      });
+    } else {
+      setEditingStudent(null);
+      setFormData({
+        admissionNo: "",
+        name: "",
+        gender: "",
+        classId: "",
+        guardianName: "",
+        guardianPhone: "",
+      });
+    }
+    setIsModalOpen(true);
+  }
+
+  const classOptions = [
+    { value: "", label: "Select Class" },
+    ...classes.map((c) => ({
+      value: c.id.toString(),
+      label: `${c.name} ${c.section || ""}`.trim(),
+    })),
+  ];
+
+  const genderOptions = [
+    { value: "", label: "Select Gender" },
+    { value: "Male", label: "Male" },
+    { value: "Female", label: "Female" },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <AppShell permission="students.view">
-    <div>
-      <PageHeader
-        icon="👨‍🎓"
-        title="Students"
-        subtitle={`${filtered.length} student${filtered.length === 1 ? "" : "s"}`}
-      >
-        <button onClick={openAdd} className={btnPrimary}>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Students</h1>
+        <button
+          onClick={() => openModal()}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
+        >
           + Add Student
         </button>
-      </PageHeader>
-
-      {/* Filters */}
-      <div className="mb-5 flex flex-col gap-3 sm:flex-row">
-        <div className="relative flex-1">
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name, admission no., guardian..."
-            className={cls(inputCls, "pl-10")}
-          />
-        </div>
-        <select value={classFilter} onChange={(e) => setClassFilter(e.target.value)} className={cls(inputCls, "sm:w-56")}>
-          <option value="">All classes</option>
-          {classList.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
       </div>
 
-      {loading && !data ? (
-        <Loader />
-      ) : error && !data ? (
-        <EmptyState icon="⚠️" title="Failed to load" message={error} />
-      ) : filtered.length === 0 ? (
+      {students.length === 0 ? (
         <EmptyState
+          message="No students found"
           icon="👨‍🎓"
-          title="No students found"
-          message="Add the first student using the button above."
+          description="Add your first student to get started"
         />
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/80 text-xs font-bold uppercase tracking-wide text-slate-500">
-                  <th className="px-5 py-3.5">Student</th>
-                  <th className="px-4 py-3.5">Gender</th>
-                  <th className="px-4 py-3.5">Class</th>
-                  <th className="px-4 py-3.5">Guardian</th>
-                  <th className="px-4 py-3.5">Guardian Phone</th>
-                  <th className="px-4 py-3.5">Enrolled</th>
-                  <th className="px-4 py-3.5 text-right">Actions</th>
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Admission No
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Gender
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Class
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Guardian
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {students.map((student) => (
+                <tr key={student.id} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {student.admissionNo}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{student.name}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {student.gender || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {student.className || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {student.guardianName || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => openModal(student)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {filtered.map((s) => (
-                  <tr key={s.id} className="transition hover:bg-indigo-50/40">
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={s.name} tone={s.gender === "female" ? "rose" : "indigo"} />
-                        <div>
-                          <p className="font-bold text-slate-900">{s.name}</p>
-                          <p className="text-xs text-slate-500">{s.admissionNo}</p>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge tone={s.gender === "female" ? "rose" : "blue"}>
-                        {s.gender === "female" ? "👧 Girl" : "👦 Boy"}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-700">
-                      {s.className ?? <span className="text-slate-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">{s.guardianName || "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{s.guardianPhone || "—"}</td>
-                    <td className="px-4 py-3 text-slate-600">{shortDate(s.enrollmentDate)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => openEdit(s)}
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button
-                          onClick={() => remove(s)}
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50"
-                        >
-                          🗑️ Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      {/* Modal */}
       <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editing ? `Edit: ${editing.name}` : "Add Student"}
-        wide
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingStudent ? "Edit Student" : "Add Student"}
+        size="lg"
       >
-        <form onSubmit={save} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Admission No." className="sm:col-span-1">
-            <input
-              className={inputCls}
-              value={form.admissionNo}
-              onChange={(e) => setForm({ ...form, admissionNo: e.target.value })}
-              placeholder="ADM-001 (leave blank to auto-generate)"
-            />
-          </Field>
-          <Field label="Full Name" required>
-            <input
-              className={inputCls}
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="e.g. John Hassan Juma"
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Field
+              label="Admission Number"
+              type="text"
+              value={formData.admissionNo}
+              onChange={(e) =>
+                setFormData({ ...formData, admissionNo: e.target.value })
+              }
+              placeholder="e.g., S001"
               required
             />
-          </Field>
-          <Field label="Gender" required>
-            <select
-              className={inputCls}
-              value={form.gender}
-              onChange={(e) => setForm({ ...form, gender: e.target.value })}
+            <Field
+              label="Full Name"
+              type="text"
+              value={formData.name}
+              onChange={(e) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
+              placeholder="e.g., Jane Doe"
+              required
+            />
+            <SelectField
+              label="Gender"
+              value={formData.gender}
+              onChange={(e) =>
+                setFormData({ ...formData, gender: e.target.value })
+              }
+              options={genderOptions}
+            />
+            <SelectField
+              label="Class"
+              value={formData.classId}
+              onChange={(e) =>
+                setFormData({ ...formData, classId: e.target.value })
+              }
+              options={classOptions}
+            />
+            <Field
+              label="Guardian Name"
+              type="text"
+              value={formData.guardianName}
+              onChange={(e) =>
+                setFormData({ ...formData, guardianName: e.target.value })
+              }
+              placeholder="e.g., Mr. Smith"
+            />
+            <Field
+              label="Guardian Phone"
+              type="tel"
+              value={formData.guardianPhone}
+              onChange={(e) =>
+                setFormData({ ...formData, guardianPhone: e.target.value })
+              }
+              placeholder="e.g., +254700000000"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
             >
-              <option value="male">Male</option>
-              <option value="female">Female</option>
-            </select>
-          </Field>
-          <Field label="Class">
-            <select
-              className={inputCls}
-              value={form.classId}
-              onChange={(e) => setForm({ ...form, classId: e.target.value })}
-            >
-              <option value="">— No class —</option>
-              {classList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.section ? ` — ${c.section}` : ""}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Guardian Name">
-            <input
-              className={inputCls}
-              value={form.guardianName}
-              onChange={(e) => setForm({ ...form, guardianName: e.target.value })}
-              placeholder="e.g. Hassan Juma"
-            />
-          </Field>
-          <Field label="Guardian Phone">
-            <input
-              className={inputCls}
-              value={form.guardianPhone}
-              onChange={(e) => setForm({ ...form, guardianPhone: e.target.value })}
-              placeholder="+255 7XX XXX XXX"
-            />
-          </Field>
-          <Field label="Enrollment Date">
-            <input
-              type="date"
-              className={inputCls}
-              value={form.enrollmentDate}
-              onChange={(e) => setForm({ ...form, enrollmentDate: e.target.value })}
-            />
-          </Field>
-          <div className="flex items-end justify-end gap-2 sm:col-span-2">
-            {formError && <p className="mr-auto text-sm font-semibold text-rose-600">{formError}</p>}
-            <button type="button" onClick={() => setOpen(false)} className={btnGhost}>
               Cancel
             </button>
-            <button type="submit" disabled={saving} className={btnPrimary}>
-              {saving ? "Saving..." : editing ? "Save Changes" : "Add Student"}
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              {editingStudent ? "Update" : "Create"}
             </button>
           </div>
         </form>
       </Modal>
     </div>
-    </AppShell>
   );
 }

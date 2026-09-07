@@ -1,121 +1,94 @@
-"use client";
+import { useState, useCallback } from "react";
 
-import { useCallback, useEffect, useState } from "react";
-
-export function cls(...parts: Array<string | false | null | undefined>): string {
-  return parts.filter(Boolean).join(" ");
+// Format date for display
+export function shortDate(date: Date | string): string {
+  const d = new Date(date);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-/** Today's date as YYYY-MM-DD (local time). */
-export function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
+// Format date with time
+export function formatDateTime(date: Date | string): string {
+  const d = new Date(date);
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
-export function fmtNum(n: number): string {
-  return new Intl.NumberFormat("en-US").format(Math.round(n));
+// Format currency
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-KE", {
+    style: "currency",
+    currency: "KES",
+  }).format(amount);
 }
 
-export function money(n: number): string {
-  return `TZS ${fmtNum(n)}`;
-}
-
-async function parseError(r: Response): Promise<string> {
-  try {
-    const body = (await r.json()) as { error?: string };
-    return body?.error ?? r.statusText;
-  } catch {
-    return r.statusText || "Something went wrong";
+// Fetch helper
+export async function useFetch<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json() as Promise<T>;
 }
 
-export async function postJSON<T = unknown>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
+// POST helper
+export async function postJSON<T>(url: string, data: any): Promise<T> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(data),
   });
-  if (!r.ok) throw new Error(await parseError(r));
-  return (await r.json()) as T;
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+  return response.json() as Promise<T>;
 }
 
-export async function putJSON<T = unknown>(url: string, body: unknown): Promise<T> {
-  const r = await fetch(url, {
+// PUT helper
+export async function putJSON<T>(url: string, data: any): Promise<T> {
+  const response = await fetch(url, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(data),
   });
-  if (!r.ok) throw new Error(await parseError(r));
-  return (await r.json()) as T;
-}
-
-export async function delJSON(url: string): Promise<void> {
-  const r = await fetch(url, { method: "DELETE" });
-  if (!r.ok) throw new Error(await parseError(r));
-}
-
-/** Simple hook to fetch data from an API and refresh it. */
-export function useFetch<T>(url: string | null) {
-  const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [nonce, setNonce] = useState(0);
-
-  useEffect(() => {
-    if (!url) {
-      setData(null);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    fetch(url)
-      .then(async (r) => {
-        if (!r.ok) throw new Error(await parseError(r));
-        return (await r.json()) as T;
-      })
-      .then((d) => {
-        if (!cancelled) {
-          setData(d);
-          setError(null);
-        }
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [url, nonce]);
-
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
-  return { data, loading, error, refresh };
-}
-
-export function longDate(): string {
-  try {
-    return new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-  } catch {
-    return new Date().toDateString();
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json() as Promise<T>;
 }
 
-export function shortDate(d: string | null | undefined): string {
-  if (!d) return "—";
-  try {
-    const dt = new Date(`${d}T00:00:00`);
-    return dt.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
-  } catch {
-    return d;
+// DELETE helper
+export async function delJSON<T>(url: string): Promise<T> {
+  const response = await fetch(url, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
+  return response.json() as Promise<T>;
+}
+
+// Generate a random check number (username)
+export function generateCheckNumber(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  let result = "";
+  for (let i = 0; i < 8; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// Capitalize first letter
+export function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+// Truncate text
+export function truncate(text: string, length: number): string {
+  if (text.length <= length) return text;
+  return text.slice(0, length) + "...";
 }

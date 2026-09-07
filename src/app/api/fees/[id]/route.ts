@@ -1,57 +1,99 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { fees } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-type Ctx = { params: Promise<{ id: string }> };
+    const { id } = await params;
+    const [fee] = await db
+      .select()
+      .from(fees)
+      .where(eq(fees.id, parseInt(id)))
+      .limit(1);
 
-export async function PUT(req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
+    if (!fee) {
+      return NextResponse.json({ error: "Fee not found" }, { status: 404 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const existing = await db.select().from(fees).where(eq(fees.id, num)).limit(1);
-  const fee = existing[0];
-  if (!fee) return Response.json({ error: "Fee record not found." }, { status: 404 });
-
-  const values: Partial<typeof fees.$inferInsert> = {};
-
-  if (body.payment !== undefined) {
-    const p = Number(body.payment);
-    if (!Number.isFinite(p) || p <= 0)
-      return Response.json({ error: "Payment amount is invalid." }, { status: 400 });
-    values.paidAmount = fee.paidAmount + p;
-  } else if (body.paidAmount !== undefined) {
-    const p = Number(body.paidAmount);
-    if (!Number.isFinite(p) || p < 0)
-      return Response.json({ error: "Payment amount is invalid." }, { status: 400 });
-    values.paidAmount = p;
+    return NextResponse.json({ fee });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  if (typeof body.description === "string" && body.description.trim())
-    values.description = body.description.trim();
-  if (body.amount !== undefined) {
-    const a = Number(body.amount);
-    if (Number.isFinite(a) && a > 0) values.amount = a;
-  }
-  if (body.dueDate !== undefined)
-    values.dueDate = typeof body.dueDate === "string" && body.dueDate ? body.dueDate : null;
-
-  if (Object.keys(values).length === 0)
-    return Response.json({ error: "No changes were provided." }, { status: 400 });
-
-  const [updated] = await db.update(fees).set(values).where(eq(fees.id, num)).returning();
-  return Response.json(updated);
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  await db.delete(fees).where(eq(fees.id, num));
-  return Response.json({ ok: true });
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const { paidAmount, status } = await request.json();
+
+    const [existing] = await db
+      .select()
+      .from(fees)
+      .where(eq(fees.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Fee not found" }, { status: 404 });
+    }
+
+    const [updated] = await db
+      .update(fees)
+      .set({
+        paidAmount:
+          paidAmount !== undefined ? parseInt(paidAmount) : existing.paidAmount,
+        status: status || existing.status,
+      })
+      .where(eq(fees.id, parseInt(id)))
+      .returning();
+
+    return NextResponse.json({ success: true, fee: updated });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    await db.delete(fees).where(eq(fees.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

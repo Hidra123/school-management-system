@@ -1,8 +1,7 @@
-import { destroySession } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
+import { NextResponse } from "next/server";
 
 export async function POST() {
-  await destroySession();
-  return Response.json({ ok: true });
+  const response = NextResponse.json({ success: true });
+  response.cookies.delete("shulehub_session");
+  return response;
 }

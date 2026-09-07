@@ -1,47 +1,114 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { subjects, teachers } from "@/db/schema";
+import { subjects } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-type Ctx = { params: Promise<{ id: string }> };
+    const { id } = await params;
+    const [subject] = await db
+      .select()
+      .from(subjects)
+      .where(eq(subjects.id, parseInt(id)))
+      .limit(1);
 
-export async function PUT(req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
+    if (!subject) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const values: Partial<typeof subjects.$inferInsert> = {};
-  if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-  if (typeof body.code === "string") values.code = body.code.trim().toUpperCase();
-  if (body.teacherId !== undefined) {
-    values.teacherId =
-      body.teacherId === "" || body.teacherId === null ? null : Number(body.teacherId) || null;
+    return NextResponse.json({ subject });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  if (Object.keys(values).length === 0)
-    return Response.json({ error: "No changes were provided." }, { status: 400 });
-
-  const [updated] = await db
-    .update(subjects)
-    .set(values)
-    .where(eq(subjects.id, num))
-    .returning();
-  if (!updated) return Response.json({ error: "Subject not found." }, { status: 404 });
-
-  const teacher = updated.teacherId
-    ? await db.select().from(teachers).where(eq(teachers.id, updated.teacherId)).limit(1)
-    : [];
-  return Response.json({ ...updated, teacherName: teacher[0]?.name ?? null });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  await db.delete(subjects).where(eq(subjects.id, num));
-  return Response.json({ ok: true });
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const { name, code, teacherId } = await request.json();
+
+    const [existing] = await db
+      .select()
+      .from(subjects)
+      .where(eq(subjects.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Subject not found" }, { status: 404 });
+    }
+
+    // Check if code is being changed and if it already exists
+    if (code && code !== existing.code) {
+      const [codeExists] = await db
+        .select()
+        .from(subjects)
+        .where(eq(subjects.code, code))
+        .limit(1);
+      if (codeExists) {
+        return NextResponse.json(
+          { error: "Subject code already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const [updated] = await db
+      .update(subjects)
+      .set({
+        name: name || existing.name,
+        code: code || existing.code,
+        teacherId: teacherId !== undefined ? teacherId : existing.teacherId,
+      })
+      .where(eq(subjects.id, parseInt(id)))
+      .returning();
+
+    return NextResponse.json({ success: true, subject: updated });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    await db.delete(subjects).where(eq(subjects.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

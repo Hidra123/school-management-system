@@ -1,65 +1,84 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
-type User = {
+interface User {
   id: number;
   name: string;
   username: string;
-  role: "admin" | "member";
+  role: string;
   mustChangePassword: boolean;
-  permissions: string[];
-} | null;
+}
 
-type AuthCtx = {
-  user: User;
-  loading: boolean;
-  refresh: () => void;
-  logout: () => Promise<void>;
-  hasPerm: (perm: string) => boolean;
-};
+interface AuthContextType {
+  user: User | null;
+  username: string | null;
+  mustChangePassword: boolean;
+  setUser: (user: User | null) => void;
+  isAdmin: boolean;
+}
 
-const AuthContext = createContext<AuthCtx>({
+const AuthContext = createContext<AuthContextType>({
   user: null,
-  loading: true,
-  refresh: () => {},
-  logout: async () => {},
-  hasPerm: () => false,
+  username: null,
+  mustChangePassword: false,
+  setUser: () => {},
+  isAdmin: false,
 });
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User>(null);
-  const [loading, setLoading] = useState(true);
-  const [nonce, setNonce] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
+  const pathname = usePathname();
+  const router = useRouter();
 
+  const isAdmin = user?.role === "admin";
+  const mustChangePassword = user?.mustChangePassword || false;
+  const username = user?.username || null;
+
+  // Check auth on route change
   useEffect(() => {
-    setLoading(true);
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d: { user: User }) => setUser(d.user))
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, [nonce]);
+    async function checkAuth() {
+      try {
+        const response = await fetch("/api/auth/me");
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        } else {
+          setUser(null);
+          // Redirect to login if not on login page or public page
+          if (pathname !== "/login" && !pathname?.startsWith("/api")) {
+            window.location.href = "/login";
+          }
+        }
+      } catch {
+        setUser(null);
+        if (pathname !== "/login" && !pathname?.startsWith("/api")) {
+          window.location.href = "/login";
+        }
+      }
+    }
 
-  const refresh = useCallback(() => setNonce((n) => n + 1), []);
+    checkAuth();
+  }, [pathname, router]);
 
-  const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
-    setUser(null);
-    window.location.href = "/login";
-  }, []);
-
-  const hasPerm = useCallback(
-    (perm: string) => {
-      if (!user) return false;
-      if (user.role === "admin") return true;
-      return user.permissions.includes(perm);
-    },
-    [user],
-  );
+  // Force password change redirect
+  useEffect(() => {
+    if (user && user.mustChangePassword && pathname !== "/profile") {
+      window.location.href = "/profile";
+    }
+  }, [user, pathname]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, refresh, logout, hasPerm }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        username,
+        mustChangePassword,
+        setUser,
+        isAdmin,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -1,62 +1,119 @@
-# 🎓 ShuleHub — School Management System
+# 🏫 ShuleHub — School Management System
 
-A complete, modern school management system built with **Next.js**, **PostgreSQL**, **Drizzle ORM** and **Tailwind CSS**.
+Sistemu kamili ya usimamizi wa shule (Next.js 16 + Drizzle ORM + Neon PostgreSQL + Tailwind CSS 4).
 
-## Features
+> UI iko kwa Kiingereza, nyaraka zina maelezo ya Kiswahili.
 
-- 📊 **Dashboard** — School overview with stats, attendance, fees and recent students
-- 👨‍🎓 **Students** — Full CRUD with search, class filtering, guardian info
-- 👨‍🏫 **Teachers** — Manage teachers, qualifications, contact details
-- 🏫 **Classes** — Class cards with capacity tracking
-- 📚 **Subjects** — Subject management with teacher assignment
-- ✅ **Attendance** — Mark daily attendance per class (present/absent/late/excused)
-- 📝 **Grades** — Bulk grade entry by class, exam type filtering
-- 💰 **Fees** — Fee management with payment tracking, overdue alerts
+---
 
-## Tech Stack
+## 🔑 Login
 
-- **Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS 4
-- **Backend:** Next.js API Routes, Drizzle ORM
-- **Database:** PostgreSQL
-- **Language:** TypeScript
+| Aina | Username | Password |
+|------|----------|----------|
+| Admin | `Admin` | `Rash@1234` |
+| Member (mpya) | Check Number | `shulehub2025` |
 
-## Getting Started
+Members **lazima** wabadilishe password mara ya kwanza wanapoingia (`mustChangePassword`).
+
+---
+
+## 🛠️ Tech Stack
+
+- **Next.js 16** (App Router) + **React 19** + **TypeScript**
+- **Drizzle ORM** + **PostgreSQL** (Neon free tier 512MB)
+- **Tailwind CSS 4**
+- Cookie-based auth, SHA-256 hashed passwords
+- Deploy: **Vercel** (free, unlimited builds)
+
+---
+
+## 🚀 Quick Start (local / Codespace)
 
 ```bash
 npm install
+
+# weka connection string ya Neon
+cp .env.example .env
+# hariri .env -> DATABASE_URL="postgresql://...?sslmode=require"
+
+npx drizzle-kit push        # tengeneza tables
+npx -y tsx src/db/seed.ts   # tengeneza admin account pekee
+
+npm run dev                 # http://localhost:3000
 ```
 
-Set up your `.env` file:
+---
+
+## 📁 Muundo wa Project
+
 ```
-DATABASE_URL=postgresql://user:password@host:5432/dbname
+src/
+├── app/
+│   ├── layout.tsx              # Root layout + AuthProvider + AppShell
+│   ├── globals.css             # Tailwind + animations (scaleIn, drawCheck)
+│   ├── page.tsx                # Member dashboard
+│   ├── login/                  # Login (Username + Password)
+│   ├── admin/                  # Admin-only pages
+│   │   ├── page.tsx            # Dashboard
+│   │   ├── classes/            # Manage Classes (CRUD)
+│   │   ├── subjects/           # Manage Subjects (CRUD + assign teacher)
+│   │   ├── teachers/           # Manage Teachers (CRUD + auto user account)
+│   │   └── assignments/        # Staff roles + permission presets
+│   ├── students/ classes/ subjects/ teachers/
+│   ├── attendance/ grades/ fees/
+│   ├── profile/                # Change password (forced on first login)
+│   └── api/                    # REST API routes
+├── components/
+│   ├── AuthProvider.tsx        # React context (user, username, mustChangePassword)
+│   ├── AppShell.tsx            # Auth guard + sidebar (full width)
+│   ├── Sidebar.tsx             # Admin sidebar vs Member sidebar
+│   └── ui.tsx                  # Badge, Modal, Field, StatCard, Spinner, ActionButton...
+├── lib/
+│   ├── hash.ts                 # SHA-256 helpers (pure, no next/headers)
+│   ├── auth.ts                 # Sessions + permission checks
+│   ├── permissions.ts          # 38 permissions, role presets, sidebars
+│   └── utils.ts                # fetch helpers, formatters
+└── db/
+    ├── index.ts                # Drizzle + pg pool (Neon SSL aware)
+    ├── schema.ts               # Tables
+    └── seed.ts                 # Admin account only
 ```
 
-Push the database schema and create the Admin account (no sample data):
-```bash
-npx drizzle-kit push
-npx tsx src/db/seed.ts
-```
+---
 
-Start the development server:
-```bash
-npm run dev
-```
+## 🗄️ Database Tables
 
-## Deployment
+`users`, `user_permissions`, `classes`, `teachers`, `subjects`, `students`,
+`attendance`, `grades`, `fees`, `parents`, `staff_assignments`, `admissions`,
+`audit_trail`, `activity_control`, `live_sessions`, `messages`, `timetable`,
+`lesson_plans`, `log_book`, `teacher_on_duty`, `exams`, `system_settings`.
 
-See [DEPLOY.md](./DEPLOY.md) for a step-by-step free deployment guide using GitHub + Neon + Netlify.
+Muhimu: `teachers.userId → users.id` — kila teacher anayeongezwa **anapata user account moja kwa moja**.
 
-## 🔐 Authentication
+---
 
-| Who | Login tab | Identifier | Password |
-|-----|-----------|------------|----------|
-| Admin | 🛡️ Admin Login | Username `Admin` | `Rash@1234` |
-| Staff / Teachers | 👨‍🏫 Staff Login | Check Number (set by admin) | `shulehub2025` (default) |
+## 🔐 Permissions
 
-- One login form serves both roles — the tab only changes the label.
-- **Adding a teacher** (Admin → Manage Teachers) automatically creates a login account
-  (`teachers.user_id` → `users.id`) with the default password and the *Subject Teacher* permissions.
-- Teacher cards show the Check Number and password (eye icon to reveal) plus **Reset Password**.
-- Members **must change the default password on first login** (`must_change_password`).
-  Until they do, every page redirects to `/profile`.
-- `npx tsx src/db/seed.ts` only creates/repairs the Admin account. Use `--reset` to wipe all data.
+38 permissions katika makundi 14. Role presets:
+
+| Role | Permissions |
+|------|-------------|
+| 🛡️ Admin | Zote |
+| 📘 Academic Master | 31 |
+| 🏫 Class Teacher | 17 |
+| 👨‍🏫 Subject Teacher | 14 |
+| 💰 Accountant / ⚽ Sports Manager / 🔬 Lab Technician / 📚 Librarian | Ndogo |
+
+---
+
+## 📦 Deployment
+
+Soma [`QUICK-DEPLOY.md`](./QUICK-DEPLOY.md) (dakika 5) au [`DEPLOY.md`](./DEPLOY.md) (hatua kwa hatua).
+
+---
+
+## 📄 Nyaraka Zingine
+
+- [`DEV.md`](./DEV.md) — maelezo ya development
+- [`DEPLOY.md`](./DEPLOY.md) — GitHub + Vercel + Neon kwa undani
+- [`QUICK-DEPLOY.md`](./QUICK-DEPLOY.md) — amri za haraka (copy-paste)

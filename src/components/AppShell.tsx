@@ -1,78 +1,85 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
-import { usePathname } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider";
-import Sidebar from "@/components/Sidebar";
-import { Loader } from "@/components/ui";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useAuth } from "./AuthProvider";
+import { Sidebar } from "./Sidebar";
 
-const PASSWORD_PAGE = "/profile";
+// Pages that don't require sidebar
+const NO_SIDEBAR_PAGES = ["/login", "/api"];
 
-export default function AppShell({ children, permission }: { children: ReactNode; permission?: string }) {
-  const { user, loading, hasPerm } = useAuth();
+export function AppShell({ children }: { children: React.ReactNode }) {
+  const { user, isAdmin, mustChangePassword } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
 
-  // Members who still use the default password must change it before doing anything else.
-  const forcePasswordChange = !!user && user.role === "member" && user.mustChangePassword;
-  const mustRedirect = forcePasswordChange && pathname !== PASSWORD_PAGE;
+  // Check if we should show sidebar
+  const showSidebar = !NO_SIDEBAR_PAGES.some((p) => 
+    pathname === p || pathname?.startsWith(p)
+  );
 
+  // Redirect logic
   useEffect(() => {
-    if (!loading && !user) {
+    // If no user and not on login page, redirect to login
+    if (!user && pathname !== "/login" && !pathname?.startsWith("/api")) {
       window.location.href = "/login";
+      return;
     }
-  }, [loading, user]);
 
-  useEffect(() => {
-    if (!loading && mustRedirect) {
-      window.location.href = PASSWORD_PAGE;
+    // If user exists and on login page, redirect to appropriate dashboard
+    if (user && pathname === "/login") {
+      window.location.href = isAdmin ? "/admin" : "/";
+      return;
     }
-  }, [loading, mustRedirect]);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader label="Loading..." />
-      </div>
-    );
-  }
+    // Force password change on first login
+    if (user && mustChangePassword && pathname !== "/profile") {
+      window.location.href = "/profile";
+      return;
+    }
 
-  if (!user) return null;
+    // Admin should not access member pages
+    if (user && isAdmin) {
+      const memberPages = [
+        "/students",
+        "/teachers",
+        "/classes",
+        "/subjects",
+        "/attendance",
+        "/grades",
+        "/fees",
+        "/exams",
+        "/timetable",
+        "/assignments",
+        "/lesson-plans",
+        "/logbook",
+        "/tod",
+        "/messages",
+        "/profile",
+      ];
+      if (memberPages.some((p) => pathname === p || pathname?.startsWith(`${p}/`))) {
+        window.location.href = "/admin";
+        return;
+      }
+    }
 
-  if (mustRedirect) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader label="Redirecting to password change..." />
-      </div>
-    );
-  }
+    // Members should not access admin pages
+    if (user && !isAdmin) {
+      if (pathname?.startsWith("/admin")) {
+        window.location.href = "/";
+        return;
+      }
+    }
+  }, [user, isAdmin, mustChangePassword, pathname, router]);
 
-  if (permission && !hasPerm(permission)) {
-    return (
-      <>
-        <Sidebar />
-        <div className="lg:pl-64">
-          <main className="w-full px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-20 text-center">
-              <div className="text-5xl">🔒</div>
-              <h2 className="mt-4 text-xl font-bold text-slate-800">Access Denied</h2>
-              <p className="mt-2 max-w-md text-sm text-slate-500">
-                You do not have permission to access this page. Contact your admin to request access.
-              </p>
-            </div>
-          </main>
-        </div>
-      </>
-    );
+  if (!showSidebar) {
+    return <>{children}</>;
   }
 
   return (
-    <>
-      <Sidebar locked={forcePasswordChange} />
-      <div className="lg:pl-64">
-        <main className="w-full px-4 py-4 sm:px-6 lg:px-6 lg:py-6">
-          {children}
-        </main>
-      </div>
-    </>
+    <div className="flex min-h-screen">
+      <Sidebar />
+      <main className="flex-1 bg-gray-50">{children}</main>
+    </div>
   );
 }

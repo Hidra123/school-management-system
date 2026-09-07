@@ -1,88 +1,144 @@
-import { asc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { teachers, users } from "@/db/schema";
-import { createMemberAccount, getSessionUser, requireAuth } from "@/lib/auth";
+import { teachers, users, userPermissions } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { hashPassword } from "@/lib/auth";
 import { ROLE_PRESETS } from "@/lib/permissions";
-import { teacherSelect } from "@/lib/teachers";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function GET() {
-  const user = await getSessionUser();
-  const err = requireAuth(user);
-  if (err) return err;
+    // Get all teachers with their user accounts
+    const allTeachers = await db.select().from(teachers).orderBy(teachers.id);
 
-  const rows = await db
-    .select(teacherSelect())
-    .from(teachers)
-    .leftJoin(users, eq(teachers.userId, users.id))
-    .orderBy(asc(teachers.name));
+    // Enrich with user data
+    const enrichedTeachers = await Promise.all(
+      allTeachers.map(async (teacher) => {
+        if (teacher.userId) {
+          const [user] = await db
+            .select({
+              username: users.username,
+              rawPassword: users.rawPassword,
+              email: users.email,
+              active: users.active,
+            })
+            .from(users)
+            .where(eq(users.id, teacher.userId))
+            .limit(1);
+          return { ...teacher, user };
+        }
+        return teacher;
+      })
+    );
 
-  const isAdmin = user!.role === "admin";
-  return Response.json(
-    rows.map((r) => ({
-      ...r,
-      hasAccount: r.userId !== null,
-      // Only the admin may see the stored raw password
-      rawPassword: isAdmin ? r.rawPassword : null,
-    })),
-  );
+    return NextResponse.json({ teachers: enrichedTeachers });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function POST(req: Request) {
-  const user = await getSessionUser();
-  const err = requireAuth(user);
-  if (err) return err;
-  if (user!.role !== "admin") {
-    return Response.json({ error: "Only the admin can add teachers." }, { status: 403 });
-  }
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.name !== "string" || !body.name.trim()) {
-    return Response.json({ error: "Teacher name is required." }, { status: 400 });
-  }
-  const username = typeof body.username === "string" ? body.username.trim() : "";
-  if (!username) {
-    return Response.json({ error: "Username (Check Number) is required." }, { status: 400 });
-  }
+    const {
+      name,
+      email,
+      phone,
+      subject,
+      qualification,
+      hireDate,
+      username: checkNumber,
+    } = await request.json();
 
-  // 1) Create the login account (default password + must change on first login)
-  const account = await createMemberAccount({
-    name: body.name,
-    username,
-    email: typeof body.email === "string" ? body.email : "",
-    password: typeof body.password === "string" ? body.password : undefined,
-    permissions: Array.isArray(body.permissions)
-      ? body.permissions
-      : [...ROLE_PRESETS.teacher.permissions],
-  });
-  if ("error" in account) {
-    return Response.json({ error: account.error }, { status: account.status });
+    if (!name) {
+      return NextResponse.json(
+        { error: "Name is required" },
+        { status: 400 }
+      );
+    }
+
+    // Generate username if not provided (check number format)
+    const username = checkNumber || `TCH-${Date.now()}`;
+
+    // Check if username exists
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1);
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: "Username already exists" },
+        { status: 400 }
+      );
+    }
+
+    // Default password for teachers
+    const defaultPassword = "shulehub2025";
+    const password = hashPassword(defaultPassword);
+
+    // Create user account
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        name,
+        username,
+        email: email || null,
+        password,
+        rawPassword: defaultPassword,
+        role: "member",
+        active: true,
+        mustChangePassword: true, // Force password change on first login
+      })
+      .returning();
+
+    // Create teacher record linked to user
+    const [newTeacher] = await db
+      .insert(teachers)
+      .values({
+        userId: newUser.id,
+        name,
+        email: email || null,
+        phone: phone || null,
+        subject: subject || null,
+        qualification: qualification || null,
+        hireDate: hireDate || new Date(),
+      })
+      .returning();
+
+    // Grant default teacher permissions
+    const defaultPermissions = ROLE_PRESETS["Subject Teacher"] || [];
+    for (const permission of defaultPermissions) {
+      await db.insert(userPermissions).values({
+        userId: newUser.id,
+        permission,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      teacher: newTeacher,
+      user: newUser,
+      rawPassword: defaultPassword,
+    });
+  } catch (error) {
+    console.error("Create teacher error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  // 2) Create the teacher profile linked to that account
-  const [row] = await db
-    .insert(teachers)
-    .values({
-      userId: account.id,
-      name: body.name.trim(),
-      email: typeof body.email === "string" ? body.email.trim() : "",
-      phone: typeof body.phone === "string" ? body.phone.trim() : "",
-      subject: typeof body.subject === "string" ? body.subject.trim() : "",
-      qualification: typeof body.qualification === "string" ? body.qualification.trim() : "",
-      hireDate: typeof body.hireDate === "string" && body.hireDate ? body.hireDate : null,
-    })
-    .returning();
-
-  return Response.json(
-    {
-      ...row,
-      username: account.username,
-      rawPassword: account.rawPassword,
-      mustChangePassword: true,
-      accountActive: true,
-      hasAccount: true,
-    },
-    { status: 201 },
-  );
 }

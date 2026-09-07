@@ -1,47 +1,62 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { users } from "@/db/schema";
-import { createPasswordHash, getSessionUserId, verifyPassword } from "@/lib/auth";
+import { eq } from "drizzle-orm";
+import { hashPassword, verifyPassword } from "@/lib/auth";
 
-export const dynamic = "force-dynamic";
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function POST(req: Request) {
-  const userId = await getSessionUserId();
-  if (!userId) return Response.json({ error: "Not authenticated." }, { status: 401 });
+    const { currentPassword, newPassword } = await request.json();
 
-  const body = await req.json().catch(() => null);
-  const currentPassword = typeof body?.currentPassword === "string" ? body.currentPassword : "";
-  const newPassword = typeof body?.newPassword === "string" ? body.newPassword : "";
-  const confirmPassword = typeof body?.confirmPassword === "string" ? body.confirmPassword : "";
+    if (!currentPassword || !newPassword) {
+      return NextResponse.json(
+        { error: "Current and new password are required" },
+        { status: 400 }
+      );
+    }
 
-  if (!currentPassword || !newPassword) {
-    return Response.json({ error: "Current and new password are required." }, { status: 400 });
+    // Get current user
+    const [user] = await db
+      .select({ password: users.password, mustChangePassword: users.mustChangePassword })
+      .from(users)
+      .where(eq(users.id, session.userId))
+      .limit(1);
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Verify current password
+    const isValid = await verifyPassword(currentPassword, user.password);
+    if (!isValid) {
+      return NextResponse.json(
+        { error: "Current password is incorrect" },
+        { status: 401 }
+      );
+    }
+
+    // Update password
+    const hashedPassword = hashPassword(newPassword);
+    await db
+      .update(users)
+      .set({
+        password: hashedPassword,
+        rawPassword: newPassword,
+        mustChangePassword: false,
+      })
+      .where(eq(users.id, session.userId));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  if (newPassword.length < 6) {
-    return Response.json({ error: "New password must be at least 6 characters." }, { status: 400 });
-  }
-  if (confirmPassword && newPassword !== confirmPassword) {
-    return Response.json({ error: "New password and confirmation do not match." }, { status: 400 });
-  }
-  if (newPassword === currentPassword) {
-    return Response.json({ error: "New password must be different from the current password." }, { status: 400 });
-  }
-
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || !user.active) return Response.json({ error: "Account not found." }, { status: 404 });
-
-  const ok = await verifyPassword(currentPassword, user.password);
-  if (!ok) return Response.json({ error: "Current password is incorrect." }, { status: 400 });
-
-  await db
-    .update(users)
-    .set({
-      password: await createPasswordHash(newPassword),
-      // Admin can still see/remind the member of their password
-      rawPassword: newPassword,
-      mustChangePassword: false,
-    })
-    .where(eq(users.id, userId));
-
-  return Response.json({ ok: true });
 }

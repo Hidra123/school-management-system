@@ -2,178 +2,107 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useAuth } from "@/components/AuthProvider";
-import { ADMIN_SIDEBAR, MEMBER_SIDEBAR } from "@/lib/permissions";
-import { cls } from "@/lib/utils";
+import { useAuth } from "./AuthProvider";
+import { ADMIN_SIDEBAR, MEMBER_SIDEBAR, filterSidebarItems, hasAnyPermission, ROLE_PRESETS, ASSIGNMENT_ROLES } from "../lib/permissions";
+import { useState, useEffect } from "react";
 
-function Brand() {
-  return (
-    <div className="flex items-center gap-3 px-1">
-      <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
-        🎓
-      </div>
-      <div className="leading-tight">
-        <p className="text-base font-extrabold text-white">ShuleHub</p>
-        <p className="text-[11px] font-medium text-indigo-300">
-          {/* Changes based on role */}
-        </p>
-      </div>
-    </div>
-  );
+interface SidebarItem {
+  label: string;
+  href: string;
+  icon: string;
+  permission: string;
 }
 
-type SidebarLink = { href: string; label: string; icon: string; group: string; badge?: string };
-
-function GroupedNav({ links, pathname }: { links: SidebarLink[]; pathname: string }) {
-  const grouped: Record<string, SidebarLink[]> = {};
-  for (const l of links) {
-    if (!grouped[l.group]) grouped[l.group] = [];
-    grouped[l.group].push(l);
-  }
-
-  return (
-    <>
-      {Object.entries(grouped).map(([group, items]) => (
-        <div key={group} className="mt-4 first:mt-0">
-          <p className="mb-1.5 px-3.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
-            {group}
-          </p>
-          {items.map((l) => {
-            const active = pathname === l.href || (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href));
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={cls(
-                  "group flex items-center gap-3 rounded-xl px-3.5 py-2 text-sm font-semibold transition",
-                  active
-                    ? "bg-indigo-500/20 text-white ring-1 ring-inset ring-indigo-400/30"
-                    : "text-indigo-200/80 hover:bg-white/5 hover:text-white",
-                )}
-              >
-                <span className={cls("text-base transition", active ? "" : "opacity-80 group-hover:opacity-100")}>
-                  {l.icon}
-                </span>
-                <span className="flex-1 whitespace-nowrap">{l.label}</span>
-                {l.badge && (
-                  <span className={cls(
-                    "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-                    l.badge === "NEW" ? "bg-emerald-500 text-white" : "bg-rose-500 text-white",
-                  )}>
-                    {l.badge}
-                  </span>
-                )}
-                {active && !l.badge && <span className="h-1.5 w-1.5 rounded-full bg-indigo-400" />}
-              </Link>
-            );
-          })}
-        </div>
-      ))}
-    </>
-  );
+interface SidebarGroup {
+  group: string;
+  items: SidebarItem[];
 }
 
-export default function Sidebar({ locked = false }: { locked?: boolean }) {
+export function Sidebar() {
+  const { user, isAdmin } = useAuth();
   const pathname = usePathname();
-  const { user, hasPerm, logout } = useAuth();
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
 
-  const isAdmin = user?.role === "admin";
+  // Fetch user permissions
+  useEffect(() => {
+    async function fetchPermissions() {
+      if (user?.id) {
+        try {
+          const response = await fetch(`/api/auth/permissions?userId=${user.id}`);
+          if (response.ok) {
+            const data = await response.json();
+            setUserPermissions(data.permissions);
+          }
+        } catch {
+          // Fallback to role-based permissions
+          if (user.role && ROLE_PRESETS[user.role]) {
+            setUserPermissions(ROLE_PRESETS[user.role]);
+          }
+        }
+      }
+    }
 
-  // Admin sees admin sidebar, members see filtered member sidebar.
-  // When locked (first login, default password) only the Change Password link is shown.
-  const links: SidebarLink[] = locked
-    ? [{ href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT", badge: "REQUIRED" }]
-    : isAdmin
-      ? ADMIN_SIDEBAR.map((l) => ({ ...l, badge: "badge" in l ? l.badge : undefined }))
-      : MEMBER_SIDEBAR
-          .filter((l) => hasPerm(l.perm) || l.perm === "profile.edit")
-          .map((l) => ({ href: l.href, label: l.label, icon: l.icon, group: l.group }));
+    fetchPermissions();
+  }, [user?.id, user?.role]);
 
-  const roleLabel = isAdmin ? "Administrator Panel" : "Member Panel";
-  const statusDot = isAdmin;
+  // Get sidebar items based on role
+  const getSidebarItems = (): SidebarGroup[] => {
+    if (isAdmin) {
+      return ADMIN_SIDEBAR;
+    }
+
+    // Filter member sidebar based on permissions
+    return filterSidebarItems(MEMBER_SIDEBAR, userPermissions);
+  };
+
+  const sidebarItems = getSidebarItems();
+
+  // Check if item is active
+  const isActive = (href: string) => {
+    return pathname === href || pathname?.startsWith(`${href}/`);
+  };
 
   return (
-    <>
-      {/* Mobile */}
-      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden">
-        <div className="flex items-center justify-between px-4 py-3">
-          <Brand />
-          <button onClick={logout} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-white/20">
-            Logout
-          </button>
-        </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2">
-          {links.map((l) => {
-            const active = pathname === l.href || (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href));
-            return (
-              <Link
-                key={l.href}
-                href={l.href}
-                className={cls(
-                  "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                  active ? "bg-indigo-500 text-white" : "bg-white/5 text-indigo-200 hover:bg-white/10 hover:text-white",
-                )}
-              >
-                <span>{l.icon}</span>
-                {l.label}
-              </Link>
-            );
-          })}
-        </nav>
-      </header>
+    <aside className="w-64 bg-white shadow-md min-h-screen">
+      <div className="p-4 border-b">
+        <h1 className="text-xl font-bold text-blue-600">ShuleHub SMS</h1>
+        <p className="text-sm text-gray-500">School Management System</p>
+      </div>
 
-      {/* Desktop */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-slate-950 lg:flex">
-        {/* Header */}
-        <div className="px-5 pb-1 pt-6">
-          <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
-              🎓
-            </div>
-            <div className="leading-tight">
-              <p className="text-base font-extrabold text-white">ShuleHub</p>
-              <p className="text-[11px] font-medium text-indigo-300">{roleLabel}</p>
-            </div>
+      <nav className="p-4">
+        {sidebarItems.map((group, index) => (
+          <div key={index} className="mb-6">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              {group.group}
+            </h3>
+            <ul className="space-y-1">
+              {group.items.map((item) => (
+                <li key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={`flex items-center px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive(item.href)
+                        ? "bg-blue-50 text-blue-700 font-medium"
+                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                    }`}
+                  >
+                    <span className="mr-3">{item.icon}</span>
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
-          {statusDot && (
-            <p className="mt-3 flex items-center gap-2 px-1 text-xs font-semibold text-emerald-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400" />
-              System Online
-            </p>
-          )}
-        </div>
+        ))}
+      </nav>
 
-        {/* Nav */}
-        <nav className="mt-2 flex-1 overflow-y-auto px-3 pb-4">
-          <GroupedNav links={links} pathname={pathname} />
-        </nav>
-
-        {/* User info + logout */}
-        <div className="border-t border-white/10 px-5 py-4">
-          {user && (
-            <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-indigo-500/20 text-sm font-bold text-indigo-300">
-                {user.name.charAt(0).toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-white">{user.name}</p>
-                <p className="truncate text-[11px] text-indigo-300/70">
-                  {isAdmin ? "🛡️ Admin" : "👤 Member"}
-                </p>
-              </div>
-              <button
-                onClick={logout}
-                title="Logout"
-                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
-                </svg>
-              </button>
-            </div>
-          )}
+      <div className="p-4 border-t">
+        <div className="bg-gray-50 rounded-lg p-3">
+          <p className="text-sm text-gray-500">Logged in as:</p>
+          <p className="font-medium text-gray-900">{user?.name}</p>
+          <p className="text-xs text-gray-400">{user?.role}</p>
         </div>
-      </aside>
-    </>
+      </div>
+    </aside>
   );
 }

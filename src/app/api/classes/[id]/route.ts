@@ -1,42 +1,99 @@
-import { count, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { classes, students } from "@/db/schema";
+import { classes } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-type Ctx = { params: Promise<{ id: string }> };
+    const { id } = await params;
+    const [cls] = await db
+      .select()
+      .from(classes)
+      .where(eq(classes.id, parseInt(id)))
+      .limit(1);
 
-export async function PUT(req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
+    if (!cls) {
+      return NextResponse.json({ error: "Class not found" }, { status: 404 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const values: Partial<typeof classes.$inferInsert> = {};
-  if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-  if (typeof body.section === "string") values.section = body.section.trim();
-  if (body.capacity !== undefined && body.capacity !== null && body.capacity !== "")
-    values.capacity = Math.max(1, Number(body.capacity) || 40);
-
-  if (Object.keys(values).length === 0)
-    return Response.json({ error: "No changes were provided." }, { status: 400 });
-
-  const [updated] = await db.update(classes).set(values).where(eq(classes.id, num)).returning();
-  if (!updated) return Response.json({ error: "Class not found." }, { status: 404 });
-
-  const countRow = await db
-    .select({ n: count() })
-    .from(students)
-    .where(eq(students.classId, num));
-  return Response.json({ ...updated, studentCount: countRow[0]?.n ?? 0 });
+    return NextResponse.json({ class: cls });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  await db.delete(classes).where(eq(classes.id, num));
-  return Response.json({ ok: true });
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const { name, section, capacity } = await request.json();
+
+    const [existing] = await db
+      .select()
+      .from(classes)
+      .where(eq(classes.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Class not found" }, { status: 404 });
+    }
+
+    const [updated] = await db
+      .update(classes)
+      .set({
+        name: name || existing.name,
+        section: section !== undefined ? section : existing.section,
+        capacity: capacity !== undefined ? capacity : existing.capacity,
+      })
+      .where(eq(classes.id, parseInt(id)))
+      .returning();
+
+    return NextResponse.json({ success: true, class: updated });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    await db.delete(classes).where(eq(classes.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

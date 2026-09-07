@@ -1,54 +1,159 @@
 "use client";
 
-import AppShell from "@/components/AppShell";
-import ChangePasswordForm from "@/components/ChangePasswordForm";
-import { useAuth } from "@/components/AuthProvider";
-import { Avatar, PageHeader } from "@/components/ui";
+import { useState, useEffect } from "react";
+import {
+  Field,
+  PasswordField,
+  Alert,
+  Spinner,
+  Badge,
+} from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function ProfilePage() {
-  const { user } = useAuth();
-  const forced = !!user?.mustChangePassword;
+  const { user, mustChangePassword } = useAuth();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  useEffect(() => {
+    // Force password change if required
+    if (mustChangePassword && user) {
+      // Already on profile page, so this is fine
+    }
+  }, [mustChangePassword, user]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    setSuccess("");
+
+    if (newPassword !== confirmPassword) {
+      setError("New passwords do not match");
+      return;
+    }
+
+    if (newPassword.length < 4) {
+      setError("Password must be at least 4 characters");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          currentPassword,
+          newPassword,
+        }),
+      });
+
+      if (response.ok) {
+        setSuccess("Password changed successfully! You will be redirected.");
+        setTimeout(() => {
+          window.location.href = user?.role === "admin" ? "/admin" : "/";
+        }, 2000);
+      } else {
+        const data = await response.json();
+        setError(data.error || "Failed to change password");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
-    <AppShell>
-      <PageHeader
-        icon="🔑"
-        title="Change Password"
-        subtitle={forced ? "You must set a new password before continuing" : "Update your account password"}
-      />
+    <div className="p-6 max-w-md mx-auto">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Change Password</h1>
+        {mustChangePassword && (
+          <Alert
+            message="You must change your password to continue using the system"
+            type="warning"
+            className="mt-4"
+          />
+        )}
+      </div>
 
-      {forced && (
-        <div className="mb-5 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-900">
-          <span className="text-2xl">⚠️</span>
-          <div className="text-sm">
-            <p className="font-bold">First login detected</p>
-            <p className="mt-0.5">
-              For security, you are required to replace the default password (<span className="font-mono font-semibold">shulehub2025</span>) with your own private password. Other pages will be unlocked once this is done.
+      <div className="bg-white rounded-lg shadow-md p-6">
+        {error && (
+          <Alert message={error} type="error" onClose={() => setError("")} />
+        )}
+        {success && (
+          <Alert message={success} type="success" onClose={() => setSuccess("")} />
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <PasswordField
+            label="Current Password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Enter current password"
+            required
+            showPassword={showCurrent}
+            onTogglePassword={() => setShowCurrent(!showCurrent)}
+          />
+
+          <PasswordField
+            label="New Password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Enter new password"
+            required
+            showPassword={showNew}
+            onTogglePassword={() => setShowNew(!showNew)}
+          />
+
+          <PasswordField
+            label="Confirm New Password"
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
+            placeholder="Confirm new password"
+            required
+            showPassword={showConfirm}
+            onTogglePassword={() => setShowConfirm(!showConfirm)}
+          />
+
+          <button
+            type="submit"
+            disabled={loading || !currentPassword || !newPassword || !confirmPassword}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {loading ? (
+              <>
+                <Spinner size="sm" />
+                <span>Changing...</span>
+              </>
+            ) : (
+              "Change Password"
+            )}
+          </button>
+        </form>
+
+        {user && (
+          <div className="mt-6 p-4 bg-gray-50 rounded-lg">
+            <p className="text-sm text-gray-600">
+              Logged in as: <strong>{user.name}</strong>
+            </p>
+            <p className="text-sm text-gray-500">
+              Username: {user.username}
+            </p>
+            <p className="text-sm text-gray-500">
+              Role: <Badge variant="info">{user.role}</Badge>
             </p>
           </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-3">
-            {user && <Avatar name={user.name} tone="violet" />}
-            <div className="min-w-0">
-              <p className="truncate font-bold text-slate-900">{user?.name}</p>
-              <p className="truncate text-xs text-slate-500">Check Number: <span className="font-semibold text-indigo-700">{user?.username}</span></p>
-            </div>
-          </div>
-          <dl className="mt-4 space-y-1.5 text-sm">
-            <div className="flex justify-between"><dt className="text-slate-500">Role</dt><dd className="font-semibold text-slate-700">Staff Member</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">Permissions</dt><dd className="font-semibold text-slate-700">{user?.permissions.length ?? 0}</dd></div>
-            <div className="flex justify-between"><dt className="text-slate-500">Password status</dt><dd className={forced ? "font-semibold text-amber-600" : "font-semibold text-emerald-600"}>{forced ? "Default (change now)" : "Custom ✓"}</dd></div>
-          </dl>
-        </div>
-
-        <div className="lg:col-span-2">
-          <ChangePasswordForm redirectTo="/" />
-        </div>
+        )}
       </div>
-    </AppShell>
+    </div>
   );
 }

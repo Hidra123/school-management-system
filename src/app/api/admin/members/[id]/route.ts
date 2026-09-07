@@ -1,89 +1,167 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { teachers, userPermissions, users } from "@/db/schema";
-import { createPasswordHash, getSessionUser, requireAdmin } from "@/lib/auth";
+import { users, userPermissions } from "@/db/schema";
+import { eq, and, ne } from "drizzle-orm";
+import { hashPassword } from "@/lib/auth";
+import { ROLE_PRESETS } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export async function PUT(req: Request, ctx: Ctx) {
-  const user = await getSessionUser();
-  const err = requireAdmin(user);
-  if (err) return err;
-
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const values: Partial<typeof users.$inferInsert> = {};
-  if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-  if (typeof body.username === "string" && body.username.trim()) values.username = body.username.trim();
-  if (typeof body.email === "string") values.email = body.email.trim();
-  if (typeof body.password === "string" && body.password.length >= 4) {
-    values.password = await createPasswordHash(body.password);
-    values.rawPassword = body.password;
-  }
-  if (body.role === "admin" || body.role === "member") values.role = body.role;
-  if (typeof body.active === "boolean") values.active = body.active;
-  if (typeof body.mustChangePassword === "boolean") values.mustChangePassword = body.mustChangePassword;
-
-  if (Object.keys(values).length > 0) {
-    const [updated] = await db.update(users).set(values).where(eq(users.id, num)).returning();
-    if (!updated) return Response.json({ error: "User not found." }, { status: 404 });
-    // Keep the linked teacher profile in sync
-    const teacherSync: Partial<typeof teachers.$inferInsert> = {};
-    if (values.name) teacherSync.name = values.name;
-    if (values.email !== undefined) teacherSync.email = values.email;
-    if (Object.keys(teacherSync).length > 0) {
-      await db.update(teachers).set(teacherSync).where(eq(teachers.userId, num));
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-  }
 
-  if (Array.isArray(body.permissions)) {
-    await db.delete(userPermissions).where(eq(userPermissions.userId, num));
-    if (body.permissions.length > 0) {
-      await db.insert(userPermissions).values(
-        body.permissions.map((p: string) => ({ userId: num, permission: p })),
-      );
+    const { id } = await params;
+    const [user] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, parseInt(id)))
+      .limit(1);
+
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
+
+    // Get user permissions
+    const permissions = await db
+      .select({ permission: userPermissions.permission })
+      .from(userPermissions)
+      .where(eq(userPermissions.userId, user.id));
+
+    return NextResponse.json({
+      user,
+      permissions: permissions.map((p) => p.permission),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-
-  const [u] = await db.select().from(users).where(eq(users.id, num));
-  const perms = await db
-    .select({ permission: userPermissions.permission })
-    .from(userPermissions)
-    .where(eq(userPermissions.userId, num));
-
-  return Response.json({
-    id: u.id,
-    name: u.name,
-    username: u.username,
-    email: u.email,
-    role: u.role,
-    active: u.active,
-    rawPassword: u.rawPassword,
-    mustChangePassword: u.mustChangePassword,
-    permissions: u.role === "admin" ? ["*"] : perms.map((p) => p.permission),
-    createdAt: u.createdAt,
-  });
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const user = await getSessionUser();
-  const err = requireAdmin(user);
-  if (err) return err;
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  if (user!.id === num) return Response.json({ error: "You cannot delete your own account." }, { status: 400 });
+    const { id } = await params;
+    const {
+      name,
+      username,
+      email,
+      role,
+      active,
+      password: rawPassword,
+      permissions: selectedPermissions,
+    } = await request.json();
 
-  // Remove linked teacher profile first, then the account
-  await db.delete(teachers).where(eq(teachers.userId, num));
-  await db.delete(users).where(eq(users.id, num));
-  return Response.json({ ok: true });
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    // Check if username is being changed and if it already exists
+    if (username && username !== existing.username) {
+      const [usernameExists] = await db
+        .select()
+        .from(users)
+        .where(and(eq(users.username, username), ne(users.id, parseInt(id))))
+        .limit(1);
+
+      if (usernameExists) {
+        return NextResponse.json(
+          { error: "Username already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Update user
+    const updates: Record<string, any> = {
+      name: name || existing.name,
+      username: username || existing.username,
+      email: email !== undefined ? email : existing.email,
+      role: role || existing.role,
+      active: active !== undefined ? active : existing.active,
+    };
+
+    if (rawPassword) {
+      updates.password = hashPassword(rawPassword);
+      updates.rawPassword = rawPassword;
+    }
+
+    const [updatedUser] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, parseInt(id)))
+      .returning();
+
+    // Update permissions
+    if (selectedPermissions && Array.isArray(selectedPermissions)) {
+      // Delete existing permissions
+      await db
+        .delete(userPermissions)
+        .where(eq(userPermissions.userId, parseInt(id)));
+
+      // Add new permissions
+      for (const permission of selectedPermissions) {
+        await db.insert(userPermissions).values({
+          userId: parseInt(id),
+          permission,
+        });
+      }
+    }
+
+    return NextResponse.json({ success: true, user: updatedUser });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+
+    // Delete user permissions first
+    await db
+      .delete(userPermissions)
+      .where(eq(userPermissions.userId, parseInt(id)));
+
+    // Delete user
+    await db.delete(users).where(eq(users.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

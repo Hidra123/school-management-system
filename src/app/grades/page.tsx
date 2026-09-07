@@ -1,370 +1,247 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  Badge,
-  EmptyState,
+  Modal,
+  SelectField,
   Field,
-  Loader,
-  PageHeader,
-  btnGhost,
-  btnPrimary,
-  inputCls,
-  scoreTone,
-} from "@/components/ui";
-import AppShell from "@/components/AppShell";
-import { cls, delJSON, postJSON, shortDate, useFetch } from "@/lib/utils";
-
-type ClassRow = { id: number; name: string; section: string };
-type SubjectRow = { id: number; name: string; code: string };
-type StudentLight = { id: number; admissionNo: string; name: string; gender: "male" | "female" };
-type GradeRow = {
-  id: number;
-  studentId: number;
-  subjectId: number;
-  examType: string;
-  term: string;
-  score: number;
-  createdAt: string;
-  studentName: string;
-  admissionNo: string;
-  subjectName: string;
-};
-
-const EXAM_TYPES = [
-  { key: "assignment", label: "Assignment" },
-  { key: "quiz", label: "Quiz" },
-  { key: "midterm", label: "Midterm Exam" },
-  { key: "final", label: "Final Exam" },
-  { key: "project", label: "Project" },
-];
-const TERMS = ["Term 1", "Term 2", "Term 3", "Full Year"];
-
-function examLabel(key: string): string {
-  return EXAM_TYPES.find((e) => e.key === key)?.label ?? key;
-}
+  Spinner,
+  EmptyState,
+} from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function GradesPage() {
-  // ---- Bulk entry state ----
-  const [classId, setClassId] = useState("");
-  const [subjectId, setSubjectId] = useState("");
-  const [examType, setExamType] = useState("midterm");
-  const [term, setTerm] = useState("Term 1");
-  const [scores, setScores] = useState<Record<number, string>>({});
-  const [saving, setSaving] = useState(false);
-  const [entryMsg, setEntryMsg] = useState<string | null>(null);
-  const [entryErr, setEntryErr] = useState<string | null>(null);
-
-  // ---- Records list filters ----
-  const [fClass, setFClass] = useState("");
-  const [fSubject, setFSubject] = useState("");
-  const [fExam, setFExam] = useState("");
-
-  const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const subjectsFetch = useFetch<SubjectRow[]>("/api/subjects");
-  const classList = classesFetch.data ?? [];
-  const subjectList = subjectsFetch.data ?? [];
-
-  const entryStudentsUrl = useMemo(
-    () => (classId ? `/api/students?classId=${classId}` : null),
-    [classId],
-  );
-  const entryGradesUrl = useMemo(
-    () =>
-      classId && subjectId
-        ? `/api/grades?classId=${classId}&subjectId=${subjectId}&examType=${examType}`
-        : null,
-    [classId, subjectId, examType],
-  );
-
-  const entryStudents = useFetch<StudentLight[]>(entryStudentsUrl);
-  const entryGrades = useFetch<GradeRow[]>(entryGradesUrl);
-  const studentList = entryStudents.data ?? [];
-  const existingGrades = entryGrades.data ?? [];
+  const { user } = useAuth();
+  const [grades, setGrades] = useState<any[]>([]);
+  const [students, setStudents] = useState<any[]>([]);
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [formData, setFormData] = useState({
+    studentId: "",
+    subjectId: "",
+    examType: "",
+    term: "",
+    score: "",
+  });
 
   useEffect(() => {
-    if (!studentList.length) {
-      setScores({});
-      return;
-    }
-    const m: Record<number, string> = {};
-    for (const s of studentList) m[s.id] = "";
-    for (const g of existingGrades) m[g.studentId] = String(g.score);
-    setScores(m);
-  }, [studentList, existingGrades]);
+    fetchData();
+  }, []);
 
-  const entryCount = Object.values(scores).filter((v) => v.trim() !== "").length;
-
-  async function saveEntry() {
-    if (!classId || !subjectId) {
-      setEntryErr("Select a class and subject first.");
-      return;
-    }
-    if (entryCount === 0) {
-      setEntryErr("Fill in at least one score before saving.");
-      return;
-    }
-    setSaving(true);
-    setEntryErr(null);
-    setEntryMsg(null);
+  async function fetchData() {
     try {
-      const entries = studentList
-        .map((s) => {
-          const raw = scores[s.id]?.trim();
-          if (!raw) return null;
-          const n = Number(raw);
-          if (!Number.isFinite(n)) return null;
-          return { studentId: s.id, score: Math.min(100, Math.max(0, n)) };
-        })
-        .filter((x): x is { studentId: number; score: number } => x !== null);
-      await postJSON("/api/grades", { subjectId: Number(subjectId), examType, term, entries });
-      setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}).`);
-      entryGrades.refresh();
-    } catch (err) {
-      setEntryErr(err instanceof Error ? err.message : "Failed to save.");
+      const [gradesRes, studentsRes, subjectsRes] = await Promise.all([
+        fetch("/api/grades"),
+        fetch("/api/students"),
+        fetch("/api/subjects"),
+      ]);
+      const gradesData = await gradesRes.json();
+      const studentsData = await studentsRes.json();
+      const subjectsData = await subjectsRes.json();
+      setGrades(gradesData.grades || []);
+      setStudents(studentsData.students || []);
+      setSubjects(subjectsData.subjects || []);
+    } catch {
+      // Error
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  // ---- Records list ----
-  const listUrl = useMemo(() => {
-    const p = new URLSearchParams();
-    if (fClass) p.set("classId", fClass);
-    if (fSubject) p.set("subjectId", fSubject);
-    if (fExam) p.set("examType", fExam);
-    const qs = p.toString();
-    return qs ? `/api/grades?${qs}` : "/api/grades";
-  }, [fClass, fSubject, fExam]);
-  const records = useFetch<GradeRow[]>(listUrl);
-  const gradeList = records.data ?? [];
-
-  async function removeGrade(g: GradeRow) {
-    if (!window.confirm(`Delete ${g.studentName}'s score (${examLabel(g.examType)})?`)) return;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     try {
-      await delJSON(`/api/grades/${g.id}`);
-      records.refresh();
-      entryGrades.refresh();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to delete.");
+      await fetch("/api/grades", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...formData,
+          studentId: parseInt(formData.studentId),
+          subjectId: parseInt(formData.subjectId),
+          score: parseInt(formData.score),
+        }),
+      });
+      fetchData();
+      setIsModalOpen(false);
+      setFormData({
+        studentId: "",
+        subjectId: "",
+        examType: "",
+        term: "",
+        score: "",
+      });
+    } catch {
+      // Error
     }
   }
 
-  const canEnter = classId && subjectId && studentList.length > 0;
+  const studentOptions = [
+    { value: "", label: "Select Student" },
+    ...students.map((s) => ({
+      value: s.id.toString(),
+      label: `${s.admissionNo} - ${s.name}`,
+    })),
+  ];
+
+  const subjectOptions = [
+    { value: "", label: "Select Subject" },
+    ...subjects.map((s) => ({
+      value: s.id.toString(),
+      label: `${s.code} - ${s.name}`,
+    })),
+  ];
+
+  const examTypeOptions = [
+    { value: "", label: "Select Exam Type" },
+    { value: "CAT", label: "CAT" },
+    { value: "Midterm", label: "Midterm" },
+    { value: "Final", label: "Final" },
+  ];
+
+  const termOptions = [
+    { value: "", label: "Select Term" },
+    { value: "Term 1", label: "Term 1" },
+    { value: "Term 2", label: "Term 2" },
+    { value: "Term 3", label: "Term 3" },
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
 
   return (
-    <AppShell permission="grades.view">
-    <div className="space-y-6">
-      <PageHeader icon="📝" title="Grades" subtitle="Enter and manage exam and assessment scores" />
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Submit Scores</h1>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
+        >
+          + Submit Score
+        </button>
+      </div>
 
-      {/* Bulk entry */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="text-base font-bold text-slate-900">✍️ Enter Grades (by Class)</h2>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <Field label="Class">
-            <select value={classId} onChange={(e) => setClassId(e.target.value)} className={inputCls}>
-              <option value="">— Select —</option>
-              {classList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.section ? ` — ${c.section}` : ""}
-                </option>
+      {grades.length === 0 ? (
+        <EmptyState
+          message="No grades found"
+          icon="📊"
+          description="Submit scores to get started"
+        />
+      ) : (
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Student
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Subject
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Exam Type
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Term
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Score
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {grades.map((grade) => (
+                <tr key={grade.id} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {grade.admissionNo} - {grade.studentName}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {grade.subjectCode} - {grade.subjectName}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {grade.examType}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">{grade.term}</td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {grade.score}
+                  </td>
+                </tr>
               ))}
-            </select>
-          </Field>
-          <Field label="Subject">
-            <select value={subjectId} onChange={(e) => setSubjectId(e.target.value)} className={inputCls}>
-              <option value="">— Select —</option>
-              {subjectList.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                  {s.code ? ` (${s.code})` : ""}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Exam Type">
-            <select value={examType} onChange={(e) => setExamType(e.target.value)} className={inputCls}>
-              {EXAM_TYPES.map((e) => (
-                <option key={e.key} value={e.key}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Term">
-            <select value={term} onChange={(e) => setTerm(e.target.value)} className={inputCls}>
-              {TERMS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </Field>
+            </tbody>
+          </table>
         </div>
+      )}
 
-        {entryMsg && (
-          <p className="mt-4 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-semibold text-emerald-700">
-            {entryMsg}
-          </p>
-        )}
-        {entryErr && (
-          <p className="mt-4 rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-700">
-            {entryErr}
-          </p>
-        )}
-
-        {canEnter ? (
-          <>
-            <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[520px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 bg-slate-50/80 text-xs font-bold uppercase tracking-wide text-slate-500">
-                      <th className="px-4 py-3">Student</th>
-                      <th className="px-4 py-3">Admission No.</th>
-                      <th className="px-4 py-3">Gender</th>
-                      <th className="px-4 py-3">Score (0-100)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-50">
-                    {studentList.map((s) => (
-                      <tr key={s.id} className="hover:bg-indigo-50/30">
-                        <td className="px-4 py-2.5 font-bold text-slate-900">{s.name}</td>
-                        <td className="px-4 py-2.5 text-slate-500">{s.admissionNo}</td>
-                        <td className="px-4 py-2.5">{s.gender === "female" ? "👧" : "👦"}</td>
-                        <td className="px-4 py-2.5">
-                          <input
-                            type="number"
-                            min={0}
-                            max={100}
-                            step="0.5"
-                            value={scores[s.id] ?? ""}
-                            onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
-                            placeholder="—"
-                            className={cls(inputCls, "w-28 py-1.5")}
-                          />
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-500">
-                {entryCount} of {studentList.length} students filled in
-              </p>
-              <button onClick={saveEntry} disabled={saving} className={btnPrimary}>
-                {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
-              </button>
-            </div>
-          </>
-        ) : (
-          <EmptyState
-            icon="📝"
-            title="Select class and subject"
-            message="Choose a class, subject and exam type to see students and fill in scores."
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title="Submit Score"
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <SelectField
+            label="Student"
+            value={formData.studentId}
+            onChange={(e) =>
+              setFormData({ ...formData, studentId: e.target.value })
+            }
+            options={studentOptions}
+            required
           />
-        )}
-      </section>
-
-      {/* Records */}
-      <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="text-base font-bold text-slate-900">🗂️ Grade Records</h2>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <Field label="Filter by Class">
-            <select value={fClass} onChange={(e) => setFClass(e.target.value)} className={inputCls}>
-              <option value="">All</option>
-              {classList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Filter by Subject">
-            <select value={fSubject} onChange={(e) => setFSubject(e.target.value)} className={inputCls}>
-              <option value="">All</option>
-              {subjectList.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Filter by Exam Type">
-            <select value={fExam} onChange={(e) => setFExam(e.target.value)} className={inputCls}>
-              <option value="">All</option>
-              {EXAM_TYPES.map((e) => (
-                <option key={e.key} value={e.key}>
-                  {e.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        {records.loading && !gradeList.length ? (
-          <div className="mt-4"><Loader /></div>
-        ) : gradeList.length === 0 ? (
-          <div className="mt-4">
-            <EmptyState icon="🗂️" title="No records found" message="Enter scores first using the section above." />
-          </div>
-        ) : (
-          <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50/80 text-xs font-bold uppercase tracking-wide text-slate-500">
-                    <th className="px-4 py-3">Student</th>
-                    <th className="px-4 py-3">Subject</th>
-                    <th className="px-4 py-3">Type</th>
-                    <th className="px-4 py-3">Term</th>
-                    <th className="px-4 py-3">Score</th>
-                    <th className="px-4 py-3">Date</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50">
-                  {gradeList.map((g) => (
-                    <tr key={g.id} className="hover:bg-slate-50/60">
-                      <td className="px-4 py-3">
-                        <p className="font-bold text-slate-900">{g.studentName}</p>
-                        <p className="text-xs text-slate-500">{g.admissionNo}</p>
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-slate-700">{g.subjectName}</td>
-                      <td className="px-4 py-3 text-slate-600">{examLabel(g.examType)}</td>
-                      <td className="px-4 py-3 text-slate-600">{g.term}</td>
-                      <td className="px-4 py-3">
-                        <Badge tone={scoreTone(g.score)}>{g.score}%</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{shortDate(g.createdAt?.slice(0, 10))}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => removeGrade(g)}
-                          className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50"
-                        >
-                          🗑️ Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-
-        {records.data && gradeList.length > 0 && (
-          <div className="mt-3 text-right">
-            <button onClick={records.refresh} className={btnGhost}>
-              🔄 Refresh
+          <SelectField
+            label="Subject"
+            value={formData.subjectId}
+            onChange={(e) =>
+              setFormData({ ...formData, subjectId: e.target.value })
+            }
+            options={subjectOptions}
+            required
+          />
+          <SelectField
+            label="Exam Type"
+            value={formData.examType}
+            onChange={(e) =>
+              setFormData({ ...formData, examType: e.target.value })
+            }
+            options={examTypeOptions}
+            required
+          />
+          <SelectField
+            label="Term"
+            value={formData.term}
+            onChange={(e) => setFormData({ ...formData, term: e.target.value })}
+            options={termOptions}
+            required
+          />
+          <Field
+            label="Score"
+            type="number"
+            value={formData.score}
+            onChange={(e) => setFormData({ ...formData, score: e.target.value })}
+            placeholder="e.g., 85"
+            required
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              Submit
             </button>
           </div>
-        )}
-      </section>
+        </form>
+      </Modal>
     </div>
-    </AppShell>
   );
 }

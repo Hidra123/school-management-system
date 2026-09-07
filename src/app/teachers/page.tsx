@@ -1,278 +1,118 @@
 "use client";
 
-import { useState } from "react";
-import {
-  Avatar,
-  EmptyState,
-  Field,
-  Loader,
-  Modal,
-  PageHeader,
-  btnGhost,
-  btnPrimary,
-  inputCls,
-} from "@/components/ui";
-import AppShell from "@/components/AppShell";
-import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
-
-type Teacher = {
-  id: number;
-  name: string;
-  email: string;
-  phone: string;
-  subject: string;
-  qualification: string;
-  hireDate: string | null;
-  createdAt: string;
-};
-
-const emptyForm = {
-  name: "",
-  email: "",
-  phone: "",
-  subject: "",
-  qualification: "",
-  hireDate: "",
-};
-
-const subjectSuggestions = [
-  "Mathematics",
-  "Kiswahili",
-  "English",
-  "Science and Technology",
-  "Civics and Moral Education",
-  "Social Studies",
-  "Physics",
-  "Chemistry",
-  "Biology",
-  "History",
-  "Geography",
-  "Commerce",
-  "Arts and Sports",
-];
+import { useState, useEffect } from "react";
+import { Spinner, EmptyState, Badge } from "../../components/ui";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function TeachersPage() {
-  const [search, setSearch] = useState("");
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Teacher | null>(null);
-  const [form, setForm] = useState({ ...emptyForm });
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
+  const { user } = useAuth();
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showPasswords, setShowPasswords] = useState<Record<number, boolean>>({});
 
-  const { data, loading, error, refresh } = useFetch<Teacher[]>("/api/teachers");
-  const list = (data ?? []).filter((t) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return [t.name, t.email, t.phone, t.subject, t.qualification]
-      .join(" ")
-      .toLowerCase()
-      .includes(q);
-  });
+  useEffect(() => {
+    fetchTeachers();
+  }, []);
 
-  function openAdd() {
-    setEditing(null);
-    setForm({ ...emptyForm, hireDate: todayStr() });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  function openEdit(t: Teacher) {
-    setEditing(t);
-    setForm({
-      name: t.name,
-      email: t.email ?? "",
-      phone: t.phone ?? "",
-      subject: t.subject ?? "",
-      qualification: t.qualification ?? "",
-      hireDate: t.hireDate ?? "",
-    });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setFormError(null);
+  async function fetchTeachers() {
     try {
-      if (editing) await putJSON(`/api/teachers/${editing.id}`, form);
-      else await postJSON("/api/teachers", form);
-      setOpen(false);
-      refresh();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save.");
+      const response = await fetch("/api/teachers");
+      const data = await response.json();
+      setTeachers(data.teachers || []);
+    } catch {
+      // Error
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  async function remove(t: Teacher) {
-    if (!window.confirm(`Are you sure you want to remove ${t.name}?`)) return;
-    try {
-      await delJSON(`/api/teachers/${t.id}`);
-      refresh();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to delete.");
-    }
+  function togglePasswordVisibility(teacherId: number) {
+    setShowPasswords((prev) => ({
+      ...prev,
+      [teacherId]: !prev[teacherId],
+    }));
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   return (
-    <AppShell permission="teachers.view">
-    <div>
-      <PageHeader icon="👨‍🏫" title="Teachers" subtitle={`${list.length} teacher${list.length === 1 ? "" : "s"}`}>
-        <button onClick={openAdd} className={btnPrimary}>
-          + Add Teacher
-        </button>
-      </PageHeader>
-
-      <div className="mb-5">
-        <div className="relative max-w-md">
-          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search teacher..."
-            className={cls(inputCls, "pl-10")}
-          />
-        </div>
+    <div className="p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Teachers</h1>
+        <p className="text-gray-500">View all teachers</p>
       </div>
 
-      {loading && !data ? (
-        <Loader />
-      ) : error && !data ? (
-        <EmptyState icon="⚠️" title="Failed to load" message={error} />
-      ) : list.length === 0 ? (
+      {teachers.length === 0 ? (
         <EmptyState
+          message="No teachers found"
           icon="👨‍🏫"
-          title="No teachers found"
-          message="Add the first teacher using the button above."
+          description="No teachers have been added yet"
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((t) => (
-            <div key={t.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
-              <div className="flex items-start gap-3">
-                <Avatar name={t.name} tone="violet" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-slate-900">{t.name}</p>
-                  <p className="truncate text-xs text-slate-500">
-                    {t.subject || <span className="italic">No subject set</span>}
-                  </p>
-                </div>
-                <button
-                  onClick={() => remove(t)}
-                  title="Delete"
-                  className="rounded-lg px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50"
-                >
-                  🗑️
-                </button>
-              </div>
-              <dl className="mt-4 space-y-1.5 text-sm">
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Qualification:</dt>
-                  <dd className="text-right font-semibold text-slate-700">{t.qualification || "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Phone:</dt>
-                  <dd className="text-right font-semibold text-slate-700">{t.phone || "—"}</dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Email:</dt>
-                  <dd className="max-w-[60%] truncate text-right font-semibold text-slate-700">
-                    {t.email || "—"}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-2">
-                  <dt className="text-slate-500">Hired:</dt>
-                  <dd className="text-right font-semibold text-slate-700">{shortDate(t.hireDate)}</dd>
-                </div>
-              </dl>
-              <button
-                onClick={() => openEdit(t)}
-                className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
-              >
-                ✏️ Edit Details
-              </button>
-            </div>
-          ))}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Subject
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Contact
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Credentials
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {teachers.map((teacher) => (
+                <tr key={teacher.id} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {teacher.name}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {teacher.subject || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {teacher.phone || teacher.email || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {teacher.user ? (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="info">
+                          {teacher.user.username}
+                        </Badge>
+                        <button
+                          onClick={() => togglePasswordVisibility(teacher.id)}
+                          className="text-gray-500 hover:text-gray-700"
+                        >
+                          {showPasswords[teacher.id] ? "👁️" : "👁️‍🗨️"}
+                        </button>
+                        {showPasswords[teacher.id] && (
+                          <code className="text-xs bg-gray-100 px-1 rounded">
+                            {teacher.user.rawPassword}
+                          </code>
+                        )}
+                      </div>
+                    ) : (
+                      "-"
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
-
-      <Modal
-        open={open}
-        onClose={() => setOpen(false)}
-        title={editing ? `Edit: ${editing.name}` : "Add Teacher"}
-        wide
-      >
-        <form onSubmit={save} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Full Name" required className="sm:col-span-2">
-            <input
-              className={inputCls}
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              required
-              placeholder="e.g. Dr. Amina Mwakyusa"
-            />
-          </Field>
-          <Field label="Email">
-            <input
-              type="email"
-              className={inputCls}
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="teacher@school.ac.tz"
-            />
-          </Field>
-          <Field label="Phone Number">
-            <input
-              className={inputCls}
-              value={form.phone}
-              onChange={(e) => setForm({ ...form, phone: e.target.value })}
-              placeholder="+255 7XX XXX XXX"
-            />
-          </Field>
-          <Field label="Main Subject">
-            <input
-              className={inputCls}
-              list="subject-suggestions"
-              value={form.subject}
-              onChange={(e) => setForm({ ...form, subject: e.target.value })}
-              placeholder="e.g. Mathematics"
-            />
-            <datalist id="subject-suggestions">
-              {subjectSuggestions.map((s) => (
-                <option key={s} value={s} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Qualification / Education">
-            <input
-              className={inputCls}
-              value={form.qualification}
-              onChange={(e) => setForm({ ...form, qualification: e.target.value })}
-              placeholder="e.g. B.Ed. Mathematics"
-            />
-          </Field>
-          <Field label="Hire Date">
-            <input
-              type="date"
-              className={inputCls}
-              value={form.hireDate}
-              onChange={(e) => setForm({ ...form, hireDate: e.target.value })}
-            />
-          </Field>
-          <div className="flex items-end justify-end gap-2 sm:col-span-2">
-            {formError && <p className="mr-auto text-sm font-semibold text-rose-600">{formError}</p>}
-            <button type="button" onClick={() => setOpen(false)} className={btnGhost}>
-              Cancel
-            </button>
-            <button type="submit" disabled={saving} className={btnPrimary}>
-              {saving ? "Saving..." : editing ? "Save Changes" : "Add Teacher"}
-            </button>
-          </div>
-        </form>
-      </Modal>
     </div>
-    </AppShell>
   );
 }

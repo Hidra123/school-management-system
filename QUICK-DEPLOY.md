@@ -1,56 +1,97 @@
-# 🚀 Quick Deploy Guide — Vercel CLI (Easiest Method)
+# ⚡ QUICK DEPLOY — Copy & Paste
 
-## One-Time Setup (fanya mara moja tu)
-
-### 1. Install Node.js
-Download from: https://nodejs.org (LTS version)
-
-### 2. Install Vercel CLI
-Open terminal/command prompt:
-```bash
-npm install -g vercel
-```
-
-### 3. Login to Vercel
-```bash
-vercel login
-```
-It will open browser — sign in with GitHub.
+Amri zote kwa mpangilio. Badilisha `Hidra123` na jina lako la GitHub kama ni tofauti.
 
 ---
 
-## Deploy (kila wakati unapotaka ku-publish)
+## 1️⃣ Weka code kwenye GitHub
 
-### Open terminal in your project folder, then:
 ```bash
+# hakikisha upo kwenye folder ya project
+git init
+git branch -M main
+
+git add -A
+git commit -m "ShuleHub SMS: full system (auth, admin panel, teacher accounts)"
+
+# unganisha na repo yako
+git remote add origin https://github.com/Hidra123/school-management-system.git
+
+# kama remote ipo tayari, tumia hii badala yake:
+# git remote set-url origin https://github.com/Hidra123/school-management-system.git
+
+git push -u origin main
+```
+
+> Ukiulizwa password: tumia **Personal Access Token** (Settings → Developer settings → Tokens → Generate new token (classic) → scope `repo`).
+
+---
+
+## 2️⃣ Andaa Database (Neon)
+
+```bash
+export DATABASE_URL="postgresql://neondb_owner:npg_q6pNKkW2jBQi@ep-winter-water-ayvokh3c-pooler.c-5.us-east-2.aws.neon.tech/neondb?sslmode=require"
+
+npx drizzle-kit push        # tengeneza/sasisha tables
+npx -y tsx src/db/seed.ts   # tengeneza admin: Admin / Rash@1234
+```
+
+⚠️ Ondoa `&channel_binding=require` kama Neon wamekupa nayo.
+
+---
+
+## 3️⃣ Deploy Vercel
+
+### Njia A — Dashboard (rahisi)
+
+1. Nenda https://vercel.com/new
+2. **Import** repo `school-management-system`
+3. Project name: `shulehub-sms`
+4. **Environment Variables** → ongeza:
+   - Name: `DATABASE_URL`
+   - Value: connection string ya Neon (ile ile ya juu)
+   - Environments: ✅ Production ✅ Preview ✅ Development
+5. Bonyeza **Deploy**
+
+### Njia B — CLI
+
+```bash
+npm i -g vercel
+vercel login
+vercel link           # chagua/tengeneza project "shulehub-sms"
+
+vercel env add DATABASE_URL production
+vercel env add DATABASE_URL preview
+vercel env add DATABASE_URL development
+
 vercel --prod
 ```
 
-THAT'S IT! One command = deployed! 🎉
+---
 
-First time it will ask:
-- Set up and deploy? → Y
-- Which scope? → your account
-- Link to existing project? → N
-- Project name? → shulehub (or any name)
-- Directory? → ./
-- Override settings? → N
+## 4️⃣ Hakikisha imefanya kazi
 
-After that, every time just: `vercel --prod`
+```bash
+curl https://shulehub-sms.vercel.app/api/health
+# ➜ {"ok":true}
+```
+
+Kisha fungua `https://shulehub-sms.vercel.app/login` → Username `Admin`, Password `Rash@1234`.
 
 ---
 
-## Edit & Redeploy
+## 🔄 Updates baadaye
 
-1. Edit files in VS Code
-2. Save
-3. Run: `vercel --prod`
-4. Done! New version is live in 60 seconds!
+```bash
+git add -A
+git commit -m "maelezo ya mabadiliko"
+git push
+# Vercel ita-deploy yenyewe ✅
+```
 
----
+Kama umebadilisha `src/db/schema.ts`:
 
-## Environment Variables (first time only)
-
-Go to vercel.com → your project → Settings → Environment Variables:
-- Key: DATABASE_URL
-- Value: your Neon connection string
+```bash
+export DATABASE_URL="postgresql://...?sslmode=require"
+npx drizzle-kit push
+```

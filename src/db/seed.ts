@@ -1,69 +1,88 @@
 /**
- * Seed script — creates/repairs the Admin account only (no sample data).
+ * ShuleHub SMS — database seed.
  *
- *   npx tsx src/db/seed.ts            → ensure Admin exists (keeps all other data)
- *   npx tsx src/db/seed.ts --reset    → wipe ALL data, then create Admin
+ * Creates ONLY the admin account (no sample data — the admin adds real data
+ * through the admin panel). Safe to re-run: it resets the admin password and
+ * re-grants every permission instead of failing on duplicates.
  *
- * Reads DATABASE_URL from the environment or from .env
+ * Usage:
+ *   export DATABASE_URL="postgresql://...?sslmode=require"
+ *   npx -y tsx src/db/seed.ts
  */
 import "dotenv/config";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { db, pool } from "./index";
-import { users } from "./schema";
+import { users, userPermissions } from "./schema";
+import { hashPassword } from "../lib/hash";
+import { ALL_PERMISSIONS } from "../lib/permissions";
 
 const ADMIN_USERNAME = "Admin";
 const ADMIN_PASSWORD = "Rash@1234";
 
-async function hash(pw: string): Promise<string> {
-  const data = new TextEncoder().encode(pw + "shulehub_salt_2025");
-  const buf = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
+async function seed() {
+  console.log("🌱 Seeding ShuleHub database...");
 
-async function main() {
-  const reset = process.argv.includes("--reset");
+  const password = hashPassword(ADMIN_PASSWORD);
 
-  if (reset) {
-    console.log("🧹 Clearing ALL data...");
-    await db.execute(
-      sql`TRUNCATE TABLE user_permissions, users, attendance, fees, grades, students, subjects, teachers, classes RESTART IDENTITY CASCADE`,
-    );
-  }
+  const [existing] = await db
+    .select()
+    .from(users)
+    .where(eq(users.username, ADMIN_USERNAME))
+    .limit(1);
 
-  const adminHash = await hash(ADMIN_PASSWORD);
-  const [existing] = await db.select().from(users).where(eq(users.username, ADMIN_USERNAME)).limit(1);
+  let adminId: number;
 
   if (existing) {
-    console.log("🔐 Admin exists — resetting password & ensuring admin role...");
-    await db
+    const [updated] = await db
       .update(users)
-      .set({ password: adminHash, role: "admin", active: true, mustChangePassword: false })
-      .where(eq(users.id, existing.id));
+      .set({
+        name: "Administrator",
+        password,
+        rawPassword: ADMIN_PASSWORD,
+        role: "admin",
+        active: true,
+        mustChangePassword: false,
+      })
+      .where(eq(users.id, existing.id))
+      .returning();
+    adminId = updated.id;
+    console.log(`♻️  Admin account refreshed (id: ${adminId})`);
   } else {
-    console.log("🔐 Creating admin user...");
-    await db.insert(users).values({
-      name: "System Administrator",
-      username: ADMIN_USERNAME,
-      email: "",
-      password: adminHash,
-      rawPassword: "",
-      role: "admin",
-      active: true,
-      mustChangePassword: false,
-    });
+    const [created] = await db
+      .insert(users)
+      .values({
+        name: "Administrator",
+        username: ADMIN_USERNAME,
+        email: "admin@shulehub.com",
+        password,
+        rawPassword: ADMIN_PASSWORD,
+        role: "admin",
+        active: true,
+        mustChangePassword: false,
+      })
+      .returning();
+    adminId = created.id;
+    console.log(`✅ Admin account created (id: ${adminId})`);
   }
 
-  console.log("✅ Seed completed!");
-  console.log(`   Admin username: ${ADMIN_USERNAME}`);
-  console.log(`   Admin password: ${ADMIN_PASSWORD}`);
-  console.log("   Default member password: shulehub2025 (must be changed on first login)");
+  // Grant every permission to the admin (idempotent).
+  await db.delete(userPermissions).where(eq(userPermissions.userId, adminId));
+  await db
+    .insert(userPermissions)
+    .values(ALL_PERMISSIONS.map((permission) => ({ userId: adminId, permission })));
+
+  console.log(`🔑 ${ALL_PERMISSIONS.length} permissions granted to admin`);
+  console.log("");
+  console.log("   Login  ->  Username: Admin");
+  console.log("             Password: Rash@1234");
+  console.log("");
+  console.log("   Default member password: shulehub2025");
+  console.log("🎉 Seeding completed. No sample data was inserted.");
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
+seed()
+  .catch((error) => {
+    console.error("❌ Seeding failed:", error);
     process.exitCode = 1;
   })
   .finally(async () => {

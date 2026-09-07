@@ -1,105 +1,107 @@
-import { asc, eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { teachers, userPermissions, users } from "@/db/schema";
-import { createPasswordHash, getSessionUser, requireAdmin } from "@/lib/auth";
+import { users, userPermissions } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
+import { hashPassword } from "@/lib/auth";
+import { ROLE_PRESETS } from "@/lib/permissions";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-const DEFAULT_PASSWORD = "shulehub2025";
-
-export async function GET() {
-  const user = await getSessionUser();
-  const err = requireAdmin(user);
-  if (err) return err;
-
-  const all = await db.select().from(users).orderBy(asc(users.name));
-  const perms = await db.select().from(userPermissions);
-
-  const permMap = new Map<number, string[]>();
-  for (const p of perms) {
-    if (!permMap.has(p.userId)) permMap.set(p.userId, []);
-    permMap.get(p.userId)!.push(p.permission);
+    const allUsers = await db.select().from(users).orderBy(users.id);
+    return NextResponse.json({ users: allUsers });
+  } catch {
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
-
-  return Response.json(
-    all.map((u) => ({
-      id: u.id,
-      name: u.name,
-      username: u.username,
-      email: u.email,
-      role: u.role,
-      active: u.active,
-      rawPassword: u.rawPassword,
-      mustChangePassword: u.mustChangePassword,
-      permissions: u.role === "admin" ? ["*"] : (permMap.get(u.id) ?? []),
-      createdAt: u.createdAt,
-    })),
-  );
 }
 
-export async function POST(req: Request) {
-  const user = await getSessionUser();
-  const err = requireAdmin(user);
-  if (err) return err;
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const username = typeof body.username === "string" ? body.username.trim() : "";
-  const email = typeof body.email === "string" ? body.email.trim() : "";
-  const password = typeof body.password === "string" && body.password.length >= 4 ? body.password : DEFAULT_PASSWORD;
-  const role = body.role === "admin" ? "admin" : "member";
-  const permissions = Array.isArray(body.permissions) ? body.permissions : [];
-
-  if (!name) return Response.json({ error: "Name is required." }, { status: 400 });
-  if (!username) return Response.json({ error: "Username (Check Number) is required." }, { status: 400 });
-
-  // Check duplicate username
-  const existing = await db.select().from(users).where(eq(users.username, username)).limit(1);
-  if (existing.length > 0) {
-    return Response.json({ error: "A user with this username already exists." }, { status: 409 });
-  }
-
-  const hash = await createPasswordHash(password);
-  const [newUser] = await db
-    .insert(users)
-    .values({
+    const {
       name,
       username,
       email,
-      password: hash,
-      rawPassword: password,
       role,
-      mustChangePassword: role !== "admin",
-    })
-    .returning();
+      password: rawPassword,
+      permissions: selectedPermissions,
+    } = await request.json();
 
-  // Teaching roles also get a teacher profile so they appear in "Manage Teachers"
-  const TEACHING_ROLES = ["academic_master", "class_teacher", "teacher"];
-  if (role === "member" && typeof body.staffRole === "string" && TEACHING_ROLES.includes(body.staffRole)) {
-    await db.insert(teachers).values({ userId: newUser.id, name, email, hireDate: new Date().toISOString().slice(0, 10) });
-  }
+    if (!name || !username) {
+      return NextResponse.json(
+        { error: "Name and username are required" },
+        { status: 400 }
+      );
+    }
 
-  if (role === "member" && permissions.length > 0) {
-    await db.insert(userPermissions).values(
-      permissions.map((p: string) => ({ userId: newUser.id, permission: p })),
+    // Check if username exists
+    const [existing] = await db
+      .select()
+      .from(users)
+      .where(eq(users.username, username))
+      .limit(1);
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Username already exists" },
+        { status: 400 }
+      );
+    }
+
+    // Use default password if not provided
+    const finalRawPassword = rawPassword || "shulehub2025";
+    const password = hashPassword(finalRawPassword);
+
+    // Create user
+    const [newUser] = await db
+      .insert(users)
+      .values({
+        name,
+        username,
+        email: email || null,
+        password,
+        rawPassword: finalRawPassword,
+        role: role || "member",
+        active: true,
+        mustChangePassword: true, // Force password change on first login
+      })
+      .returning();
+
+    // Grant permissions based on role preset or selected permissions
+    let permissionsToGrant: string[] = [];
+    if (selectedPermissions && Array.isArray(selectedPermissions)) {
+      permissionsToGrant = selectedPermissions;
+    } else if (role && ROLE_PRESETS[role]) {
+      permissionsToGrant = ROLE_PRESETS[role];
+    }
+
+    // Grant permissions
+    for (const permission of permissionsToGrant) {
+      await db.insert(userPermissions).values({
+        userId: newUser.id,
+        permission,
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: newUser,
+      rawPassword: finalRawPassword,
+    });
+  } catch (error) {
+    console.error("Create user error:", error);
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
-
-  return Response.json(
-    {
-      id: newUser.id,
-      name: newUser.name,
-      username: newUser.username,
-      email: newUser.email,
-      role: newUser.role,
-      active: newUser.active,
-      rawPassword: newUser.rawPassword,
-      mustChangePassword: newUser.mustChangePassword,
-      permissions: role === "admin" ? ["*"] : permissions,
-      createdAt: newUser.createdAt,
-    },
-    { status: 201 },
-  );
 }

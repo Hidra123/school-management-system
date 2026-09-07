@@ -1,39 +1,97 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { grades } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-type Ctx = { params: Promise<{ id: string }> };
+    const { id } = await params;
+    const [grade] = await db
+      .select()
+      .from(grades)
+      .where(eq(grades.id, parseInt(id)))
+      .limit(1);
 
-export async function PUT(req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
+    if (!grade) {
+      return NextResponse.json({ error: "Grade not found" }, { status: 404 });
+    }
 
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const values: Partial<typeof grades.$inferInsert> = {};
-  if (body.score !== undefined) {
-    const n = Number(body.score);
-    if (!Number.isFinite(n)) return Response.json({ error: "Score is invalid." }, { status: 400 });
-    values.score = Math.min(100, Math.max(0, n));
+    return NextResponse.json({ grade });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  if (typeof body.term === "string" && body.term.trim()) values.term = body.term.trim();
-
-  if (Object.keys(values).length === 0)
-    return Response.json({ error: "No changes were provided." }, { status: 400 });
-
-  const [updated] = await db.update(grades).set(values).where(eq(grades.id, num)).returning();
-  if (!updated) return Response.json({ error: "Grade record not found." }, { status: 404 });
-  return Response.json(updated);
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  await db.delete(grades).where(eq(grades.id, num));
-  return Response.json({ ok: true });
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const { score } = await request.json();
+
+    const [existing] = await db
+      .select()
+      .from(grades)
+      .where(eq(grades.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Grade not found" }, { status: 404 });
+    }
+
+    const [updated] = await db
+      .update(grades)
+      .set({
+        score: score !== undefined ? parseInt(score) : existing.score,
+      })
+      .where(eq(grades.id, parseInt(id)))
+      .returning();
+
+    return NextResponse.json({ success: true, grade: updated });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    await db.delete(grades).where(eq(grades.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

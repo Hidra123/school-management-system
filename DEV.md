@@ -1,87 +1,77 @@
-# 🧪 Development Guide — Test Before Publishing
+# 🧑‍💻 DEV — Maelezo ya Development
 
-Use GitHub Codespace to test changes BEFORE pushing to Netlify.
-This saves your Netlify build credits.
-
-## Workflow
-
-```
-[Arena Sandbox] → download → [Codespace] → test locally → happy? → git push → [Netlify auto-deploys]
-```
-
----
-
-## Step 1: Open Codespace
-
-1. Go to https://github.com/Hidra123/school-management-system
-2. Click green **"<> Code"** button
-3. Click **"Codespaces"** tab
-4. Click your existing codespace (or "Create codespace on main")
-
----
-
-## Step 2: Download New Code from Arena
-
-```bash
-find . -not -path './.git/*' -not -name '.git' -not -name '.' -delete 2>/dev/null
-curl -L PREVIEW_URL/shulehub.tar.gz -o code.tar.gz && tar xzf code.tar.gz && rm code.tar.gz
-```
-
----
-
-## Step 3: Set Database URL
-
-```bash
-export DATABASE_URL="YOUR_NEON_CONNECTION_STRING"
-```
-
----
-
-## Step 4: Install & Run Locally
+## Kuanza
 
 ```bash
 npm install
+cp .env.example .env      # weka DATABASE_URL
+npx drizzle-kit push
+npx -y tsx src/db/seed.ts
 npm run dev
 ```
 
-Codespace will show a popup: **"Open in Browser"** — click it!
-You will see the app running at a URL like `https://xxxx-3000.app.github.dev`
+## Scripts
 
-Test everything: login, dashboard, add students, etc.
+| Amri | Kazi |
+|------|------|
+| `npm run dev` | Development server |
+| `npm run build` | Production build |
+| `npm start` | Production server |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript check |
+| `npx drizzle-kit push` | Sasisha schema kwenye DB |
+| `npx -y tsx src/db/seed.ts` | Tengeneza admin account |
 
----
+## Auth flow
 
-## Step 5: Happy? Push to Netlify
+1. `/login` → POST `/api/auth/login` (username + password)
+2. Password inasomwa kwa SHA-256, inalinganishwa na `users.password`
+3. Session (base64 JSON) inawekwa kwenye cookie `shulehub_session` (httpOnly)
+4. `AuthProvider` inasoma `/api/auth/me` kila route change
+5. `AppShell` inalinda routes:
+   - Hakuna user → `/login`
+   - `mustChangePassword` → `/profile`
+   - Admin akijaribu member page → `/admin`
+   - Member akijaribu `/admin/*` → `/`
 
-Only when everything works:
+Redirects zinatumia `window.location.href` (siyo `router.push`) ili cookie mpya isomwe upya.
 
-```bash
-npm run build
+## Kuongeza page mpya ya member
+
+1. Tengeneza `src/app/<jina>/page.tsx`
+2. Ongeza kwenye `MEMBER_SIDEBAR` ndani ya `src/lib/permissions.ts` na `permission` sahihi
+3. Page itaonekana tu kwa watumiaji wenye ruhusa hiyo
+
+## Kuongeza permission mpya
+
+1. Ongeza kwenye `PERMISSION_GROUPS` (`src/lib/permissions.ts`)
+2. Iongeze kwenye role presets zinazohitaji
+3. `npx -y tsx src/db/seed.ts` ili admin apate permission mpya
+
+## Kuongeza table mpya
+
+1. Hariri `src/db/schema.ts`
+2. `npx drizzle-kit push`
+3. Tengeneza API route chini ya `src/app/api/`
+
+## UI Components (`src/components/ui.tsx`)
+
+`Badge`, `Modal`, `Field`, `SelectField`, `TextareaField`, `PasswordField`,
+`StatCard`, `Spinner`, `Checkmark`, `ActionButton`, `useActionState`,
+`Table/THead/TBody/TRow/TH/TD`, `EmptyState`, `Alert`.
+
+```tsx
+const { state, execute } = useActionState();
+await execute(async () => { await fetch(...); });
+<ActionButton state={state} onClick={...}>Save</ActionButton>
 ```
 
-If build succeeds:
+## Kuhamisha code kwenda Codespace
+
+Sandbox inatengeneza `public/shulehub.tar.gz`:
 
 ```bash
-git add -A && git commit -m "description of changes" && git push
+find . -not -path './.git/*' -not -name '.git' -not -name '.' -delete 2>/dev/null
+curl -L <PREVIEW_URL>/shulehub.tar.gz -o code.tar.gz && tar xzf code.tar.gz && rm code.tar.gz
+npm install
 ```
-
-Netlify will auto-deploy. Done!
-
----
-
-## Step 5b: Not Happy? Don't push!
-
-Just go back to Arena, ask for fixes, download again (Step 2), and test again.
-No Netlify credits wasted!
-
----
-
-## Quick Reference
-
-| Command | What it does |
-|---|---|
-| `npm run dev` | Start dev server (with hot reload) |
-| `npm run build` | Test production build |
-| `npx drizzle-kit push` | Push schema changes to database |
-| `npx tsx src/db/seed.ts` | Load sample data |
-| `git push` | Deploy to Netlify |

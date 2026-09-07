@@ -1,142 +1,232 @@
 "use client";
 
-import { useState } from "react";
-import AppShell from "@/components/AppShell";
+import { useState, useEffect } from "react";
 import {
-  Avatar,
+  Modal,
+  Field,
+  SelectField,
+  ActionButton,
+  useActionState,
+  Spinner,
   Badge,
   EmptyState,
-  Field,
-  Loader,
-  Modal,
-  PageHeader,
-  btnGhost,
-  btnPrimary,
-  inputCls,
-} from "@/components/ui";
-import { delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
+} from "../../../components/ui";
+import { useAuth } from "../../../components/AuthProvider";
 
-type SubjectRow = { id: number; name: string; code: string; teacherId: number | null; teacherName: string | null };
-type Teacher = { id: number; name: string; subject: string };
+export default function ManageSubjects() {
+  const { user } = useAuth();
+  const [subjects, setSubjects] = useState<any[]>([]);
+  const [teachers, setTeachers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingSubject, setEditingSubject] = useState<any>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    code: "",
+    teacherId: "",
+  });
+  const { state: deleteState, execute: deleteExecute } = useActionState();
 
-const emptyForm = { name: "", code: "", teacherId: "" };
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-export default function AdminManageSubjectsPage() {
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<SubjectRow | null>(null);
-  const [form, setForm] = useState({ ...emptyForm });
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const { data, loading, error, refresh } = useFetch<SubjectRow[]>("/api/subjects");
-  const teachersFetch = useFetch<Teacher[]>("/api/teachers");
-  const teacherList = teachersFetch.data ?? [];
-  const list = data ?? [];
-
-  function openAdd() {
-    setEditing(null);
-    setForm({ ...emptyForm });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  function openEdit(s: SubjectRow) {
-    setEditing(s);
-    setForm({ name: s.name, code: s.code, teacherId: s.teacherId ? String(s.teacherId) : "" });
-    setFormError(null);
-    setOpen(true);
-  }
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    setSaving(true);
-    setFormError(null);
+  async function fetchData() {
     try {
-      if (editing) await putJSON(`/api/subjects/${editing.id}`, form);
-      else await postJSON("/api/subjects", form);
-      setOpen(false);
-      refresh();
-    } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save.");
+      const [subjectsRes, teachersRes] = await Promise.all([
+        fetch("/api/subjects"),
+        fetch("/api/teachers"),
+      ]);
+      const subjectsData = await subjectsRes.json();
+      const teachersData = await teachersRes.json();
+      setSubjects(subjectsData.subjects || []);
+      setTeachers(teachersData.teachers || []);
+    } catch {
+      // Error
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
   }
 
-  async function remove(s: SubjectRow) {
-    if (!window.confirm(`Delete subject ${s.name}?`)) return;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     try {
-      await delJSON(`/api/subjects/${s.id}`);
-      refresh();
-    } catch (err) {
-      window.alert(err instanceof Error ? err.message : "Failed to delete.");
+      if (editingSubject) {
+        await fetch(`/api/subjects/${editingSubject.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
+      } else {
+        await fetch("/api/subjects", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
+        });
+      }
+      fetchData();
+      setIsModalOpen(false);
+      setFormData({ name: "", code: "", teacherId: "" });
+      setEditingSubject(null);
+    } catch {
+      // Error
     }
+  }
+
+  async function handleDelete(id: number) {
+    await deleteExecute(async () => {
+      await fetch(`/api/subjects/${id}`, { method: "DELETE" });
+      fetchData();
+    });
+  }
+
+  function openModal(subject?: any) {
+    if (subject) {
+      setEditingSubject(subject);
+      setFormData({
+        name: subject.name,
+        code: subject.code,
+        teacherId: subject.teacherId ? subject.teacherId.toString() : "",
+      });
+    } else {
+      setEditingSubject(null);
+      setFormData({ name: "", code: "", teacherId: "" });
+    }
+    setIsModalOpen(true);
+  }
+
+  const teacherOptions = [
+    { value: "", label: "Select Teacher" },
+    ...teachers.map((t) => ({ value: t.id.toString(), label: t.name })),
+  ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   return (
-    <AppShell>
-      <PageHeader icon="📚" title="Manage Subjects" subtitle={`${list.length} subject${list.length === 1 ? "" : "s"} registered`}>
-        <button onClick={openAdd} className={btnPrimary}>+ Add Subject</button>
-      </PageHeader>
+    <div className="p-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-900">Manage Subjects</h1>
+        <button
+          onClick={() => openModal()}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md font-medium"
+        >
+          + Add Subject
+        </button>
+      </div>
 
-      {loading && !data ? (
-        <Loader />
-      ) : error && !data ? (
-        <EmptyState icon="⚠️" title="Failed to load" message={error} />
-      ) : list.length === 0 ? (
-        <EmptyState icon="📚" title="No subjects yet" message="Add your first subject." />
+      {subjects.length === 0 ? (
+        <EmptyState
+          message="No subjects found"
+          icon="📚"
+          description="Add your first subject to get started"
+        />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {list.map((s) => (
-            <div key={s.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
-              <div className="flex items-start gap-3">
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 text-lg text-white">📘</div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="truncate font-bold text-slate-900">{s.name}</h2>
-                    {s.code && <Badge tone="emerald">{s.code}</Badge>}
-                  </div>
-                </div>
-                <button onClick={() => remove(s)} className="rounded-lg px-2 py-1 text-xs text-rose-500 hover:bg-rose-50">🗑️</button>
-              </div>
-              <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
-                <Avatar name={s.teacherName ?? "?"} tone={s.teacherName ? "indigo" : "slate"} />
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Subject Teacher</p>
-                  <p className="truncate text-sm font-bold text-slate-800">
-                    {s.teacherName ?? <span className="font-medium italic text-slate-400">Not assigned</span>}
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => openEdit(s)} className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit / Assign Teacher</button>
-            </div>
-          ))}
+        <div className="bg-white rounded-lg shadow-md overflow-hidden">
+          <table className="min-w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Code
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase">
+                  Teacher
+                </th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {subjects.map((subject) => (
+                <tr key={subject.id} className="border-b hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {subject.name}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {subject.code}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-900">
+                    {subject.teacherName || "-"}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => openModal(subject)}
+                        className="text-blue-600 hover:text-blue-800 text-sm"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(subject.id)}
+                        className="text-red-600 hover:text-red-800 text-sm"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
-      <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit: ${editing.name}` : "Add Subject"}>
-        <form onSubmit={save} className="space-y-4">
-          <Field label="Subject Name" required>
-            <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Mathematics" required />
-          </Field>
-          <Field label="Subject Code">
-            <input className={inputCls} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. MATH" />
-          </Field>
-          <Field label="Subject Teacher">
-            <select className={inputCls} value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
-              <option value="">— No teacher —</option>
-              {teacherList.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}{t.subject ? ` (${t.subject})` : ""}</option>
-              ))}
-            </select>
-          </Field>
-          {formError && <p className="text-sm font-semibold text-rose-600">{formError}</p>}
-          <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={() => setOpen(false)} className={btnGhost}>Cancel</button>
-            <button type="submit" disabled={saving} className={btnPrimary}>{saving ? "Saving..." : editing ? "Save Changes" : "Add Subject"}</button>
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingSubject ? "Edit Subject" : "Add Subject"}
+      >
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field
+            label="Subject Name"
+            type="text"
+            value={formData.name}
+            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+            placeholder="e.g., Mathematics"
+            required
+          />
+          <Field
+            label="Subject Code"
+            type="text"
+            value={formData.code}
+            onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+            placeholder="e.g., MATH"
+            required
+          />
+          <SelectField
+            label="Teacher"
+            value={formData.teacherId}
+            onChange={(e) =>
+              setFormData({ ...formData, teacherId: e.target.value })
+            }
+            options={teacherOptions}
+          />
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(false)}
+              className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md"
+            >
+              {editingSubject ? "Update" : "Create"}
+            </button>
           </div>
         </form>
       </Modal>
-    </AppShell>
+    </div>
   );
 }

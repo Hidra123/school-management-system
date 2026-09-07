@@ -1,127 +1,125 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { grades, students, subjects } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-const EXAM_TYPES = ["assignment", "quiz", "midterm", "final", "project"];
+    const { searchParams } = new URL(request.url);
+    const studentId = searchParams.get("studentId");
+    const subjectId = searchParams.get("subjectId");
+    const examType = searchParams.get("examType");
+    const term = searchParams.get("term");
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const classIdRaw = url.searchParams.get("classId");
-  const subjectIdRaw = url.searchParams.get("subjectId");
-  const examType = url.searchParams.get("examType");
-  const studentIdRaw = url.searchParams.get("studentId");
+    let whereClause = undefined;
+    if (studentId || subjectId || examType || term) {
+      const conditions = [];
+      if (studentId) conditions.push(eq(grades.studentId, parseInt(studentId)));
+      if (subjectId) conditions.push(eq(grades.subjectId, parseInt(subjectId)));
+      if (examType) conditions.push(eq(grades.examType, examType));
+      if (term) conditions.push(eq(grades.term, term));
+      whereClause = and(...conditions);
+    }
 
-  const conditions = [];
-  if (classIdRaw && Number.isFinite(Number(classIdRaw))) {
-    conditions.push(eq(students.classId, Number(classIdRaw)));
+    const query = whereClause
+      ? db.select().from(grades).where(whereClause)
+      : db.select().from(grades);
+
+    const allGrades = await query;
+
+    // Enrich with student and subject names
+    const enrichedGrades = await Promise.all(
+      allGrades.map(async (record) => {
+        const [student] = await db
+          .select({ name: students.name, admissionNo: students.admissionNo })
+          .from(students)
+          .where(eq(students.id, record.studentId))
+          .limit(1);
+
+        const [subject] = await db
+          .select({ name: subjects.name, code: subjects.code })
+          .from(subjects)
+          .where(eq(subjects.id, record.subjectId))
+          .limit(1);
+
+        return {
+          ...record,
+          studentName: student?.name,
+          admissionNo: student?.admissionNo,
+          subjectName: subject?.name,
+          subjectCode: subject?.code,
+        };
+      })
+    );
+
+    return NextResponse.json({ grades: enrichedGrades });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
   }
-  if (subjectIdRaw && Number.isFinite(Number(subjectIdRaw))) {
-    conditions.push(eq(grades.subjectId, Number(subjectIdRaw)));
-  }
-  if (examType && EXAM_TYPES.includes(examType)) {
-    conditions.push(eq(grades.examType, examType as (typeof grades.examType)["enumValues"][number]));
-  }
-  if (studentIdRaw && Number.isFinite(Number(studentIdRaw))) {
-    conditions.push(eq(grades.studentId, Number(studentIdRaw)));
-  }
-
-  const rows = await db
-    .select({
-      id: grades.id,
-      studentId: grades.studentId,
-      subjectId: grades.subjectId,
-      examType: grades.examType,
-      term: grades.term,
-      score: grades.score,
-      createdAt: grades.createdAt,
-      studentName: students.name,
-      admissionNo: students.admissionNo,
-      subjectName: subjects.name,
-    })
-    .from(grades)
-    .innerJoin(students, eq(grades.studentId, students.id))
-    .innerJoin(subjects, eq(grades.subjectId, subjects.id))
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(grades.createdAt));
-
-  return Response.json(rows);
 }
 
-function scoreOf(v: unknown): number | null {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return null;
-  return Math.min(100, Math.max(0, n));
-}
+export async function POST(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
+    const { studentId, subjectId, examType, term, score } = await request.json();
 
-  // Bulk mode: { subjectId, examType, term, entries: [{studentId, score}] }
-  if (Array.isArray(body.entries)) {
-    const subjectId = Number(body.subjectId);
-    const examType = body.examType;
-    const term = typeof body.term === "string" && body.term.trim() ? body.term.trim() : "Term 1";
-    if (!Number.isFinite(subjectId) || !EXAM_TYPES.includes(examType)) {
-      return Response.json({ error: "Subject or exam type is invalid." }, { status: 400 });
-    }
-    const entries: Array<{ studentId: number; score: number }> = [];
-    for (const e of body.entries as Array<{ studentId?: unknown; score?: unknown }>) {
-      const sid = Number(e?.studentId);
-      const sc = scoreOf(e?.score);
-      if (Number.isFinite(sid) && sc !== null) entries.push({ studentId: sid, score: sc });
-    }
-    if (entries.length === 0) {
-      return Response.json({ error: "No valid scores were provided." }, { status: 400 });
-    }
-    await db.transaction(async (tx) => {
-      await tx
-        .delete(grades)
-        .where(
-          and(
-            eq(grades.subjectId, subjectId),
-            eq(grades.examType, examType as (typeof grades.examType)["enumValues"][number]),
-            eq(grades.term, term),
-            inArray(
-              grades.studentId,
-              entries.map((e) => e.studentId),
-            ),
-          ),
-        );
-      await tx.insert(grades).values(
-        entries.map((e) => ({
-          studentId: e.studentId,
-          subjectId,
-          examType: examType as (typeof grades.examType)["enumValues"][number],
-          term,
-          score: e.score,
-        })),
+    if (!studentId || !subjectId || !examType || !term || score === undefined) {
+      return NextResponse.json(
+        { error: "studentId, subjectId, examType, term, and score are required" },
+        { status: 400 }
       );
-    });
-    return Response.json({ saved: entries.length }, { status: 201 });
-  }
+    }
 
-  // Single mode
-  const studentId = Number(body.studentId);
-  const subjectId = Number(body.subjectId);
-  const examType = body.examType;
-  const score = scoreOf(body.score);
-  if (!Number.isFinite(studentId) || !Number.isFinite(subjectId) || !EXAM_TYPES.includes(examType)) {
-    return Response.json({ error: "Grade data is invalid." }, { status: 400 });
-  }
-  if (score === null) return Response.json({ error: "Score is required (0-100)." }, { status: 400 });
+    // Check if grade already exists
+    const [existing] = await db
+      .select()
+      .from(grades)
+      .where(
+        and(
+          eq(grades.studentId, parseInt(studentId)),
+          eq(grades.subjectId, parseInt(subjectId)),
+          eq(grades.examType, examType),
+          eq(grades.term, term)
+        )
+      )
+      .limit(1);
 
-  const [row] = await db
-    .insert(grades)
-    .values({
-      studentId,
-      subjectId,
-      examType: examType as (typeof grades.examType)["enumValues"][number],
-      term: typeof body.term === "string" && body.term.trim() ? body.term.trim() : "Term 1",
-      score,
-    })
-    .returning();
-  return Response.json(row, { status: 201 });
+    if (existing) {
+      return NextResponse.json(
+        { error: "Grade already recorded for this student and subject" },
+        { status: 400 }
+      );
+    }
+
+    const [newGrade] = await db
+      .insert(grades)
+      .values({
+        studentId: parseInt(studentId),
+        subjectId: parseInt(subjectId),
+        examType,
+        term,
+        score: parseInt(score),
+      })
+      .returning();
+
+    return NextResponse.json({ success: true, grade: newGrade });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

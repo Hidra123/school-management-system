@@ -1,57 +1,126 @@
-import { eq } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
 import { students } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
-
-type Ctx = { params: Promise<{ id: string }> };
-
-export async function PUT(req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-
-  const body = await req.json().catch(() => null);
-  if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
-
-  const values: Partial<typeof students.$inferInsert> = {};
-  if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-  if (typeof body.admissionNo === "string" && body.admissionNo.trim())
-    values.admissionNo = body.admissionNo.trim();
-  if (body.gender === "female" || body.gender === "male") values.gender = body.gender;
-  if (body.classId !== undefined) {
-    values.classId =
-      body.classId === "" || body.classId === null ? null : Number(body.classId) || null;
-  }
-  if (typeof body.guardianName === "string") values.guardianName = body.guardianName.trim();
-  if (typeof body.guardianPhone === "string") values.guardianPhone = body.guardianPhone.trim();
-  if (body.enrollmentDate !== undefined)
-    values.enrollmentDate =
-      typeof body.enrollmentDate === "string" && body.enrollmentDate ? body.enrollmentDate : null;
-
-  if (Object.keys(values).length === 0)
-    return Response.json({ error: "No changes were provided." }, { status: 400 });
-
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const [updated] = await db
-      .update(students)
-      .set(values)
-      .where(eq(students.id, num))
-      .returning();
-    if (!updated) return Response.json({ error: "Student not found." }, { status: 404 });
-    return Response.json(updated);
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const [student] = await db
+      .select()
+      .from(students)
+      .where(eq(students.id, parseInt(id)))
+      .limit(1);
+
+    if (!student) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ student });
   } catch {
-    return Response.json(
-      { error: "This admission number is already in use. Please choose another one." },
-      { status: 409 },
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 }
 
-export async function DELETE(_req: Request, ctx: Ctx) {
-  const { id } = await ctx.params;
-  const num = Number(id);
-  if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-  await db.delete(students).where(eq(students.id, num));
-  return Response.json({ ok: true });
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    const {
+      admissionNo,
+      name,
+      gender,
+      classId,
+      guardianName,
+      guardianPhone,
+    } = await request.json();
+
+    const [existing] = await db
+      .select()
+      .from(students)
+      .where(eq(students.id, parseInt(id)))
+      .limit(1);
+
+    if (!existing) {
+      return NextResponse.json({ error: "Student not found" }, { status: 404 });
+    }
+
+    // Check if admission number is being changed and if it already exists
+    if (admissionNo && admissionNo !== existing.admissionNo) {
+      const [admissionExists] = await db
+        .select()
+        .from(students)
+        .where(eq(students.admissionNo, admissionNo))
+        .limit(1);
+      if (admissionExists) {
+        return NextResponse.json(
+          { error: "Admission number already exists" },
+          { status: 400 }
+        );
+      }
+    }
+
+    const [updated] = await db
+      .update(students)
+      .set({
+        admissionNo: admissionNo || existing.admissionNo,
+        name: name || existing.name,
+        gender: gender !== undefined ? gender : existing.gender,
+        classId: classId !== undefined ? classId : existing.classId,
+        guardianName:
+          guardianName !== undefined ? guardianName : existing.guardianName,
+        guardianPhone:
+          guardianPhone !== undefined ? guardianPhone : existing.guardianPhone,
+      })
+      .where(eq(students.id, parseInt(id)))
+      .returning();
+
+    return NextResponse.json({ success: true, student: updated });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { id } = await params;
+    await db.delete(students).where(eq(students.id, parseInt(id)));
+
+    return NextResponse.json({ success: true });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

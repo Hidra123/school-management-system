@@ -1,95 +1,96 @@
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { NextRequest, NextResponse } from "next/server";
+import { getSessionFromRequest } from "@/lib/auth";
 import { db } from "@/db";
-import { classes, students } from "@/db/schema";
+import { students, classes } from "@/db/schema";
+import { eq } from "drizzle-orm";
 
-export const dynamic = "force-dynamic";
+export async function GET(request: NextRequest) {
+  try {
+    const session = getSessionFromRequest(request);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-function todayStr(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-    d.getDate(),
-  ).padStart(2, "0")}`;
-}
+    const allStudents = await db.select().from(students).orderBy(students.id);
 
-export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const classIdRaw = url.searchParams.get("classId");
-  const q = url.searchParams.get("q")?.trim() ?? "";
+    // Enrich with class names
+    const enrichedStudents = await Promise.all(
+      allStudents.map(async (student) => {
+        if (student.classId) {
+          const [cls] = await db
+            .select({ name: classes.name, section: classes.section })
+            .from(classes)
+            .where(eq(classes.id, student.classId))
+            .limit(1);
+          return { ...student, className: cls ? `${cls.name} ${cls.section || ""}`.trim() : null };
+        }
+        return student;
+      })
+    );
 
-  const conditions = [];
-  if (classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw))) {
-    conditions.push(eq(students.classId, Number(classIdRaw)));
-  }
-  if (q) {
-    conditions.push(
-      or(
-        ilike(students.name, `%${q}%`),
-        ilike(students.admissionNo, `%${q}%`),
-        ilike(students.guardianName, `%${q}%`),
-        ilike(students.guardianPhone, `%${q}%`),
-      ),
+    return NextResponse.json({ students: enrichedStudents });
+  } catch {
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
-
-  const rows = await db
-    .select({
-      id: students.id,
-      admissionNo: students.admissionNo,
-      name: students.name,
-      gender: students.gender,
-      classId: students.classId,
-      className: classes.name,
-      guardianName: students.guardianName,
-      guardianPhone: students.guardianPhone,
-      enrollmentDate: students.enrollmentDate,
-      createdAt: students.createdAt,
-    })
-    .from(students)
-    .leftJoin(classes, eq(students.classId, classes.id))
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(students.createdAt));
-
-  return Response.json(rows);
 }
 
-export async function POST(req: Request) {
-  const body = await req.json().catch(() => null);
-  if (!body || typeof body.name !== "string" || !body.name.trim()) {
-    return Response.json({ error: "Student name is required." }, { status: 400 });
-  }
-  const admissionNo =
-    typeof body.admissionNo === "string" && body.admissionNo.trim()
-      ? body.admissionNo.trim()
-      : `ADM-${Date.now().toString().slice(-6)}`;
-
-  const classId =
-    body.classId === "" || body.classId === null || body.classId === undefined
-      ? null
-      : Number(body.classId);
-  const gender = body.gender === "female" ? "female" : "male";
-  const enrollmentDate =
-    typeof body.enrollmentDate === "string" && body.enrollmentDate
-      ? body.enrollmentDate
-      : todayStr();
-
+export async function POST(request: NextRequest) {
   try {
-    const [row] = await db
+    const session = getSessionFromRequest(request);
+    if (!session || session.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const {
+      admissionNo,
+      name,
+      gender,
+      classId,
+      guardianName,
+      guardianPhone,
+    } = await request.json();
+
+    if (!admissionNo || !name) {
+      return NextResponse.json(
+        { error: "Admission number and name are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if admission number exists
+    const [existing] = await db
+      .select()
+      .from(students)
+      .where(eq(students.admissionNo, admissionNo))
+      .limit(1);
+
+    if (existing) {
+      return NextResponse.json(
+        { error: "Admission number already exists" },
+        { status: 400 }
+      );
+    }
+
+    const [newStudent] = await db
       .insert(students)
       .values({
         admissionNo,
-        name: body.name.trim(),
-        gender,
-        classId: Number.isFinite(classId) ? classId : null,
-        guardianName: typeof body.guardianName === "string" ? body.guardianName.trim() : "",
-        guardianPhone: typeof body.guardianPhone === "string" ? body.guardianPhone.trim() : "",
-        enrollmentDate,
+        name,
+        gender: gender || null,
+        classId: classId || null,
+        guardianName: guardianName || null,
+        guardianPhone: guardianPhone || null,
       })
       .returning();
-    return Response.json(row, { status: 201 });
+
+    return NextResponse.json({ success: true, student: newStudent });
   } catch {
-    return Response.json(
-      { error: "This admission number is already in use. Please choose another one." },
-      { status: 409 },
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
     );
   }
 }

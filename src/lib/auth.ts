@@ -1,194 +1,139 @@
 import { cookies } from "next/headers";
-import { eq } from "drizzle-orm";
-import { db } from "@/db";
-import { userPermissions, users } from "@/db/schema";
-import type { PermissionKey } from "./permissions";
+import { NextResponse } from "next/server";
+import { db } from "../db";
+import { users, userPermissions } from "../db/schema";
+import { eq, and } from "drizzle-orm";
+import { hashPassword, DEFAULT_MEMBER_PASSWORD } from "./hash";
 
-// Simple password hashing (no bcrypt needed — uses Web Crypto)
-async function hashPassword(pw: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(pw + "shulehub_salt_2025");
-  const hash = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hash))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+export { hashPassword, DEFAULT_MEMBER_PASSWORD };
+
+// Verify password
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  const hashedPassword = hashPassword(password);
+  return hashedPassword === hash;
 }
 
-export async function verifyPassword(pw: string, hashed: string): Promise<boolean> {
-  const check = await hashPassword(pw);
-  return check === hashed;
-}
+// Session management
+const SESSION_COOKIE = "shulehub_session";
 
-export async function createPasswordHash(pw: string): Promise<string> {
-  return hashPassword(pw);
-}
-
-/** Default password given to every new member (teacher/staff). */
-export const DEFAULT_MEMBER_PASSWORD = "shulehub2025";
-
-/**
- * Create a member login account (username = check number).
- * Password defaults to DEFAULT_MEMBER_PASSWORD and the member is forced
- * to change it on first login.
- */
-export async function createMemberAccount(opts: {
-  name: string;
+interface Session {
+  userId: number;
   username: string;
-  email?: string;
-  password?: string;
-  permissions?: string[];
-}): Promise<{ id: number; username: string; rawPassword: string } | { error: string; status: number }> {
-  const username = opts.username.trim();
-  if (!username) return { error: "Username (Check Number) is required.", status: 400 };
-
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
-  if (existing.length > 0) {
-    return { error: `Username "${username}" is already taken. Choose a different check number.`, status: 409 };
-  }
-
-  const rawPassword = opts.password && opts.password.length >= 4 ? opts.password : DEFAULT_MEMBER_PASSWORD;
-  const hash = await hashPassword(rawPassword);
-
-  const [created] = await db
-    .insert(users)
-    .values({
-      name: opts.name.trim(),
-      username,
-      email: opts.email?.trim() ?? "",
-      password: hash,
-      rawPassword,
-      role: "member",
-      active: true,
-      mustChangePassword: true,
-    })
-    .returning({ id: users.id, username: users.username, rawPassword: users.rawPassword });
-
-  const perms = Array.from(new Set(opts.permissions ?? []));
-  if (perms.length > 0) {
-    await db.insert(userPermissions).values(perms.map((p) => ({ userId: created.id, permission: p })));
-  }
-
-  return created;
-}
-
-// Session: simple signed cookie with user ID
-const SESSION_NAME = "shulehub_session";
-const SECRET = process.env.SESSION_SECRET ?? "shulehub_default_secret_key_2025";
-
-function sign(val: string): string {
-  // Simple HMAC-like signing using string concat (sufficient for this use case)
-  const encoder = new TextEncoder();
-  const data = encoder.encode(val + SECRET);
-  let hash = 0;
-  for (const byte of data) {
-    hash = ((hash << 5) - hash + byte) | 0;
-  }
-  return `${val}.${hash.toString(36)}`;
-}
-
-function unsign(signed: string): string | null {
-  const idx = signed.lastIndexOf(".");
-  if (idx < 0) return null;
-  const val = signed.slice(0, idx);
-  if (sign(val) === signed) return val;
-  return null;
-}
-
-export async function createSession(userId: number): Promise<void> {
-  const jar = await cookies();
-  jar.set(SESSION_NAME, sign(String(userId)), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-  });
-}
-
-export async function destroySession(): Promise<void> {
-  const jar = await cookies();
-  jar.delete(SESSION_NAME);
-}
-
-export async function getSessionUserId(): Promise<number | null> {
-  const jar = await cookies();
-  const cookie = jar.get(SESSION_NAME);
-  if (!cookie?.value) return null;
-  const val = unsign(cookie.value);
-  if (!val) return null;
-  const id = Number(val);
-  return Number.isFinite(id) ? id : null;
-}
-
-export type SessionUser = {
-  id: number;
+  role: string;
   name: string;
-  username: string;
-  role: "admin" | "member";
   mustChangePassword: boolean;
-  permissions: string[];
-};
+}
 
-export async function getSessionUser(): Promise<SessionUser | null> {
-  const userId = await getSessionUserId();
-  if (!userId) return null;
+// Create session
+export function createSession(user: {
+  id: number;
+  username: string;
+  role: string;
+  name: string;
+  mustChangePassword: boolean;
+}): string {
+  const session: Session = {
+    userId: user.id,
+    username: user.username,
+    role: user.role,
+    name: user.name,
+    mustChangePassword: user.mustChangePassword,
+  };
+  return Buffer.from(JSON.stringify(session)).toString("base64");
+}
 
-  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-  if (!user || !user.active) return null;
-
-  if (user.role === "admin") {
-    return {
-      id: user.id,
-      name: user.name,
-      username: user.username,
-      role: "admin",
-      mustChangePassword: false,
-      permissions: ["*"],
-    };
+// Parse session
+export function parseSession(cookieValue: string | undefined): Session | null {
+  if (!cookieValue) return null;
+  try {
+    const decoded = Buffer.from(cookieValue, "base64").toString("utf-8");
+    return JSON.parse(decoded) as Session;
+  } catch {
+    return null;
   }
+}
 
-  const perms = await db
+// Get current session from cookies (server component)
+export async function getSession(): Promise<Session | null> {
+  try {
+    const cookieStore = await cookies();
+    const sessionCookie = cookieStore.get(SESSION_COOKIE);
+    return parseSession(sessionCookie?.value);
+  } catch {
+    return null;
+  }
+}
+
+// Get current user from session
+export async function getCurrentUser() {
+  const session = await getSession();
+  if (!session) return null;
+
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
+  return user;
+}
+
+// Check if user has permission
+export async function hasPermission(userId: number, permission: string): Promise<boolean> {
+  const [result] = await db
+    .select()
+    .from(userPermissions)
+    .where(and(
+      eq(userPermissions.userId, userId),
+      eq(userPermissions.permission, permission)
+    ))
+    .limit(1);
+
+  return !!result;
+}
+
+// Get all permissions for a user
+export async function getUserPermissions(userId: number): Promise<string[]> {
+  const permissions = await db
     .select({ permission: userPermissions.permission })
     .from(userPermissions)
-    .where(eq(userPermissions.userId, user.id));
+    .where(eq(userPermissions.userId, userId));
 
-  return {
-    id: user.id,
-    name: user.name,
-    username: user.username,
-    role: "member",
-    mustChangePassword: user.mustChangePassword,
-    permissions: perms.map((p) => p.permission),
-  };
+  return permissions.map((p) => p.permission);
 }
 
-export function hasPermission(user: SessionUser | null, perm: PermissionKey): boolean {
-  if (!user) return false;
-  if (user.role === "admin") return true;
-  return user.permissions.includes(perm);
+// Check if user is admin
+export async function isAdmin(userId: number): Promise<boolean> {
+  const [user] = await db
+    .select({ role: users.role })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return user?.role === "admin";
 }
 
-export function requireAuth(user: SessionUser | null): Response | null {
-  if (!user) {
-    return Response.json({ error: "Not authenticated." }, { status: 401 });
+// Logout - clear session cookie
+export function logout(): NextResponse {
+  const response = NextResponse.redirect("/login");
+  response.cookies.delete(SESSION_COOKIE);
+  return response;
+}
+
+// Get session from request (for API routes)
+export function getSessionFromRequest(request: Request): Session | null {
+  try {
+    const cookieHeader = request.headers.get("cookie");
+    if (!cookieHeader) return null;
+
+    const cookies = cookieHeader.split(";").reduce((acc: Record<string, string>, cookie) => {
+      const [key, value] = cookie.trim().split("=");
+      acc[key] = value;
+      return acc;
+    }, {});
+
+    return parseSession(cookies[SESSION_COOKIE]);
+  } catch {
+    return null;
   }
-  return null;
-}
-
-export function requirePermission(user: SessionUser | null, perm: PermissionKey): Response | null {
-  const authErr = requireAuth(user);
-  if (authErr) return authErr;
-  if (!hasPermission(user!, perm)) {
-    return Response.json({ error: "You do not have permission for this action." }, { status: 403 });
-  }
-  return null;
-}
-
-export function requireAdmin(user: SessionUser | null): Response | null {
-  const authErr = requireAuth(user);
-  if (authErr) return authErr;
-  if (user!.role !== "admin") {
-    return Response.json({ error: "Admin access required." }, { status: 403 });
-  }
-  return null;
 }

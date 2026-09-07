@@ -67,6 +67,10 @@ export const classes = pgTable("classes", {
 
 export const teachers = pgTable("teachers", {
   id: serial("id").primaryKey(),
+  // Link to the login account in `users` (created automatically by admin)
+  userId: integer("user_id")
+    .unique()
+    .references(() => users.id, { onDelete: "set null" }),
   name: varchar("name", { length: 120 }).notNull(),
   email: varchar("email", { length: 120 }).notNull().default(""),
   phone: varchar("phone", { length: 40 }).notNull().default(""),

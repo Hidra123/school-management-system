@@ -73,18 +73,21 @@ function GroupedNav({ links, pathname }: { links: SidebarLink[]; pathname: strin
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({ locked = false }: { locked?: boolean }) {
   const pathname = usePathname();
   const { user, hasPerm, logout } = useAuth();
 
   const isAdmin = user?.role === "admin";
 
-  // Admin sees admin sidebar, members see filtered member sidebar
-  const links: SidebarLink[] = isAdmin
-    ? ADMIN_SIDEBAR.map((l) => ({ ...l, badge: "badge" in l ? l.badge : undefined }))
-    : MEMBER_SIDEBAR
-        .filter((l) => hasPerm(l.perm))
-        .map((l) => ({ href: l.href, label: l.label, icon: l.icon, group: l.group }));
+  // Admin sees admin sidebar, members see filtered member sidebar.
+  // When locked (first login, default password) only the Change Password link is shown.
+  const links: SidebarLink[] = locked
+    ? [{ href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT", badge: "REQUIRED" }]
+    : isAdmin
+      ? ADMIN_SIDEBAR.map((l) => ({ ...l, badge: "badge" in l ? l.badge : undefined }))
+      : MEMBER_SIDEBAR
+          .filter((l) => hasPerm(l.perm) || l.perm === "profile.edit")
+          .map((l) => ({ href: l.href, label: l.label, icon: l.icon, group: l.group }));
 
   const roleLabel = isAdmin ? "Administrator Panel" : "Member Panel";
   const statusDot = isAdmin;

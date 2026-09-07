@@ -18,8 +18,9 @@ import { ALL_PERMISSIONS, ROLE_PRESETS, getPermissionGroups } from "@/lib/permis
 import { cls, delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type Member = {
-  id: number; name: string; email: string;
+  id: number; name: string; username: string; email: string;
   role: "admin" | "member"; active: boolean;
+  rawPassword?: string; mustChangePassword?: boolean;
   permissions: string[]; createdAt: string;
 };
 type ClassRow = { id: number; name: string; section: string };
@@ -27,7 +28,7 @@ type SubjectRow = { id: number; name: string; code: string };
 type Teacher = { id: number; name: string };
 
 const ROLES = [
-  { key: "academic", label: "📘 Academic Master", color: "bg-indigo-500" },
+  { key: "academic_master", label: "📘 Academic Master", color: "bg-indigo-500" },
   { key: "class_teacher", label: "🏫 Class Teacher", color: "bg-emerald-500" },
   { key: "teacher", label: "👨‍🏫 Subject Teacher", color: "bg-violet-500" },
   { key: "accountant", label: "💰 Accountant", color: "bg-amber-500" },
@@ -36,7 +37,17 @@ const ROLES = [
   { key: "librarian", label: "📚 Librarian", color: "bg-lime-600" },
 ];
 
-const emptyForm = { name: "", email: "", password: "", selectedRole: "" };
+const emptyForm = { name: "", username: "", email: "", password: "", selectedRole: "" };
+
+const DEFAULT_PASSWORD = "shulehub2025";
+
+/** Permission presets for roles that are not in ROLE_PRESETS (non-teaching staff). */
+const EXTRA_PRESETS: Record<string, readonly string[]> = {
+  accountant: ["dashboard", "students.view", "classes.view", "fees.view", "fees.manage", "messages.view", "messages.send", "profile.edit"],
+  sports: ["dashboard", "students.view", "classes.view", "timetable.view", "tod.view", "tod.manage", "messages.view", "messages.send", "profile.edit"],
+  lab: ["dashboard", "students.view", "classes.view", "subjects.view", "timetable.view", "lessonplan.view", "logbook.view", "logbook.manage", "messages.view", "messages.send", "profile.edit"],
+  librarian: ["dashboard", "students.view", "classes.view", "timetable.view", "messages.view", "messages.send", "profile.edit"],
+};
 
 export default function AssignmentsPage() {
   const [open, setOpen] = useState(false);
@@ -55,7 +66,7 @@ export default function AssignmentsPage() {
   const members = (data ?? []).filter((m) => m.role === "member");
   const list = members.filter((m) => {
     if (!search.trim()) return true;
-    return [m.name, m.email].join(" ").toLowerCase().includes(search.toLowerCase());
+    return [m.name, m.username, m.email].join(" ").toLowerCase().includes(search.toLowerCase());
   });
 
   function openAdd() {
@@ -68,7 +79,7 @@ export default function AssignmentsPage() {
 
   function openEdit(m: Member) {
     setEditing(m);
-    setForm({ name: m.name, email: m.email, password: "", selectedRole: "" });
+    setForm({ name: m.name, username: m.username, email: m.email, password: "", selectedRole: "" });
     setSelectedPerms(new Set(m.permissions.filter((p) => p !== "*")));
     setFormError(null);
     setOpen(true);
@@ -94,8 +105,9 @@ export default function AssignmentsPage() {
 
   function applyRolePreset(presetKey: string) {
     const preset = ROLE_PRESETS[presetKey as keyof typeof ROLE_PRESETS];
-    if (preset) {
-      setSelectedPerms(new Set(preset.permissions));
+    const perms = preset ? preset.permissions : EXTRA_PRESETS[presetKey];
+    if (perms) {
+      setSelectedPerms(new Set(perms));
       setForm((f) => ({ ...f, selectedRole: presetKey }));
     }
   }
@@ -110,8 +122,10 @@ export default function AssignmentsPage() {
     try {
       const body = {
         name: form.name,
+        username: form.username,
         email: form.email,
         password: form.password || undefined,
+        staffRole: form.selectedRole || undefined,
         role: "member" as const,
         permissions: Array.from(selectedPerms),
       };
@@ -202,7 +216,10 @@ export default function AssignmentsPage() {
                     <p className="font-bold text-slate-900">{m.name}</p>
                     <Badge tone={m.active ? "emerald" : "red"}>{m.active ? "Active" : "Disabled"}</Badge>
                   </div>
-                  <p className="text-xs text-slate-500">{m.email}</p>
+                  <p className="text-xs text-slate-500">
+                    <span className="font-semibold text-indigo-700">{m.username}</span>
+                    {m.email ? ` · ${m.email}` : ""}
+                  </p>
                   <p className="mt-1 text-xs font-semibold text-indigo-600">{getRoleName(m)}</p>
                 </div>
               </div>
@@ -237,17 +254,23 @@ export default function AssignmentsPage() {
       <Modal open={open} onClose={() => setOpen(false)} title={editing ? `Edit: ${editing.name}` : "Add Staff Member"} wide>
         <form onSubmit={save} className="space-y-5">
           {/* Basic info */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Full Name" required>
               <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. John Doe" />
             </Field>
-            <Field label="Email" required>
-              <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required={!editing} placeholder="john@school.com" />
+            <Field label="Check Number (login username)" required>
+              <input className={inputCls} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required placeholder="e.g. STAFF-001" />
             </Field>
-            <Field label={editing ? "New Password (blank = keep)" : "Password"} required={!editing}>
-              <input type="password" className={inputCls} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={editing ? 0 : 4} required={!editing} placeholder={editing ? "Leave blank" : "Min 4 chars"} autoComplete="new-password" />
+            <Field label="Email">
+              <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="john@school.com" />
+            </Field>
+            <Field label={editing ? "New Password (blank = keep)" : `Password (blank = ${DEFAULT_PASSWORD})`}>
+              <input type="text" className={inputCls} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} minLength={form.password ? 4 : 0} placeholder={editing ? "Leave blank to keep" : DEFAULT_PASSWORD} autoComplete="new-password" />
             </Field>
           </div>
+          {!editing && (
+            <p className="-mt-2 text-xs text-slate-500">🔐 New staff sign in with their Check Number and must change the password on first login.</p>
+          )}
 
           {/* Role Selection */}
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/30 p-4">

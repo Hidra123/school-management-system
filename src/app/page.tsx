@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import AppShell from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { Avatar, Badge, EmptyState, Loader, StatCard } from "@/components/ui";
 import { cls, longDate, money, useFetch } from "@/lib/utils";
 
@@ -31,7 +33,13 @@ type Stats = {
 };
 
 export default function DashboardPage() {
+  const { user } = useAuth();
   const { data, loading, error, refresh } = useFetch<Stats>("/api/stats");
+
+  // Admin has its own dashboard
+  useEffect(() => {
+    if (user?.role === "admin") window.location.href = "/admin";
+  }, [user]);
 
   if (loading && !data) return <AppShell permission="dashboard"><Loader label="Loading school statistics..." /></AppShell>;
   if (error && !data)

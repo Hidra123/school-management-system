@@ -31,7 +31,7 @@ Set up your `.env` file:
 DATABASE_URL=postgresql://user:password@host:5432/dbname
 ```
 
-Push the database schema and seed sample data:
+Push the database schema and create the Admin account (no sample data):
 ```bash
 npx drizzle-kit push
 npx tsx src/db/seed.ts
@@ -45,3 +45,18 @@ npm run dev
 ## Deployment
 
 See [DEPLOY.md](./DEPLOY.md) for a step-by-step free deployment guide using GitHub + Neon + Netlify.
+
+## 🔐 Authentication
+
+| Who | Login tab | Identifier | Password |
+|-----|-----------|------------|----------|
+| Admin | 🛡️ Admin Login | Username `Admin` | `Rash@1234` |
+| Staff / Teachers | 👨‍🏫 Staff Login | Check Number (set by admin) | `shulehub2025` (default) |
+
+- One login form serves both roles — the tab only changes the label.
+- **Adding a teacher** (Admin → Manage Teachers) automatically creates a login account
+  (`teachers.user_id` → `users.id`) with the default password and the *Subject Teacher* permissions.
+- Teacher cards show the Check Number and password (eye icon to reveal) plus **Reset Password**.
+- Members **must change the default password on first login** (`must_change_password`).
+  Until they do, every page redirects to `/profile`.
+- `npx tsx src/db/seed.ts` only creates/repairs the Admin account. Use `--reset` to wipe all data.

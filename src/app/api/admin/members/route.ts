@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { userPermissions, users } from "@/db/schema";
+import { teachers, userPermissions, users } from "@/db/schema";
 import { createPasswordHash, getSessionUser, requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -74,6 +74,12 @@ export async function POST(req: Request) {
       mustChangePassword: role !== "admin",
     })
     .returning();
+
+  // Teaching roles also get a teacher profile so they appear in "Manage Teachers"
+  const TEACHING_ROLES = ["academic_master", "class_teacher", "teacher"];
+  if (role === "member" && typeof body.staffRole === "string" && TEACHING_ROLES.includes(body.staffRole)) {
+    await db.insert(teachers).values({ userId: newUser.id, name, email, hireDate: new Date().toISOString().slice(0, 10) });
+  }
 
   if (role === "member" && permissions.length > 0) {
     await db.insert(userPermissions).values(

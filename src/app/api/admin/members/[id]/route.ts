@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { userPermissions, users } from "@/db/schema";
+import { teachers, userPermissions, users } from "@/db/schema";
 import { createPasswordHash, getSessionUser, requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -34,6 +34,13 @@ export async function PUT(req: Request, ctx: Ctx) {
   if (Object.keys(values).length > 0) {
     const [updated] = await db.update(users).set(values).where(eq(users.id, num)).returning();
     if (!updated) return Response.json({ error: "User not found." }, { status: 404 });
+    // Keep the linked teacher profile in sync
+    const teacherSync: Partial<typeof teachers.$inferInsert> = {};
+    if (values.name) teacherSync.name = values.name;
+    if (values.email !== undefined) teacherSync.email = values.email;
+    if (Object.keys(teacherSync).length > 0) {
+      await db.update(teachers).set(teacherSync).where(eq(teachers.userId, num));
+    }
   }
 
   if (Array.isArray(body.permissions)) {
@@ -75,6 +82,8 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
   if (user!.id === num) return Response.json({ error: "You cannot delete your own account." }, { status: 400 });
 
+  // Remove linked teacher profile first, then the account
+  await db.delete(teachers).where(eq(teachers.userId, num));
   await db.delete(users).where(eq(users.id, num));
   return Response.json({ ok: true });
 }

@@ -23,6 +23,54 @@ export async function createPasswordHash(pw: string): Promise<string> {
   return hashPassword(pw);
 }
 
+/** Default password given to every new member (teacher/staff). */
+export const DEFAULT_MEMBER_PASSWORD = "shulehub2025";
+
+/**
+ * Create a member login account (username = check number).
+ * Password defaults to DEFAULT_MEMBER_PASSWORD and the member is forced
+ * to change it on first login.
+ */
+export async function createMemberAccount(opts: {
+  name: string;
+  username: string;
+  email?: string;
+  password?: string;
+  permissions?: string[];
+}): Promise<{ id: number; username: string; rawPassword: string } | { error: string; status: number }> {
+  const username = opts.username.trim();
+  if (!username) return { error: "Username (Check Number) is required.", status: 400 };
+
+  const existing = await db.select({ id: users.id }).from(users).where(eq(users.username, username)).limit(1);
+  if (existing.length > 0) {
+    return { error: `Username "${username}" is already taken. Choose a different check number.`, status: 409 };
+  }
+
+  const rawPassword = opts.password && opts.password.length >= 4 ? opts.password : DEFAULT_MEMBER_PASSWORD;
+  const hash = await hashPassword(rawPassword);
+
+  const [created] = await db
+    .insert(users)
+    .values({
+      name: opts.name.trim(),
+      username,
+      email: opts.email?.trim() ?? "",
+      password: hash,
+      rawPassword,
+      role: "member",
+      active: true,
+      mustChangePassword: true,
+    })
+    .returning({ id: users.id, username: users.username, rawPassword: users.rawPassword });
+
+  const perms = Array.from(new Set(opts.permissions ?? []));
+  if (perms.length > 0) {
+    await db.insert(userPermissions).values(perms.map((p) => ({ userId: created.id, permission: p })));
+  }
+
+  return created;
+}
+
 // Session: simple signed cookie with user ID
 const SESSION_NAME = "shulehub_session";
 const SECRET = process.env.SESSION_SECRET ?? "shulehub_default_secret_key_2025";

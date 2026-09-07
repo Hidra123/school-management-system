@@ -134,17 +134,25 @@ export const ROLE_PRESETS = {
 // ADMIN sidebar — only admin sees these
 // ========================================
 export const ADMIN_SIDEBAR = [
-  { href: "/admin", label: "Overview", icon: "📊", group: "MAIN" },
+  // MAIN
+  { href: "/admin", label: "Dashboard", icon: "📊", group: "MAIN" },
+  // STAFF MANAGEMENT
+  { href: "/admin/classes", label: "Manage Classes", icon: "🏫", group: "STAFF MANAGEMENT" },
+  { href: "/admin/subjects", label: "Manage Subjects", icon: "📚", group: "STAFF MANAGEMENT" },
+  { href: "/admin/teachers", label: "Manage Teachers", icon: "👨‍🏫", group: "STAFF MANAGEMENT" },
+  { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "STAFF MANAGEMENT" },
+  { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "STAFF MANAGEMENT" },
+  { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
+  // PARENTS
+  { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
+  { href: "/admin/parent-assignments", label: "Assignments", icon: "🎯", group: "PARENTS" },
+  // USER CONTROL
   { href: "/admin/activity", label: "Activity Control", icon: "🔔", group: "USER CONTROL", badge: "NEW" },
   { href: "/admin/sessions", label: "Live Sessions", icon: "👥", group: "USER CONTROL" },
   { href: "/admin/audit", label: "Audit Trail", icon: "📋", group: "USER CONTROL" },
-  { href: "/admin/teachers", label: "Manage Teachers", icon: "👨‍🏫", group: "STAFF MANAGEMENT" },
-  { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "STAFF MANAGEMENT" },
-  { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "ACADEMIC" },
-  { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "ACADEMIC" },
+  // ADMINISTRATION
   { href: "/admin/settings", label: "System Settings", icon: "⚙️", group: "ADMINISTRATION" },
   { href: "/admin/profile", label: "Admin Profile", icon: "👤", group: "ADMINISTRATION" },
-  { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "ADMINISTRATION" },
 ] as const;
 
 // ========================================

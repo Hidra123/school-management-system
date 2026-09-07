@@ -26,9 +26,7 @@ type SubjectRow = {
   createdAt: string;
 };
 
-type Teacher = { id: number; name: string; subject: string };
-
-const emptyForm = { name: "", code: "", teacherId: "" };
+const emptyForm = { name: "", code: "" };
 
 export default function SubjectsPage() {
   const { user } = useAuth();
@@ -39,8 +37,6 @@ export default function SubjectsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data, loading, error, refresh } = useFetch<SubjectRow[]>("/api/subjects");
-  const teachersFetch = useFetch<Teacher[]>("/api/teachers");
-  const teacherList = teachersFetch.data ?? [];
   const list = data ?? [];
 
   function openAdd() {
@@ -52,7 +48,7 @@ export default function SubjectsPage() {
 
   function openEdit(s: SubjectRow) {
     setEditing(s);
-    setForm({ name: s.name, code: s.code, teacherId: s.teacherId ? String(s.teacherId) : "" });
+    setForm({ name: s.name, code: s.code });
     setFormError(null);
     setOpen(true);
   }
@@ -62,7 +58,7 @@ export default function SubjectsPage() {
     setSaving(true);
     setFormError(null);
     try {
-      const body = { name: form.name, code: form.code, teacherId: form.teacherId };
+      const body = { name: form.name, code: form.code };
       if (editing) await putJSON(`/api/subjects/${editing.id}`, body);
       else await postJSON("/api/subjects", body);
       setOpen(false);
@@ -142,7 +138,7 @@ export default function SubjectsPage() {
                 onClick={() => openEdit(s)}
                 className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
               >
-                ✏️ Edit / Assign Teacher
+                ✏️ Edit Subject
               </button>
             </div>
           ))}
@@ -168,21 +164,9 @@ export default function SubjectsPage() {
               placeholder="e.g. MATH"
             />
           </Field>
-          <Field label="Subject Teacher">
-            <select
-              className={inputCls}
-              value={form.teacherId}
-              onChange={(e) => setForm({ ...form, teacherId: e.target.value })}
-            >
-              <option value="">— No teacher —</option>
-              {teacherList.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.subject ? ` (${t.subject})` : ""}
-                </option>
-              ))}
-            </select>
-          </Field>
+          <p className="rounded-xl bg-indigo-50/60 px-3.5 py-2.5 text-xs text-indigo-700">
+            💡 Teacher assignment is managed by the admin under Manage Teachers.
+          </p>
           {formError && <p className="text-sm font-semibold text-rose-600">{formError}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>

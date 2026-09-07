@@ -17,9 +17,8 @@ import {
 import { delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
 type SubjectRow = { id: number; name: string; code: string; teacherId: number | null; teacherName: string | null };
-type Teacher = { id: number; name: string; subject: string };
 
-const emptyForm = { name: "", code: "", teacherId: "" };
+const emptyForm = { name: "", code: "" };
 
 export default function AdminManageSubjectsPage() {
   const [open, setOpen] = useState(false);
@@ -29,8 +28,6 @@ export default function AdminManageSubjectsPage() {
   const [formError, setFormError] = useState<string | null>(null);
 
   const { data, loading, error, refresh } = useFetch<SubjectRow[]>("/api/subjects");
-  const teachersFetch = useFetch<Teacher[]>("/api/teachers");
-  const teacherList = teachersFetch.data ?? [];
   const list = data ?? [];
 
   function openAdd() {
@@ -42,7 +39,7 @@ export default function AdminManageSubjectsPage() {
 
   function openEdit(s: SubjectRow) {
     setEditing(s);
-    setForm({ name: s.name, code: s.code, teacherId: s.teacherId ? String(s.teacherId) : "" });
+    setForm({ name: s.name, code: s.code });
     setFormError(null);
     setOpen(true);
   }
@@ -108,7 +105,10 @@ export default function AdminManageSubjectsPage() {
                   </p>
                 </div>
               </div>
-              <button onClick={() => openEdit(s)} className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit / Assign Teacher</button>
+              <p className="mt-2 text-center text-[11px] text-slate-400">
+                To assign a teacher, go to <span className="font-semibold text-slate-500">Manage Teachers → 📚 Assign Subjects &amp; Classes</span>.
+              </p>
+              <button onClick={() => openEdit(s)} className="mt-2 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit Subject</button>
             </div>
           ))}
         </div>
@@ -122,14 +122,9 @@ export default function AdminManageSubjectsPage() {
           <Field label="Subject Code">
             <input className={inputCls} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} placeholder="e.g. MATH" />
           </Field>
-          <Field label="Subject Teacher">
-            <select className={inputCls} value={form.teacherId} onChange={(e) => setForm({ ...form, teacherId: e.target.value })}>
-              <option value="">— No teacher —</option>
-              {teacherList.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}{t.subject ? ` (${t.subject})` : ""}</option>
-              ))}
-            </select>
-          </Field>
+          <p className="rounded-xl bg-indigo-50/60 px-3.5 py-2.5 text-xs text-indigo-700">
+            💡 To assign a teacher to this subject, use <span className="font-semibold">Manage Teachers → 📚 Assign Subjects &amp; Classes</span> after saving.
+          </p>
           {formError && <p className="text-sm font-semibold text-rose-600">{formError}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={() => setOpen(false)} className={btnGhost}>Cancel</button>

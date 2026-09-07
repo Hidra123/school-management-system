@@ -10,23 +10,26 @@ async function main() {
 
   console.log("🔐 Creating admin user...");
   const encoder = new TextEncoder();
-  const data = encoder.encode("admin123" + "shulehub_salt_2025");
+  const data = encoder.encode("Rash@1234" + "shulehub_salt_2025");
   const hashBuf = await crypto.subtle.digest("SHA-256", data);
   const adminHash = Array.from(new Uint8Array(hashBuf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 
   await db.insert(users).values({
-    name: "System Admin",
-    email: "admin@shulehub.com",
+    name: "System Administrator",
+    username: "Admin",
+    email: "",
     password: adminHash,
+    rawPassword: "",
     role: "admin",
     active: true,
+    mustChangePassword: false,
   });
 
   console.log("✅ Seed completed!");
-  console.log("   Admin: admin@shulehub.com / admin123");
-  console.log("   No sample data — admin will add real data.");
+  console.log("   Admin username: Admin");
+  console.log("   Admin password: Rash@1234");
 }
 
 main()

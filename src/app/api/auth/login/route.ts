@@ -8,18 +8,18 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => null);
-    if (!body?.email || !body?.password) {
-      return Response.json({ error: "Email and password are required." }, { status: 400 });
+    if (!body?.username || !body?.password) {
+      return Response.json({ error: "Username and password are required." }, { status: 400 });
     }
 
     const [user] = await db
       .select()
       .from(users)
-      .where(eq(users.email, body.email.trim().toLowerCase()))
+      .where(eq(users.username, body.username.trim()))
       .limit(1);
 
     if (!user) {
-      return Response.json({ error: "Invalid email or password." }, { status: 401 });
+      return Response.json({ error: "Invalid username or password." }, { status: 401 });
     }
 
     if (!user.active) {
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
 
     const valid = await verifyPassword(body.password, user.password);
     if (!valid) {
-      return Response.json({ error: "Invalid email or password." }, { status: 401 });
+      return Response.json({ error: "Invalid username or password." }, { status: 401 });
     }
 
     await createSession(user.id);
@@ -36,8 +36,9 @@ export async function POST(req: Request) {
     return Response.json({
       id: user.id,
       name: user.name,
-      email: user.email,
+      username: user.username,
       role: user.role,
+      mustChangePassword: user.mustChangePassword,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Server error";

@@ -20,7 +20,7 @@ type Teacher = {
   subject: string; qualification: string; hireDate: string | null;
 };
 
-const emptyForm = { name: "", email: "", phone: "", subject: "", qualification: "", hireDate: "" };
+const emptyForm = { name: "", username: "", email: "", phone: "", qualification: "", hireDate: "" };
 
 export default function AdminManageTeachersPage() {
   const [search, setSearch] = useState("");
@@ -29,12 +29,17 @@ export default function AdminManageTeachersPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [showPwd, setShowPwd] = useState<Record<number, boolean>>({});
 
   const { data, loading, error, refresh } = useFetch<Teacher[]>("/api/teachers");
+  // Also fetch members to show username/password
+  const membersFetch = useFetch<Array<{ id: number; name: string; username: string; rawPassword: string }>>("/api/admin/members");
+  const membersMap = new Map((membersFetch.data ?? []).map((m) => [m.name, m]));
+
   const list = (data ?? []).filter((t) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
-    return [t.name, t.email, t.phone, t.subject].join(" ").toLowerCase().includes(q);
+    return [t.name, t.email, t.phone, t.qualification].join(" ").toLowerCase().includes(q);
   });
 
   function openAdd() {
@@ -46,7 +51,15 @@ export default function AdminManageTeachersPage() {
 
   function openEdit(t: Teacher) {
     setEditing(t);
-    setForm({ name: t.name, email: t.email ?? "", phone: t.phone ?? "", subject: t.subject ?? "", qualification: t.qualification ?? "", hireDate: t.hireDate ?? "" });
+    const member = membersMap.get(t.name);
+    setForm({
+      name: t.name,
+      username: member?.username ?? "",
+      email: t.email ?? "",
+      phone: t.phone ?? "",
+      qualification: t.qualification ?? "",
+      hireDate: t.hireDate ?? "",
+    });
     setFormError(null);
     setOpen(true);
   }
@@ -56,8 +69,19 @@ export default function AdminManageTeachersPage() {
     setSaving(true);
     setFormError(null);
     try {
-      if (editing) await putJSON(`/api/teachers/${editing.id}`, form);
-      else await postJSON("/api/teachers", form);
+      const teacherBody = {
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        subject: "",
+        qualification: form.qualification,
+        hireDate: form.hireDate,
+      };
+      if (editing) {
+        await putJSON(`/api/teachers/${editing.id}`, teacherBody);
+      } else {
+        await postJSON("/api/teachers", teacherBody);
+      }
       setOpen(false);
       refresh();
     } catch (err) {
@@ -75,6 +99,10 @@ export default function AdminManageTeachersPage() {
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to delete.");
     }
+  }
+
+  function toggleShowPwd(id: number) {
+    setShowPwd((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
   return (
@@ -98,25 +126,71 @@ export default function AdminManageTeachersPage() {
         <EmptyState icon="👨‍🏫" title="No teachers yet" message="Add your first teacher." />
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((t) => (
-            <div key={t.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
-              <div className="flex items-start gap-3">
-                <Avatar name={t.name} tone="violet" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold text-slate-900">{t.name}</p>
-                  <p className="truncate text-xs text-slate-500">{t.subject || <span className="italic">No subject set</span>}</p>
+          {list.map((t) => {
+            const member = membersMap.get(t.name);
+            const pwd = member?.rawPassword ?? "—";
+            const isHidden = !showPwd[t.id];
+            return (
+              <div key={t.id} className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm transition hover:shadow-md">
+                <div className="flex items-start gap-3">
+                  <Avatar name={t.name} tone="violet" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-bold text-slate-900">{t.name}</p>
+                    <p className="truncate text-xs text-slate-500">{t.qualification || "No qualification set"}</p>
+                  </div>
+                  <button onClick={() => remove(t)} className="rounded-lg px-2 py-1 text-xs text-rose-500 hover:bg-rose-50">🗑️</button>
                 </div>
-                <button onClick={() => remove(t)} className="rounded-lg px-2 py-1 text-xs text-rose-500 hover:bg-rose-50">🗑️</button>
+
+                <dl className="mt-4 space-y-1.5 text-sm">
+                  {/* Username */}
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Username:</dt>
+                    <dd className="text-right font-bold text-indigo-700">{member?.username ?? "—"}</dd>
+                  </div>
+                  {/* Password with show/hide */}
+                  <div className="flex items-center justify-between gap-2">
+                    <dt className="text-slate-500">Password:</dt>
+                    <dd className="flex items-center gap-1.5">
+                      <span className="font-mono text-sm font-semibold text-slate-700">
+                        {isHidden ? "••••••••" : pwd}
+                      </span>
+                      <button
+                        onClick={() => toggleShowPwd(t.id)}
+                        className="rounded-md p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                        title={isHidden ? "Show password" : "Hide password"}
+                      >
+                        {isHidden ? (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        ) : (
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        )}
+                      </button>
+                    </dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Phone:</dt>
+                    <dd className="text-right font-semibold text-slate-700">{t.phone || "—"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Email:</dt>
+                    <dd className="max-w-[60%] truncate text-right font-semibold text-slate-700">{t.email || "—"}</dd>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-slate-500">Registered:</dt>
+                    <dd className="text-right font-semibold text-slate-700">{shortDate(t.hireDate)}</dd>
+                  </div>
+                </dl>
+
+                <button onClick={() => openEdit(t)} className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit Details</button>
               </div>
-              <dl className="mt-4 space-y-1.5 text-sm">
-                <div className="flex justify-between gap-2"><dt className="text-slate-500">Qualification:</dt><dd className="text-right font-semibold text-slate-700">{t.qualification || "—"}</dd></div>
-                <div className="flex justify-between gap-2"><dt className="text-slate-500">Phone:</dt><dd className="text-right font-semibold text-slate-700">{t.phone || "—"}</dd></div>
-                <div className="flex justify-between gap-2"><dt className="text-slate-500">Email:</dt><dd className="max-w-[60%] truncate text-right font-semibold text-slate-700">{t.email || "—"}</dd></div>
-                <div className="flex justify-between gap-2"><dt className="text-slate-500">Hired:</dt><dd className="text-right font-semibold text-slate-700">{shortDate(t.hireDate)}</dd></div>
-              </dl>
-              <button onClick={() => openEdit(t)} className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit Details</button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -125,19 +199,19 @@ export default function AdminManageTeachersPage() {
           <Field label="Full Name" required className="sm:col-span-2">
             <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required placeholder="e.g. John Doe" />
           </Field>
+          <Field label="Username (Check Number)" required>
+            <input className={inputCls} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} required placeholder="e.g. TCHR-001" />
+          </Field>
           <Field label="Email">
             <input type="email" className={inputCls} value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="teacher@school.com" />
           </Field>
           <Field label="Phone">
             <input className={inputCls} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+255 7XX XXX XXX" />
           </Field>
-          <Field label="Main Subject">
-            <input className={inputCls} value={form.subject} onChange={(e) => setForm({ ...form, subject: e.target.value })} placeholder="e.g. Mathematics" />
-          </Field>
           <Field label="Qualification">
             <input className={inputCls} value={form.qualification} onChange={(e) => setForm({ ...form, qualification: e.target.value })} placeholder="e.g. B.Ed. Mathematics" />
           </Field>
-          <Field label="Hire Date">
+          <Field label="Registered Date" className="sm:col-span-2">
             <input type="date" className={inputCls} value={form.hireDate} onChange={(e) => setForm({ ...form, hireDate: e.target.value })} />
           </Field>
           <div className="flex items-end justify-end gap-2 sm:col-span-2">

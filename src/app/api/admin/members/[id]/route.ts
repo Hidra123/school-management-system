@@ -21,19 +21,21 @@ export async function PUT(req: Request, ctx: Ctx) {
 
   const values: Partial<typeof users.$inferInsert> = {};
   if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-  if (typeof body.email === "string" && body.email.trim())
-    values.email = body.email.trim().toLowerCase();
-  if (typeof body.password === "string" && body.password.length >= 4)
+  if (typeof body.username === "string" && body.username.trim()) values.username = body.username.trim();
+  if (typeof body.email === "string") values.email = body.email.trim();
+  if (typeof body.password === "string" && body.password.length >= 4) {
     values.password = await createPasswordHash(body.password);
+    values.rawPassword = body.password;
+  }
   if (body.role === "admin" || body.role === "member") values.role = body.role;
   if (typeof body.active === "boolean") values.active = body.active;
+  if (typeof body.mustChangePassword === "boolean") values.mustChangePassword = body.mustChangePassword;
 
   if (Object.keys(values).length > 0) {
     const [updated] = await db.update(users).set(values).where(eq(users.id, num)).returning();
     if (!updated) return Response.json({ error: "User not found." }, { status: 404 });
   }
 
-  // Update permissions if provided
   if (Array.isArray(body.permissions)) {
     await db.delete(userPermissions).where(eq(userPermissions.userId, num));
     if (body.permissions.length > 0) {
@@ -43,7 +45,6 @@ export async function PUT(req: Request, ctx: Ctx) {
     }
   }
 
-  // Fetch updated user
   const [u] = await db.select().from(users).where(eq(users.id, num));
   const perms = await db
     .select({ permission: userPermissions.permission })
@@ -53,9 +54,12 @@ export async function PUT(req: Request, ctx: Ctx) {
   return Response.json({
     id: u.id,
     name: u.name,
+    username: u.username,
     email: u.email,
     role: u.role,
     active: u.active,
+    rawPassword: u.rawPassword,
+    mustChangePassword: u.mustChangePassword,
     permissions: u.role === "admin" ? ["*"] : perms.map((p) => p.permission),
     createdAt: u.createdAt,
   });
@@ -69,11 +73,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const num = Number(id);
   if (!Number.isInteger(num)) return Response.json({ error: "Invalid ID." }, { status: 400 });
-
-  // Prevent deleting yourself
-  if (user!.id === num) {
-    return Response.json({ error: "You cannot delete your own account." }, { status: 400 });
-  }
+  if (user!.id === num) return Response.json({ error: "You cannot delete your own account." }, { status: 400 });
 
   await db.delete(users).where(eq(users.id, num));
   return Response.json({ ok: true });

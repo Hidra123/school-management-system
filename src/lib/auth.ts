@@ -75,8 +75,9 @@ export async function getSessionUserId(): Promise<number | null> {
 export type SessionUser = {
   id: number;
   name: string;
-  email: string;
+  username: string;
   role: "admin" | "member";
+  mustChangePassword: boolean;
   permissions: string[];
 };
 
@@ -91,9 +92,10 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     return {
       id: user.id,
       name: user.name,
-      email: user.email,
+      username: user.username,
       role: "admin",
-      permissions: ["*"], // Admin has all permissions
+      mustChangePassword: false,
+      permissions: ["*"],
     };
   }
 
@@ -105,8 +107,9 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   return {
     id: user.id,
     name: user.name,
-    email: user.email,
+    username: user.username,
     role: "member",
+    mustChangePassword: user.mustChangePassword,
     permissions: perms.map((p) => p.permission),
   };
 }

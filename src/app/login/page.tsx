@@ -5,13 +5,12 @@ import { useAuth } from "@/components/AuthProvider";
 import { btnPrimary, inputCls } from "@/components/ui";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const { user, loading: authLoading, refresh } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
-  // If already logged in, go to dashboard
   useEffect(() => {
     if (!authLoading && user) {
       window.location.href = "/";
@@ -26,17 +25,16 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+        body: JSON.stringify({ username: username.trim(), password }),
       });
       const data = await res.json();
       if (!res.ok) {
         setError(data.error || "Login failed.");
         return;
       }
-      // Force full page reload to pick up the cookie
       window.location.href = "/";
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      setError(err instanceof Error ? err.message : "Something went wrong.");
     } finally {
       setLoading(false);
     }
@@ -45,7 +43,6 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 px-4">
       <div className="w-full max-w-md">
-        {/* Brand */}
         <div className="mb-8 text-center">
           <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-3xl text-white shadow-lg">
             🎓
@@ -54,7 +51,6 @@ export default function LoginPage() {
           <p className="mt-1 text-sm text-indigo-300">School Management System</p>
         </div>
 
-        {/* Form */}
         <form
           onSubmit={handleSubmit}
           className="rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur"
@@ -69,14 +65,14 @@ export default function LoginPage() {
 
           <div className="space-y-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-indigo-200">Email</label>
+              <label className="mb-1.5 block text-sm font-medium text-indigo-200">Check Number</label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@school.ac.tz"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your check number"
                 required
-                autoComplete="email"
+                autoComplete="username"
                 className={inputCls}
               />
             </div>
@@ -97,12 +93,6 @@ export default function LoginPage() {
           <button type="submit" disabled={loading} className={`${btnPrimary} mt-6 w-full`}>
             {loading ? "Signing in..." : "Sign In"}
           </button>
-
-          <div className="mt-6 rounded-xl bg-indigo-500/10 px-4 py-3 text-xs text-indigo-300">
-            <p className="font-bold">Default Admin Account:</p>
-            <p className="mt-1">Email: <strong>admin@shulehub.com</strong></p>
-            <p>Password: <strong>admin123</strong></p>
-          </div>
         </form>
       </div>
     </div>

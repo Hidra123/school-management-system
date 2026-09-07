@@ -34,10 +34,13 @@ export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 120 }).notNull(),
-  email: varchar("email", { length: 120 }).notNull().unique(),
+  username: varchar("username", { length: 60 }).notNull().unique(),
+  email: varchar("email", { length: 120 }).notNull().default(""),
   password: text("password").notNull(),
+  rawPassword: varchar("raw_password", { length: 120 }).notNull().default(""),
   role: userRoleEnum("role").notNull().default("member"),
   active: boolean("active").notNull().default(true),
+  mustChangePassword: boolean("must_change_password").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

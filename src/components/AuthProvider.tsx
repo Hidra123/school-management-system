@@ -5,8 +5,9 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 type User = {
   id: number;
   name: string;
-  email: string;
+  username: string;
   role: "admin" | "member";
+  mustChangePassword: boolean;
   permissions: string[];
 } | null;
 

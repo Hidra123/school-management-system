@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cls } from "@/lib/utils";
 
 /* ---------- Input classes & buttons ---------- */
@@ -228,11 +228,148 @@ export function Avatar({ name, tone = "indigo" }: { name: string; tone?: Tone })
 export function Loader({ label = "Loading..." }: { label?: string }) {
   return (
     <div className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-10 text-sm text-slate-500">
-      <svg className="h-5 w-5 animate-spin text-indigo-500" viewBox="0 0 24 24" fill="none">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
+      <Spinner size={20} />
       {label}
     </div>
   );
+}
+
+/* ---------- Spinner ---------- */
+export function Spinner({ size = 16, className }: { size?: number; className?: string }) {
+  return (
+    <svg className={cls("animate-spin", className)} width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-90" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+  );
+}
+
+/* ---------- Checkmark (animated) ---------- */
+export function Checkmark({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" className="animate-[scaleIn_0.3s_ease-out]">
+      <circle cx="12" cy="12" r="10" fill="currentColor" className="opacity-20" />
+      <path d="M8 12.5l2.5 2.5 5.5-5.5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="animate-[drawCheck_0.4s_ease-out_0.1s_both]" />
+    </svg>
+  );
+}
+
+/* ---------- ActionButton (Spinner + Success) ---------- */
+export type ActionBtnVariant = "primary" | "ghost" | "danger" | "success" | "warning";
+
+const variantStyles: Record<ActionBtnVariant, { base: string; loading: string; done: string }> = {
+  primary: {
+    base: "bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-300",
+    loading: "bg-indigo-500 text-white",
+    done: "bg-emerald-500 text-white",
+  },
+  ghost: {
+    base: "border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 focus:ring-indigo-100",
+    loading: "border border-slate-200 bg-slate-50 text-slate-500",
+    done: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+  },
+  danger: {
+    base: "bg-rose-600 text-white hover:bg-rose-700 focus:ring-rose-300",
+    loading: "bg-rose-500 text-white",
+    done: "bg-emerald-500 text-white",
+  },
+  success: {
+    base: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-300",
+    loading: "bg-emerald-500 text-white",
+    done: "bg-emerald-500 text-white",
+  },
+  warning: {
+    base: "bg-amber-500 text-white hover:bg-amber-600 focus:ring-amber-300",
+    loading: "bg-amber-400 text-white",
+    done: "bg-emerald-500 text-white",
+  },
+};
+
+export function ActionButton({
+  children,
+  variant = "primary",
+  loading = false,
+  done = false,
+  doneText = "Done!",
+  onClick,
+  type = "button",
+  disabled = false,
+  className,
+  fullWidth = false,
+}: {
+  children: ReactNode;
+  variant?: ActionBtnVariant;
+  loading?: boolean;
+  done?: boolean;
+  doneText?: string;
+  onClick?: (e: React.MouseEvent) => void;
+  type?: "button" | "submit";
+  disabled?: boolean;
+  className?: string;
+  fullWidth?: boolean;
+}) {
+  const styles = variantStyles[variant];
+
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled || loading || done}
+      className={cls(
+        "relative inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold shadow-sm transition-all duration-200 focus:outline-none focus:ring-2 disabled:cursor-not-allowed",
+        done ? styles.done : loading ? styles.loading : styles.base,
+        (loading || done) && "pointer-events-none",
+        fullWidth && "w-full",
+        className,
+      )}
+    >
+      {loading ? (
+        <>
+          <Spinner size={16} className={variant === "ghost" ? "text-slate-500" : "text-white"} />
+          <span className="animate-pulse">Please wait...</span>
+        </>
+      ) : done ? (
+        <>
+          <Checkmark size={18} />
+          <span>{doneText}</span>
+        </>
+      ) : (
+        children
+      )}
+    </button>
+  );
+}
+
+/* ---------- useActionState (helper hook) ---------- */
+export function useActionState() {
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, []);
+
+  const run = useCallback(async (fn: () => Promise<void>) => {
+    setLoading(true);
+    setDone(false);
+    try {
+      await fn();
+      setLoading(false);
+      setDone(true);
+      timerRef.current = setTimeout(() => setDone(false), 2000);
+    } catch {
+      setLoading(false);
+      setDone(false);
+      throw new Error("Action failed");
+    }
+  }, []);
+
+  const reset = useCallback(() => {
+    setLoading(false);
+    setDone(false);
+    if (timerRef.current) clearTimeout(timerRef.current);
+  }, []);
+
+  return { loading, done, run, reset };
 }

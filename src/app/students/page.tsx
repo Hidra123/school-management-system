@@ -208,7 +208,7 @@ export default function StudentsPage() {
                     </td>
                     <td className="px-4 py-3">
                       <Badge tone={s.gender === "female" ? "rose" : "blue"}>
-                        {s.gender === "female" ? "👧 Girl" : "👦 Boy"}
+                        {s.gender === "female" ? "👧 Female" : "👦 Male"}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 font-semibold text-slate-700">

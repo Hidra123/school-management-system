@@ -1,6 +1,6 @@
-import { asc, count, eq, inArray } from "drizzle-orm";
+import { asc, count, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, students, teacherClasses } from "@/db/schema";
+import { classes, students } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requireAuth, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
@@ -27,16 +27,14 @@ export async function GET() {
       if (scope.classIds.length === 0) {
         return Response.json([]);
       }
+      // scope.classIds already contains exactly this teacher's assigned class
+      // IDs (deduplicated) — query classes directly, no join needed. (A join
+      // against teacherClasses filtered only by classId would incorrectly
+      // return one duplicate row per *other* teacher also assigned to the
+      // same class.)
       all = await db
-        .select({
-          id: classes.id,
-          name: classes.name,
-          section: classes.section,
-          capacity: classes.capacity,
-          createdAt: classes.createdAt,
-        })
+        .select()
         .from(classes)
-        .innerJoin(teacherClasses, eq(teacherClasses.classId, classes.id))
         .where(inArray(classes.id, scope.classIds))
         .orderBy(asc(classes.name));
     } else {

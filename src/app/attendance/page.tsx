@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import AttendanceReportTab from "@/components/attendance/AttendanceReportTab";
@@ -26,7 +26,11 @@ export default function AttendancePage() {
   const { user } = useAuth();
   const [tab, setTab] = useState<TabKey>("daily");
   const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const classList = classesFetch.data ?? [];
+  // Defensive de-dupe by id (in case of any future bug returning duplicate rows).
+  const classList = useMemo(() => {
+    const seen = new Set<number>();
+    return (classesFetch.data ?? []).filter((c) => (seen.has(c.id) ? false : (seen.add(c.id), true)));
+  }, [classesFetch.data]);
 
   const roleBadge = user?.role === "member" ? staffRoleLabel(user.staffRole) : null;
 

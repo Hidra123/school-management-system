@@ -28,19 +28,19 @@ export async function getTeacherByUserId(userId: number) {
   return row ?? null;
 }
 
-/** Class IDs a teacher is assigned to. */
+/** Class IDs a teacher is assigned to (deduplicated — defense in depth). */
 export async function getAssignedClassIds(teacherId: number): Promise<number[]> {
   const rows = await db
     .select({ classId: teacherClasses.classId })
     .from(teacherClasses)
     .where(eq(teacherClasses.teacherId, teacherId));
-  return rows.map((r) => r.classId);
+  return Array.from(new Set(rows.map((r) => r.classId)));
 }
 
-/** Subject IDs a teacher is assigned to teach (subjects.teacherId). */
+/** Subject IDs a teacher is assigned to teach (subjects.teacherId, deduplicated). */
 export async function getAssignedSubjectIds(teacherId: number): Promise<number[]> {
   const rows = await db.select({ id: subjects.id }).from(subjects).where(eq(subjects.teacherId, teacherId));
-  return rows.map((r) => r.id);
+  return Array.from(new Set(rows.map((r) => r.id)));
 }
 
 /**

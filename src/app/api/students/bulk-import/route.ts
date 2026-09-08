@@ -78,8 +78,15 @@ export async function POST(req: Request) {
       byNameSection.set(`${key}|${c.section.trim().toLowerCase()}`, c);
     }
 
+    // Admission numbers only need to be unique WITHIN a class (many schools
+    // restart numbering per class, e.g. every class has its own S6790-001,
+    // S6790-002...), so duplicate checks below are keyed by "classId|admNo",
+    // not by admission number alone.
+    const existingKey = (classId: number, admNo: string) => `${classId}|${admNo.toLowerCase()}`;
     const existingAdmissionNos = new Set(
-      (await db.select({ admissionNo: students.admissionNo }).from(students)).map((s) => s.admissionNo.toLowerCase()),
+      (await db.select({ admissionNo: students.admissionNo, classId: students.classId }).from(students))
+        .filter((s) => s.classId !== null)
+        .map((s) => existingKey(s.classId as number, s.admissionNo)),
     );
     const usedInBatch = new Set<string>();
 
@@ -128,20 +135,20 @@ export async function POST(req: Request) {
 
       let admissionNo = (raw.admissionNo ?? "").trim();
       if (admissionNo) {
-        const key = admissionNo.toLowerCase();
+        const key = existingKey(matchedClass.id, admissionNo);
         if (existingAdmissionNos.has(key) || usedInBatch.has(key)) {
-          results.push({ row: rowNum, status: "error", message: `Admission number "${admissionNo}" is already in use.` });
+          results.push({ row: rowNum, status: "error", message: `Admission number "${admissionNo}" is already in use in class "${matchedClass.name}".` });
           return;
         }
       } else {
-        // Auto-generate a unique admission number for this row.
+        // Auto-generate an admission number unique within this class.
         let candidate = "";
         do {
           candidate = `ADM-${Date.now().toString().slice(-6)}${Math.floor(Math.random() * 90 + 10)}`;
-        } while (existingAdmissionNos.has(candidate.toLowerCase()) || usedInBatch.has(candidate.toLowerCase()));
+        } while (existingAdmissionNos.has(existingKey(matchedClass.id, candidate)) || usedInBatch.has(existingKey(matchedClass.id, candidate)));
         admissionNo = candidate;
       }
-      usedInBatch.add(admissionNo.toLowerCase());
+      usedInBatch.add(existingKey(matchedClass.id, admissionNo));
 
       toInsert.push({
         admissionNo,

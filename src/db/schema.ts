@@ -122,8 +122,10 @@ export const students = pgTable(
     classId: integer("class_id").references(() => classes.id, {
       onDelete: "set null",
     }),
+    dateOfBirth: date("date_of_birth", { mode: "string" }),
     guardianName: varchar("guardian_name", { length: 120 }).notNull().default(""),
     guardianPhone: varchar("guardian_phone", { length: 40 }).notNull().default(""),
+    guardianAddress: varchar("guardian_address", { length: 200 }).notNull().default(""),
     enrollmentDate: date("enrollment_date", { mode: "string" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

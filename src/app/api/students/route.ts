@@ -63,8 +63,10 @@ export async function GET(req: Request) {
         gender: students.gender,
         classId: students.classId,
         className: classes.name,
+        dateOfBirth: students.dateOfBirth,
         guardianName: students.guardianName,
         guardianPhone: students.guardianPhone,
+        guardianAddress: students.guardianAddress,
         enrollmentDate: students.enrollmentDate,
         createdAt: students.createdAt,
       })
@@ -118,8 +120,10 @@ export async function POST(req: Request) {
         name: body.name.trim(),
         gender,
         classId: Number.isFinite(classId) ? classId : null,
+        dateOfBirth: typeof body.dateOfBirth === "string" && body.dateOfBirth ? body.dateOfBirth : null,
         guardianName: typeof body.guardianName === "string" ? body.guardianName.trim() : "",
         guardianPhone: typeof body.guardianPhone === "string" ? body.guardianPhone.trim() : "",
+        guardianAddress: typeof body.guardianAddress === "string" ? body.guardianAddress.trim() : "",
         enrollmentDate,
       })
       .returning();

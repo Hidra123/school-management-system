@@ -43,6 +43,9 @@ export async function PUT(req: Request, ctx: Ctx) {
   }
   if (typeof body.guardianName === "string") values.guardianName = body.guardianName.trim();
   if (typeof body.guardianPhone === "string") values.guardianPhone = body.guardianPhone.trim();
+  if (typeof body.guardianAddress === "string") values.guardianAddress = body.guardianAddress.trim();
+  if (body.dateOfBirth !== undefined)
+    values.dateOfBirth = typeof body.dateOfBirth === "string" && body.dateOfBirth ? body.dateOfBirth : null;
   if (body.enrollmentDate !== undefined)
     values.enrollmentDate =
       typeof body.enrollmentDate === "string" && body.enrollmentDate ? body.enrollmentDate : null;

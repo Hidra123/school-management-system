@@ -14,6 +14,7 @@ import {
   inputCls,
 } from "@/components/ui";
 import AppShell from "@/components/AppShell";
+import ImportStudentsModal from "@/components/ImportStudentsModal";
 import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
 
 type Student = {
@@ -23,8 +24,10 @@ type Student = {
   gender: "male" | "female";
   classId: number | null;
   className: string | null;
+  dateOfBirth: string | null;
   guardianName: string;
   guardianPhone: string;
+  guardianAddress: string;
   enrollmentDate: string | null;
   createdAt: string;
 };
@@ -36,8 +39,10 @@ const emptyForm = {
   name: "",
   gender: "male",
   classId: "",
+  dateOfBirth: "",
   guardianName: "",
   guardianPhone: "",
+  guardianAddress: "",
   enrollmentDate: "",
 };
 
@@ -45,6 +50,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editing, setEditing] = useState<Student | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
@@ -76,8 +82,10 @@ export default function StudentsPage() {
       name: s.name,
       gender: s.gender,
       classId: s.classId ? String(s.classId) : "",
+      dateOfBirth: s.dateOfBirth ?? "",
       guardianName: s.guardianName ?? "",
       guardianPhone: s.guardianPhone ?? "",
+      guardianAddress: s.guardianAddress ?? "",
       enrollmentDate: s.enrollmentDate ?? "",
     });
     setFormError(null);
@@ -94,8 +102,10 @@ export default function StudentsPage() {
         name: form.name,
         gender: form.gender,
         classId: form.classId,
+        dateOfBirth: form.dateOfBirth,
         guardianName: form.guardianName,
         guardianPhone: form.guardianPhone,
+        guardianAddress: form.guardianAddress,
         enrollmentDate: form.enrollmentDate,
       };
       if (editing) await putJSON(`/api/students/${editing.id}`, body);
@@ -130,6 +140,9 @@ export default function StudentsPage() {
         title="Students"
         subtitle={`${filtered.length} student${filtered.length === 1 ? "" : "s"}`}
       >
+        <button onClick={() => setImportOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100">
+          📤 Import from Excel
+        </button>
         <button onClick={openAdd} className={btnPrimary}>
           + Add Student
         </button>
@@ -278,6 +291,14 @@ export default function StudentsPage() {
               ))}
             </select>
           </Field>
+          <Field label="Date of Birth">
+            <input
+              type="date"
+              className={inputCls}
+              value={form.dateOfBirth}
+              onChange={(e) => setForm({ ...form, dateOfBirth: e.target.value })}
+            />
+          </Field>
           <Field label="Guardian Name">
             <input
               className={inputCls}
@@ -292,6 +313,14 @@ export default function StudentsPage() {
               value={form.guardianPhone}
               onChange={(e) => setForm({ ...form, guardianPhone: e.target.value })}
               placeholder="+255 7XX XXX XXX"
+            />
+          </Field>
+          <Field label="Guardian Address">
+            <input
+              className={inputCls}
+              value={form.guardianAddress}
+              onChange={(e) => setForm({ ...form, guardianAddress: e.target.value })}
+              placeholder="e.g. Rombo"
             />
           </Field>
           <Field label="Enrollment Date">
@@ -313,6 +342,16 @@ export default function StudentsPage() {
           </div>
         </form>
       </Modal>
+
+      <ImportStudentsModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => {
+          refresh();
+          classesFetch.refresh();
+        }}
+        classes={classList}
+      />
     </div>
     </AppShell>
   );

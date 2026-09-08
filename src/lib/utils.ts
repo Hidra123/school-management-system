@@ -59,7 +59,10 @@ export async function delJSON(url: string): Promise<void> {
 /** Simple hook to fetch data from an API and refresh it. */
 export function useFetch<T>(url: string | null) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Start in a loading state whenever a URL is provided so consumers don't
+  // briefly render an "empty" UI before the request effect has a chance to run
+  // (this matters a lot on slower/cold-start connections like Neon serverless).
+  const [loading, setLoading] = useState<boolean>(!!url);
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
 

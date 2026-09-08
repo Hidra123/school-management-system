@@ -1,6 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teachers } from "@/db/schema";
+import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
 
@@ -11,26 +12,30 @@ export async function GET() {
   const err = requirePermission(user, "subjects.view");
   if (err) return err;
 
-  const scope = await getTeacherScope(user);
+  try {
+    const scope = await getTeacherScope(user);
 
-  const query = db
-    .select({
-      id: subjects.id,
-      name: subjects.name,
-      code: subjects.code,
-      teacherId: subjects.teacherId,
-      teacherName: teachers.name,
-      createdAt: subjects.createdAt,
-    })
-    .from(subjects)
-    .leftJoin(teachers, eq(subjects.teacherId, teachers.id))
-    .orderBy(asc(subjects.name));
+    const query = db
+      .select({
+        id: subjects.id,
+        name: subjects.name,
+        code: subjects.code,
+        teacherId: subjects.teacherId,
+        teacherName: teachers.name,
+        createdAt: subjects.createdAt,
+      })
+      .from(subjects)
+      .leftJoin(teachers, eq(subjects.teacherId, teachers.id))
+      .orderBy(asc(subjects.name));
 
-  const rows = scope.scoped
-    ? await query.where(eq(subjects.teacherId, scope.teacherId!))
-    : await query;
+    const rows = scope.scoped
+      ? await query.where(eq(subjects.teacherId, scope.teacherId!))
+      : await query;
 
-  return Response.json(rows);
+    return Response.json(rows);
+  } catch (e) {
+    return dbErrorResponse(e, "load subjects");
+  }
 }
 
 export async function POST(req: Request) {

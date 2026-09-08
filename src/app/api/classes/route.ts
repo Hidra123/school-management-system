@@ -1,6 +1,7 @@
 import { asc, count, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, students, teacherClasses } from "@/db/schema";
+import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
 
@@ -11,37 +12,41 @@ export async function GET() {
   const err = requirePermission(user, "classes.view");
   if (err) return err;
 
-  const scope = await getTeacherScope(user);
+  try {
+    const scope = await getTeacherScope(user);
 
-  let all: (typeof classes.$inferSelect)[];
-  if (scope.scoped) {
-    if (scope.classIds.length === 0) {
-      return Response.json([]);
+    let all: (typeof classes.$inferSelect)[];
+    if (scope.scoped) {
+      if (scope.classIds.length === 0) {
+        return Response.json([]);
+      }
+      all = await db
+        .select({
+          id: classes.id,
+          name: classes.name,
+          section: classes.section,
+          capacity: classes.capacity,
+          createdAt: classes.createdAt,
+        })
+        .from(classes)
+        .innerJoin(teacherClasses, eq(teacherClasses.classId, classes.id))
+        .where(inArray(classes.id, scope.classIds))
+        .orderBy(asc(classes.name));
+    } else {
+      all = await db.select().from(classes).orderBy(asc(classes.name));
     }
-    all = await db
-      .select({
-        id: classes.id,
-        name: classes.name,
-        section: classes.section,
-        capacity: classes.capacity,
-        createdAt: classes.createdAt,
-      })
-      .from(classes)
-      .innerJoin(teacherClasses, eq(teacherClasses.classId, classes.id))
-      .where(inArray(classes.id, scope.classIds))
-      .orderBy(asc(classes.name));
-  } else {
-    all = await db.select().from(classes).orderBy(asc(classes.name));
-  }
 
-  const counts = await db
-    .select({ classId: students.classId, n: count() })
-    .from(students)
-    .groupBy(students.classId);
-  const map = new Map(counts.map((c) => [c.classId, c.n]));
-  return Response.json(
-    all.map((c) => ({ ...c, studentCount: c.id !== null ? (map.get(c.id) ?? 0) : 0 })),
-  );
+    const counts = await db
+      .select({ classId: students.classId, n: count() })
+      .from(students)
+      .groupBy(students.classId);
+    const map = new Map(counts.map((c) => [c.classId, c.n]));
+    return Response.json(
+      all.map((c) => ({ ...c, studentCount: c.id !== null ? (map.get(c.id) ?? 0) : 0 })),
+    );
+  } catch (e) {
+    return dbErrorResponse(e, "load classes");
+  }
 }
 
 export async function POST(req: Request) {

@@ -1,6 +1,7 @@
 import { asc, count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teacherClasses, teachers, users } from "@/db/schema";
+import { dbErrorResponse } from "@/lib/apiError";
 import { createMemberAccount, getSessionUser, requireAuth } from "@/lib/auth";
 import { ROLE_PRESETS } from "@/lib/permissions";
 import { teacherSelect } from "@/lib/teachers";
@@ -12,34 +13,38 @@ export async function GET() {
   const err = requireAuth(user);
   if (err) return err;
 
-  const rows = await db
-    .select(teacherSelect())
-    .from(teachers)
-    .leftJoin(users, eq(teachers.userId, users.id))
-    .orderBy(asc(teachers.name));
+  try {
+    const rows = await db
+      .select(teacherSelect())
+      .from(teachers)
+      .leftJoin(users, eq(teachers.userId, users.id))
+      .orderBy(asc(teachers.name));
 
-  const subjectCounts = await db
-    .select({ teacherId: subjects.teacherId, n: count() })
-    .from(subjects)
-    .groupBy(subjects.teacherId);
-  const classCounts = await db
-    .select({ teacherId: teacherClasses.teacherId, n: count() })
-    .from(teacherClasses)
-    .groupBy(teacherClasses.teacherId);
-  const subjMap = new Map(subjectCounts.map((s) => [s.teacherId, s.n]));
-  const classMap = new Map(classCounts.map((c) => [c.teacherId, c.n]));
+    const subjectCounts = await db
+      .select({ teacherId: subjects.teacherId, n: count() })
+      .from(subjects)
+      .groupBy(subjects.teacherId);
+    const classCounts = await db
+      .select({ teacherId: teacherClasses.teacherId, n: count() })
+      .from(teacherClasses)
+      .groupBy(teacherClasses.teacherId);
+    const subjMap = new Map(subjectCounts.map((s) => [s.teacherId, s.n]));
+    const classMap = new Map(classCounts.map((c) => [c.teacherId, c.n]));
 
-  const isAdmin = user!.role === "admin";
-  return Response.json(
-    rows.map((r) => ({
-      ...r,
-      hasAccount: r.userId !== null,
-      // Only the admin may see the stored raw password
-      rawPassword: isAdmin ? r.rawPassword : null,
-      subjectCount: subjMap.get(r.id) ?? 0,
-      classCount: classMap.get(r.id) ?? 0,
-    })),
-  );
+    const isAdmin = user!.role === "admin";
+    return Response.json(
+      rows.map((r) => ({
+        ...r,
+        hasAccount: r.userId !== null,
+        // Only the admin may see the stored raw password
+        rawPassword: isAdmin ? r.rawPassword : null,
+        subjectCount: subjMap.get(r.id) ?? 0,
+        classCount: classMap.get(r.id) ?? 0,
+      })),
+    );
+  } catch (e) {
+    return dbErrorResponse(e, "load teachers");
+  }
 }
 
 export async function POST(req: Request) {

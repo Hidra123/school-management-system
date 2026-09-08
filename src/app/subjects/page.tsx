@@ -99,7 +99,15 @@ export default function SubjectsPage() {
       ) : error && !data ? (
         <EmptyState icon="⚠️" title="Failed to load" message={error} />
       ) : list.length === 0 ? (
-        <EmptyState icon="📚" title="No subjects yet" message="Add the first subject." />
+        <EmptyState
+          icon="📚"
+          title={user?.role === "member" ? "No subjects assigned yet" : "No subjects yet"}
+          message={
+            user?.role === "member"
+              ? "The admin has not assigned any subject to you yet. Ask the admin to go to Manage Teachers → 📚 Assign Subjects & Classes."
+              : "Add the first subject."
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {list.map((s) => (

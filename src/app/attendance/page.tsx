@@ -7,7 +7,7 @@ import AttendanceReportTab from "@/components/attendance/AttendanceReportTab";
 import DailyEntryTab from "@/components/attendance/DailyEntryTab";
 import DaysSavedTab from "@/components/attendance/DaysSavedTab";
 import MonthlyRegisterTab from "@/components/attendance/MonthlyRegisterTab";
-import { EmptyState, PageHeader } from "@/components/ui";
+import { EmptyState, Loader, PageHeader } from "@/components/ui";
 import { staffRoleLabel } from "@/lib/permissions";
 import { cls, useFetch } from "@/lib/utils";
 
@@ -64,13 +64,21 @@ export default function AttendancePage() {
         ))}
       </div>
 
-      {!classesFetch.loading && classList.length === 0 ? (
+      {classesFetch.loading ? (
+        <Loader label="Loading your classes..." />
+      ) : classesFetch.error ? (
+        <EmptyState
+          icon="⚠️"
+          title="Could not load classes"
+          message={`${classesFetch.error} — click Refresh below or contact the admin if this keeps happening.`}
+        />
+      ) : classList.length === 0 ? (
         <EmptyState
           icon="🏫"
-          title="No classes available"
+          title="No classes assigned yet"
           message={
             user?.role === "member"
-              ? "You have not been assigned any classes yet. Ask the admin to assign you a class."
+              ? "The admin has not assigned any class to you yet. Ask the admin to go to Manage Teachers → 📚 Assign Subjects & Classes and select your class(es)."
               : "Add a class first under Manage Classes."
           }
         />
@@ -81,6 +89,17 @@ export default function AttendancePage() {
           {tab === "report" && <AttendanceReportTab classes={classList} />}
           {tab === "days" && <DaysSavedTab classes={classList} />}
         </>
+      )}
+
+      {(classesFetch.error || classList.length === 0) && !classesFetch.loading && (
+        <div className="mt-4 flex justify-center">
+          <button
+            onClick={() => classesFetch.refresh()}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
+          >
+            🔄 Refresh
+          </button>
+        </div>
       )}
     </AppShell>
   );

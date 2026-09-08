@@ -108,8 +108,12 @@ export default function ClassesPage() {
       ) : list.length === 0 ? (
         <EmptyState
           icon="🏫"
-          title="No classes yet"
-          message="Start by adding the first class."
+          title={user?.role === "member" ? "No classes assigned yet" : "No classes yet"}
+          message={
+            user?.role === "member"
+              ? "The admin has not assigned any class to you yet. Ask the admin to go to Manage Teachers → 📚 Assign Subjects & Classes."
+              : "Start by adding the first class."
+          }
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -1,6 +1,7 @@
 import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, students } from "@/db/schema";
+import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
@@ -18,60 +19,64 @@ export async function GET(req: Request) {
   const err = requirePermission(user, "students.view");
   if (err) return err;
 
-  const scope = await getTeacherScope(user);
+  try {
+    const scope = await getTeacherScope(user);
 
-  const url = new URL(req.url);
-  const classIdRaw = url.searchParams.get("classId");
-  const q = url.searchParams.get("q")?.trim() ?? "";
+    const url = new URL(req.url);
+    const classIdRaw = url.searchParams.get("classId");
+    const q = url.searchParams.get("q")?.trim() ?? "";
 
-  const requestedClassId =
-    classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw)) ? Number(classIdRaw) : null;
+    const requestedClassId =
+      classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw)) ? Number(classIdRaw) : null;
 
-  // A scoped teacher asking for a class outside their assignment gets nothing.
-  if (requestedClassId !== null && !classAllowed(scope, requestedClassId)) {
-    return Response.json([]);
+    // A scoped teacher asking for a class outside their assignment gets nothing.
+    if (requestedClassId !== null && !classAllowed(scope, requestedClassId)) {
+      return Response.json([]);
+    }
+    // A scoped teacher with no assigned classes at all has nothing to see.
+    if (scope.scoped && scope.classIds.length === 0) {
+      return Response.json([]);
+    }
+
+    const conditions = [];
+    if (requestedClassId !== null) {
+      conditions.push(eq(students.classId, requestedClassId));
+    } else if (scope.scoped) {
+      conditions.push(inArray(students.classId, scope.classIds));
+    }
+    if (q) {
+      conditions.push(
+        or(
+          ilike(students.name, `%${q}%`),
+          ilike(students.admissionNo, `%${q}%`),
+          ilike(students.guardianName, `%${q}%`),
+          ilike(students.guardianPhone, `%${q}%`),
+        ),
+      );
+    }
+
+    const rows = await db
+      .select({
+        id: students.id,
+        admissionNo: students.admissionNo,
+        name: students.name,
+        gender: students.gender,
+        classId: students.classId,
+        className: classes.name,
+        guardianName: students.guardianName,
+        guardianPhone: students.guardianPhone,
+        enrollmentDate: students.enrollmentDate,
+        createdAt: students.createdAt,
+      })
+      .from(students)
+      .leftJoin(classes, eq(students.classId, classes.id))
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(students.createdAt));
+
+    return Response.json(rows);
+  } catch (e) {
+    return dbErrorResponse(e, "load students");
   }
-  // A scoped teacher with no assigned classes at all has nothing to see.
-  if (scope.scoped && scope.classIds.length === 0) {
-    return Response.json([]);
-  }
-
-  const conditions = [];
-  if (requestedClassId !== null) {
-    conditions.push(eq(students.classId, requestedClassId));
-  } else if (scope.scoped) {
-    conditions.push(inArray(students.classId, scope.classIds));
-  }
-  if (q) {
-    conditions.push(
-      or(
-        ilike(students.name, `%${q}%`),
-        ilike(students.admissionNo, `%${q}%`),
-        ilike(students.guardianName, `%${q}%`),
-        ilike(students.guardianPhone, `%${q}%`),
-      ),
-    );
-  }
-
-  const rows = await db
-    .select({
-      id: students.id,
-      admissionNo: students.admissionNo,
-      name: students.name,
-      gender: students.gender,
-      classId: students.classId,
-      className: classes.name,
-      guardianName: students.guardianName,
-      guardianPhone: students.guardianPhone,
-      enrollmentDate: students.enrollmentDate,
-      createdAt: students.createdAt,
-    })
-    .from(students)
-    .leftJoin(classes, eq(students.classId, classes.id))
-    .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(desc(students.createdAt));
-
-  return Response.json(rows);
 }
 
 export async function POST(req: Request) {

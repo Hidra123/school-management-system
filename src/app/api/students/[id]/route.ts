@@ -63,7 +63,7 @@ export async function PUT(req: Request, ctx: Ctx) {
     return Response.json(updated);
   } catch {
     return Response.json(
-      { error: "This admission number is already in use. Please choose another one." },
+      { error: "This admission number is already in use in this class. Please choose another one." },
       { status: 409 },
     );
   }

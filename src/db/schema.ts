@@ -116,7 +116,11 @@ export const students = pgTable(
   "students",
   {
     id: serial("id").primaryKey(),
-    admissionNo: varchar("admission_no", { length: 30 }).notNull().unique(),
+    // Admission numbers are only unique WITHIN a class (many schools restart
+    // numbering per class, e.g. every class has its own S6790-001, S6790-002...),
+    // so there is intentionally NO global unique() on this column — see the
+    // composite index below instead.
+    admissionNo: varchar("admission_no", { length: 30 }).notNull(),
     name: varchar("name", { length: 120 }).notNull(),
     gender: genderEnum("gender").notNull().default("male"),
     classId: integer("class_id").references(() => classes.id, {
@@ -129,7 +133,10 @@ export const students = pgTable(
     enrollmentDate: date("enrollment_date", { mode: "string" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("students_admission_no_idx").on(t.admissionNo)],
+  // Admission number must be unique per class (not school-wide). Students
+  // with no class assigned (classId IS NULL) are exempt from this check,
+  // since NULL values are never considered equal in a Postgres unique index.
+  (t) => [uniqueIndex("students_class_admission_no_idx").on(t.classId, t.admissionNo)],
 );
 
 export const attendance = pgTable(

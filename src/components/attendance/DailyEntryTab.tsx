@@ -49,7 +49,10 @@ export default function DailyEntryTab({ classes }: { classes: ClassRow[] }) {
   );
   const studentsFetch = useFetch<StudentLight[]>(studentsUrl);
   const attFetch = useFetch<AttRow[]>(attUrl);
-  const studentList = studentsFetch.data ?? [];
+  // IMPORTANT: memoize so this has a STABLE reference when data is null —
+  // otherwise `?? []` creates a brand-new array every render, which (as a
+  // dependency of the effect below) triggers an infinite render loop.
+  const studentList = useMemo(() => studentsFetch.data ?? [], [studentsFetch.data]);
 
   const key = `${classId}|${date}`;
 
@@ -193,6 +196,8 @@ export default function DailyEntryTab({ classes }: { classes: ClassRow[] }) {
           <EmptyState icon="🗂️" title="Select class & date" message="Choose a class and date, then click Load to start marking attendance." />
         ) : studentsFetch.loading ? (
           <Loader label="Loading students..." />
+        ) : studentsFetch.error ? (
+          <EmptyState icon="⚠️" title="Could not load students" message={studentsFetch.error} />
         ) : studentList.length === 0 ? (
           <EmptyState icon="👨‍🎓" title="No students in this class" message="Add students to this class first." />
         ) : (

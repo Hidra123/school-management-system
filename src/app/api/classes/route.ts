@@ -2,14 +2,21 @@ import { asc, count, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, students, teacherClasses } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
-import { getSessionUser, requirePermission } from "@/lib/auth";
+import { getSessionUser, requireAuth, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
+// NOTE: intentionally only requires being logged in (not the granular
+// "classes.view" permission). Many pages — Attendance, Submit Scores, Fees,
+// Students — need the class list purely as helper/dropdown data, and the
+// results are already correctly scoped to what a teacher is allowed to see
+// (via getTeacherScope). Requiring a separate "classes.view" permission on
+// top of the page's own permission (e.g. "attendance.view") just creates
+// confusing dead-ends where an admin forgets to also grant it.
 export async function GET() {
   const user = await getSessionUser();
-  const err = requirePermission(user, "classes.view");
+  const err = requireAuth(user);
   if (err) return err;
 
   try {

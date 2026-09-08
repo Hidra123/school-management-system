@@ -79,8 +79,13 @@ export default function GradesPage() {
 
   const entryStudents = useFetch<StudentLight[]>(entryStudentsUrl);
   const entryGrades = useFetch<GradeRow[]>(entryGradesUrl);
-  const studentList = entryStudents.data ?? [];
-  const existingGrades = entryGrades.data ?? [];
+  // IMPORTANT: memoize so this has a STABLE reference when data is null —
+  // otherwise `?? []` creates a brand-new array every render, which (as a
+  // dependency of the effect below) triggers an infinite render loop that
+  // pegs the JS main thread and makes the whole app (incl. the sidebar)
+  // appear "stuck" until a hard navigation happens.
+  const studentList = useMemo(() => entryStudents.data ?? [], [entryStudents.data]);
+  const existingGrades = useMemo(() => entryGrades.data ?? [], [entryGrades.data]);
 
   useEffect(() => {
     if (!studentList.length) {
@@ -213,6 +218,17 @@ export default function GradesPage() {
             {entryErr}
           </p>
         )}
+        {(classesFetch.error || subjectsFetch.error) && (
+          <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-700">
+            <span>⚠️ {classesFetch.error || subjectsFetch.error}</span>
+            <button
+              onClick={() => { classesFetch.refresh(); subjectsFetch.refresh(); }}
+              className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50"
+            >
+              🔄 Refresh
+            </button>
+          </div>
+        )}
 
         {canEnter ? (
           <>
@@ -260,6 +276,12 @@ export default function GradesPage() {
               </button>
             </div>
           </>
+        ) : classId && subjectId && entryStudents.loading ? (
+          <Loader label="Loading students..." />
+        ) : classId && subjectId && entryStudents.error ? (
+          <EmptyState icon="⚠️" title="Could not load students" message={entryStudents.error} />
+        ) : classId && subjectId && studentList.length === 0 ? (
+          <EmptyState icon="👨‍🎓" title="No students in this class" message="Add students to this class first." />
         ) : (
           <EmptyState
             icon="📝"

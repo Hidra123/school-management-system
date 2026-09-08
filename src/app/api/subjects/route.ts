@@ -2,14 +2,17 @@ import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teachers } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
-import { getSessionUser, requirePermission } from "@/lib/auth";
+import { getSessionUser, requireAuth, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
+// NOTE: intentionally only requires being logged in (not the granular
+// "subjects.view" permission) — see the matching comment in
+// src/app/api/classes/route.ts for the rationale.
 export async function GET() {
   const user = await getSessionUser();
-  const err = requirePermission(user, "subjects.view");
+  const err = requireAuth(user);
   if (err) return err;
 
   try {

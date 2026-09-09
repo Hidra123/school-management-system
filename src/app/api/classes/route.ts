@@ -14,13 +14,19 @@ export const dynamic = "force-dynamic";
 // (via getTeacherScope). Requiring a separate "classes.view" permission on
 // top of the page's own permission (e.g. "attendance.view") just creates
 // confusing dead-ends where an admin forgets to also grant it.
-export async function GET() {
+//
+// ?strict=1 → Academic Master included: only THEIR assigned classes are
+// returned. Submit Scores (/grades) uses this so the Academic Master sees
+// only the classes the admin assigned them, while the Students page (which
+// needs ALL classes so they can admit students anywhere) keeps the default.
+export async function GET(req: Request) {
   const user = await getSessionUser();
   const err = requireAuth(user);
   if (err) return err;
 
   try {
-    const scope = await getTeacherScope(user);
+    const strict = new URL(req.url).searchParams.get("strict") === "1";
+    const scope = await getTeacherScope(user, { strictForAcademicMaster: strict });
 
     let all: (typeof classes.$inferSelect)[];
     if (scope.scoped) {

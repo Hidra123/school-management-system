@@ -2,7 +2,7 @@ import { and, asc, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db";
 import { attendance, classes, students } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
-import { getSessionUser, requirePermission } from "@/lib/auth";
+import { getSessionUser, requireAnyPermission } from "@/lib/auth";
 import { daysInMonth, ymd } from "@/lib/attendanceHelpers";
 import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
@@ -10,7 +10,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
-  const err = requirePermission(user, "attendance.view");
+  // Attendance Tracking Centre (Academic Master / admin: attendance.trackall)
+  // AND the member Attendance page (teachers: attendance.view) both use this route.
+  const err = requireAnyPermission(user, ["attendance.view", "attendance.trackall"]);
   if (err) return err;
 
   try {

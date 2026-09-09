@@ -26,7 +26,7 @@ export async function PUT(req: Request, ctx: Ctx) {
   const user = await getSessionUser();
   const err = requirePermission(user, "grades.submit");
   if (err) return err;
-  const scope = await getTeacherScope(user);
+  const scope = await getTeacherScope(user, { strictForAcademicMaster: true });
 
   const { id } = await ctx.params;
   const num = Number(id);
@@ -59,7 +59,7 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const user = await getSessionUser();
   const err = requirePermission(user, "grades.submit");
   if (err) return err;
-  const scope = await getTeacherScope(user);
+  const scope = await getTeacherScope(user, { strictForAcademicMaster: true });
 
   const { id } = await ctx.params;
   const num = Number(id);

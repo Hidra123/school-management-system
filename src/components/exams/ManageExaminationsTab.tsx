@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ActionButton, Badge, EmptyState, Loader, inputCls, useActionState } from "@/components/ui";
 import { cls, delJSON, postJSON, putJSON, shortDate, useFetch } from "@/lib/utils";
+import { EXAM_TYPES, examTypeLabel, examTypeShort, examTypeTone, normalizeExamType } from "@/lib/examTypes";
 
 type ExamRow = {
   id: number;
@@ -47,7 +48,8 @@ export default function ManageExaminationsTab() {
     setEditingId(e.id);
     setForm({
       name: e.name,
-      examType: e.examType,
+      // Old rows may hold legacy types (MOCK/NECTA/OTHER) — fold them into SE/CA.
+      examType: normalizeExamType(e.examType),
       academicYear: e.academicYear,
       startDate: e.startDate ?? "",
       endDate: e.endDate ?? "",
@@ -61,6 +63,10 @@ export default function ManageExaminationsTab() {
   async function save() {
     if (!form.name.trim()) {
       setFormError("Exam name is required.");
+      return;
+    }
+    if (!EXAM_TYPES.some((t) => t.value === form.examType)) {
+      setFormError("Exam Type must be either SE (School Examination) or CA (Continuously Assessment).");
       return;
     }
     setFormError(null);
@@ -113,10 +119,21 @@ export default function ManageExaminationsTab() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Exam Type *</label>
-              <select className={inputCls} value={form.examType} onChange={(e) => setForm({ ...form, examType: e.target.value })}>
-                <option value="SE">School Examination (SE)</option>
-                <option value="CAs">Continuous Assessment (CAs)</option>
+              {/* ONLY two choices: SE (School Examination) and CA (Continuously Assessment) */}
+              <select
+                className={inputCls}
+                value={form.examType}
+                onChange={(e) => setForm({ ...form, examType: e.target.value })}
+              >
+                {EXAM_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
               </select>
+              <p className="mt-1 text-[11px] text-slate-400">
+                {EXAM_TYPES.find((t) => t.value === form.examType)?.hint}
+              </p>
             </div>
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Year</label>
@@ -225,7 +242,9 @@ export default function ManageExaminationsTab() {
                       {e.name}
                       <p className="text-[11px] font-normal text-slate-400">{e.appliesToAllClasses ? "All classes" : e.classNames.join(", ")}</p>
                     </td>
-                    <td className="px-3 py-2.5"><Badge tone="blue">{e.examType}</Badge></td>
+                    <td className="px-3 py-2.5" title={examTypeLabel(e.examType)}>
+                      <Badge tone={examTypeTone(e.examType)}>{examTypeShort(e.examType)}</Badge>
+                    </td>
                     <td className="px-3 py-2.5 text-slate-600">{e.academicYear || "—"}</td>
                     <td className="px-3 py-2.5 text-xs text-slate-500">{shortDate(e.startDate)} – {shortDate(e.endDate)}</td>
                     <td className="px-3 py-2.5">

@@ -24,12 +24,14 @@ type GradeRow = {
   subjectId: number;
   examType: string;
   term: string;
+  examId: number | null;
   score: number;
   createdAt: string;
   studentName: string;
   admissionNo: string;
   subjectName: string;
 };
+type ActiveExam = { id: number; name: string; examType: string; academicYear: string; classIds: number[]; appliesToAllClasses: boolean };
 
 const EXAM_TYPES = [
   { key: "assignment", label: "Assignment" },
@@ -50,6 +52,7 @@ export default function GradesPage() {
   const [subjectId, setSubjectId] = useState("");
   const [examType, setExamType] = useState("midterm");
   const [term, setTerm] = useState("Term 1");
+  const [examId, setExamId] = useState("");
   const [scores, setScores] = useState<Record<number, string>>({});
   const [saving, setSaving] = useState(false);
   const [entryMsg, setEntryMsg] = useState<string | null>(null);
@@ -62,8 +65,18 @@ export default function GradesPage() {
 
   const classesFetch = useFetch<ClassRow[]>("/api/classes");
   const subjectsFetch = useFetch<SubjectRow[]>("/api/subjects");
+  const activeExamsFetch = useFetch<ActiveExam[]>("/api/exams/active");
   const classList = classesFetch.data ?? [];
   const subjectList = subjectsFetch.data ?? [];
+  const allActiveExams = activeExamsFetch.data ?? [];
+  // Exams applicable to the currently selected class (or all exams if none selected yet).
+  const examOptions = useMemo(
+    () =>
+      allActiveExams.filter(
+        (e) => !classId || e.appliesToAllClasses || e.classIds.includes(Number(classId)),
+      ),
+    [allActiveExams, classId],
+  );
 
   const entryStudentsUrl = useMemo(
     () => (classId ? `/api/students?classId=${classId}` : null),
@@ -122,7 +135,13 @@ export default function GradesPage() {
           return { studentId: s.id, score: Math.min(100, Math.max(0, n)) };
         })
         .filter((x): x is { studentId: number; score: number } => x !== null);
-      await postJSON("/api/grades", { subjectId: Number(subjectId), examType, term, entries });
+      await postJSON("/api/grades", {
+        subjectId: Number(subjectId),
+        examType,
+        term,
+        examId: examId || null,
+        entries,
+      });
       setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}).`);
       entryGrades.refresh();
     } catch (err) {
@@ -165,7 +184,7 @@ export default function GradesPage() {
       {/* Bulk entry */}
       <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-base font-bold text-slate-900">✍️ Enter Grades (by Class)</h2>
-        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Field label="Class">
             <select value={classId} onChange={(e) => setClassId(e.target.value)} className={inputCls}>
               <option value="">— Select —</option>
@@ -184,6 +203,17 @@ export default function GradesPage() {
                 <option key={s.id} value={s.id}>
                   {s.name}
                   {s.code ? ` (${s.code})` : ""}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Examination">
+            <select value={examId} onChange={(e) => setExamId(e.target.value)} className={inputCls}>
+              <option value="">— None (ad-hoc) —</option>
+              {examOptions.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                  {e.academicYear ? ` (${e.academicYear})` : ""}
                 </option>
               ))}
             </select>
@@ -207,6 +237,11 @@ export default function GradesPage() {
             </select>
           </Field>
         </div>
+        {examOptions.length > 0 && (
+          <p className="mt-2 text-xs text-slate-500">
+            💡 Select an Examination above to link these scores to the "Examinations" module so the Academic Master can publish class results and report cards from them.
+          </p>
+        )}
 
         {entryMsg && (
           <p className="mt-4 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-semibold text-emerald-700">

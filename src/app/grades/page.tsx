@@ -113,18 +113,27 @@ export default function GradesPage() {
 
   // STEP 4 options: active exams tied to the selected class AND the selected
   // category (SE/CA). "appliesToAllClasses" = active for every class.
+  // Active exams for the selected class (all categories — category filtering
+  // happens in step 3 so the dropdown only shows categories that HAVE exams).
   const examOptions = useMemo(
     () =>
       allActiveExams.filter(
-        (e) =>
-          e.examType === examType &&
-          (!classId || e.appliesToAllClasses || e.classIds.includes(Number(classId))),
+        (e) => !classId || e.appliesToAllClasses || e.classIds.includes(Number(classId)),
       ),
-    [allActiveExams, examType, classId],
+    [allActiveExams, classId],
+  );
+  // Exam types (SE / CA) that actually have ACTIVE exams for this class.
+  const activeExamTypes = useMemo(
+    () => [...new Set(examOptions.map((e) => e.examType))],
+    [examOptions],
+  );
+  const examOptionsForType = useMemo(
+    () => examOptions.filter((e) => e.examType === examType),
+    [examOptions, examType],
   );
   const selectedExam = useMemo(
-    () => examOptions.find((e) => String(e.id) === examId) ?? null,
-    [examOptions, examId],
+    () => examOptionsForType.find((e) => String(e.id) === examId) ?? null,
+    [examOptionsForType, examId],
   );
 
   // ---------- Steps status ----------
@@ -133,6 +142,17 @@ export default function GradesPage() {
   const step3Done = !!examType;
   const step4Done = !!examId;
   const allStepsDone = step1Done && step2Done && step3Done && step4Done;
+
+  // Safety: if the chosen category is no longer available for the selected
+  // class (e.g. class changed and SE has no active exam for it), reset it so
+  // the user cannot proceed with a hidden/disabled combination.
+  useEffect(() => {
+    if (examType && examOptions.length > 0 && !activeExamTypes.includes(examType)) {
+      setExamType("");
+      setExamId("");
+      setScores({});
+    }
+  }, [examType, examOptions, activeExamTypes]);
 
   const entryStudentsUrl = useMemo(
     () => (classId ? `/api/students?classId=${classId}&strict=1` : null),
@@ -267,7 +287,7 @@ export default function GradesPage() {
             </div>
             <div className="space-y-3 p-4">
               {stepBox(1, "Select Class", step1Done, true, (
-                <select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId(""); setExamId(""); setScores({}); }} className={inputCls}>
+                <select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId(""); setExamType(""); setExamId(""); setScores({}); }} className={inputCls}>
                   <option value="">— Select Class —</option>
                   {classList.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -304,20 +324,26 @@ export default function GradesPage() {
                 <>
                   <select
                     value={examType}
-                    disabled={!step2Done}
+                    disabled={!step2Done || examOptions.length === 0}
                     onChange={(e) => { setExamType(e.target.value); setExamId(""); setScores({}); }}
-                    className={cls(inputCls, !step2Done && "opacity-50")}
+                    className={cls(inputCls, (!step2Done || examOptions.length === 0) && "opacity-50")}
                   >
                     <option value="">— Select Category —</option>
-                    {EXAM_TYPES.map((t) => (
+                    {/* Only exam types that HAVE an active exam for this class */}
+                    {EXAM_TYPES.filter((t) => activeExamTypes.includes(t.value)).map((t) => (
                       <option key={t.value} value={t.value}>
                         {t.label}
                       </option>
                     ))}
                   </select>
                   <p className="mt-1 text-[11px] text-slate-400">
-                    Exam Category = Exam Type: School Examination (SE) or Continuously Assessment (CAs).
+                    Exam Category = Exam Type. Only categories with ACTIVE exams appear here.
                   </p>
+                  {step2Done && examOptions.length === 0 && (
+                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
+                      ⚠️ There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
+                    </p>
+                  )}
                 </>
               ))}
 
@@ -330,7 +356,7 @@ export default function GradesPage() {
                     className={cls(inputCls, !step3Done && "opacity-50")}
                   >
                     <option value="">— Select Exam —</option>
-                    {examOptions.map((e) => (
+                    {examOptionsForType.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.name}
                         {e.academicYear ? ` (${e.academicYear})` : ""}
@@ -340,7 +366,7 @@ export default function GradesPage() {
                   <p className="mt-1 text-[11px] text-slate-400">
                     Only <b>ACTIVE</b> examinations of the selected category appear here.
                   </p>
-                  {step3Done && examOptions.length === 0 && (
+                  {step3Done && examOptionsForType.length === 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-amber-700">
                       ⚠️ There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
                     </p>

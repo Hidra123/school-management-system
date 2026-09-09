@@ -81,6 +81,26 @@ export default function ScoreTrackingPage() {
   const stats = report.data?.stats ?? { totalAssignments: 0, submitted: 0, pending: 0, completionRate: 0 };
   const exams = report.data?.exams ?? [];
 
+  // ---------- Print report helpers ----------
+  const generatedAt = new Date().toLocaleString("en-GB", {
+    day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+  const classNameLabel = classId
+    ? (classesFetch.data?.find((c) => String(c.id) === classId)?.name ?? "Class " + classId)
+    : "All Classes";
+  const examTypeLabel = examType
+    ? (EXAM_TYPES.find((t) => t.value === examType)?.label ?? examType)
+    : "All Types";
+  const examNameLabel = examId
+    ? (examsFetch.data?.find((e) => String(e.id) === examId)?.name ?? "Exam " + examId)
+    : "All Exams";
+  const filterSummary = `${classNameLabel} · ${examTypeLabel} · ${examNameLabel} · ${
+    year.trim() ? "Academic Year " + year.trim() : "All Years"
+  }`;
+  const examListLabel = exams.length
+    ? exams.map((e) => `${e.name} (${e.examType})`).join(", ")
+    : "—";
+
   // ---- Group by class (Submission Progress) ----
   const classGroups = useMemo(() => {
     const m = new Map<string, TrackRow[]>();
@@ -131,7 +151,7 @@ export default function ScoreTrackingPage() {
 
   return (
     <AppShell permission="grades.track">
-      <div className="space-y-5">
+      <div className="space-y-5 print:hidden">
         <PageHeader icon="📊" title="Score Tracking" subtitle="Track and analyze student score trends">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
             {roleBadge}
@@ -333,7 +353,170 @@ export default function ScoreTrackingPage() {
             </div>
           </div>
         )}
+
+        {/* ==================== PRINT-ONLY REPORT (modern, letterhead style) ==================== */}
+        {report.data && (
+          <div className="hidden print:block">
+            {/* Letterhead */}
+            <div className="flex items-center justify-between gap-4 border-b-4 border-indigo-600 pb-4">
+              <div className="flex items-center gap-4">
+                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-3xl shadow-md">
+                  🎓
+                </div>
+                <div>
+                  <h1 className="text-3xl font-black tracking-tight text-slate-900">SHULEHUB SCHOOL</h1>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600">
+                    Score Submission Tracking Report
+                  </p>
+                </div>
+              </div>
+              <div className="text-right text-[10px] leading-relaxed text-slate-500">
+                <p className="font-bold uppercase tracking-wide text-slate-700">Generated: {generatedAt}</p>
+                <p>Filters: <span className="font-semibold text-slate-700">{filterSummary}</span></p>
+                <p>Exams: <span className="font-semibold text-slate-700">{examListLabel}</span></p>
+              </div>
+            </div>
+
+            {/* KPI band */}
+            <div className="mt-5 grid grid-cols-4 gap-3">
+              {[
+                { label: "Total Assignments", value: stats.totalAssignments, border: "border-l-indigo-600", text: "text-indigo-700" },
+                { label: "Scores Submitted", value: stats.submitted, border: "border-l-emerald-600", text: "text-emerald-700" },
+                { label: "Pending", value: stats.pending, border: "border-l-amber-500", text: "text-amber-600" },
+                { label: "Completion Rate", value: `${stats.completionRate}%`, border: "border-l-sky-600", text: "text-sky-700" },
+              ].map((k) => (
+                <div key={k.label} className={`rounded-xl border border-slate-200 border-l-4 ${k.border} bg-white px-4 py-3 shadow-sm`}>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{k.label}</p>
+                  <p className={`mt-1 text-2xl font-black ${k.text}`}>{k.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Section 1 — Detailed Score View */}
+            <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
+              <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
+              1 · Detailed Score View ({rows.length} assignments)
+            </h2>
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="bg-slate-800 text-left text-white">
+                  <th className="px-2 py-1.5 font-bold">#</th>
+                  <th className="px-2 py-1.5 font-bold">Class</th>
+                  <th className="px-2 py-1.5 font-bold">Subject</th>
+                  <th className="px-2 py-1.5 font-bold">Exam</th>
+                  <th className="px-2 py-1.5 font-bold">Teacher</th>
+                  <th className="px-2 py-1.5 text-right font-bold">Students</th>
+                  <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
+                  <th className="px-2 py-1.5 font-bold">Status</th>
+                  <th className="px-2 py-1.5 font-bold">%</th>
+                  <th className="px-2 py-1.5 font-bold">Submitted At</th>
+                </tr>
+              </thead>
+              <tbody className="border border-slate-200">
+                {rows.map((r, i) => (
+                  <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                    <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">
+                      {r.className}{r.section ? ` ${r.section}` : ""}
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.subjectName}</td>
+                    <td className="border-b border-slate-200 px-2 py-1">
+                      <span className="inline-block rounded-full bg-indigo-100 px-1.5 py-0.5 text-[8px] font-black text-indigo-700">
+                        {r.examType}
+                      </span>
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.teacherName}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{r.students}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-slate-800">
+                      {r.submitted}/{r.expected}
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1">
+                      <span className={r.status === "submitted"
+                        ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
+                        : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className={r.status === "submitted" ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-amber-400"}
+                            style={{ width: `${Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-700">
+                          {Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{fmtDT(r.submittedAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Section 2 — By Teacher */}
+            <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
+              <span className="inline-block h-4 w-1.5 rounded-full bg-violet-600" />
+              2 · Submission by Teacher ({teacherAgg.length} teachers)
+            </h2>
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="bg-slate-800 text-left text-white">
+                  <th className="px-2 py-1.5 font-bold">#</th>
+                  <th className="px-2 py-1.5 font-bold">Teacher</th>
+                  <th className="px-2 py-1.5 text-right font-bold">Assignments</th>
+                  <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
+                  <th className="px-2 py-1.5 text-right font-bold">Pending</th>
+                  <th className="px-2 py-1.5 font-bold">Completion</th>
+                  <th className="px-2 py-1.5 font-bold">Classes / Subjects</th>
+                </tr>
+              </thead>
+              <tbody className="border border-slate-200">
+                {teacherAgg.map((t, i) => (
+                  <tr key={t.name} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                    <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">{t.name}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{t.assignments}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-emerald-700">{t.submitted}</td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-amber-600">{t.pending}</td>
+                    <td className="border-b border-slate-200 px-2 py-1">
+                      <div className="flex items-center gap-1.5">
+                        <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className={t.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
+                            style={{ width: `${t.pct}%` }}
+                          />
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-700">{t.pct}%</span>
+                      </div>
+                    </td>
+                    <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{t.combos.join(", ")}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Signatures */}
+            <div className="mt-10 grid grid-cols-2 gap-10">
+              <div className="border-t-2 border-slate-400 pt-2 text-[10px] text-slate-600">
+                <p className="font-bold uppercase tracking-wide text-slate-800">Prepared by (Academic Master)</p>
+                <p className="mt-6">Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p>
+              </div>
+              <div className="border-t-2 border-slate-400 pt-2 text-[10px] text-slate-600">
+                <p className="font-bold uppercase tracking-wide text-slate-800">Approved by (Head of School)</p>
+                <p className="mt-6">Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p>
+              </div>
+            </div>
+
+            <p className="mt-8 border-t border-slate-200 pt-3 text-center text-[9px] text-slate-400">
+              Generated by ShuleHub School Management System · {generatedAt} · {filterSummary}
+            </p>
+          </div>
+        )}
       </div>
     </AppShell>
   );
 }
+

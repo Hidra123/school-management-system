@@ -189,6 +189,25 @@ export function requirePermission(user: SessionUser | null, perm: PermissionKey)
   return null;
 }
 
+/**
+ * Passes if the user has ANY ONE of the given permissions (admin always
+ * passes). Used by routes that serve BOTH the member pages and the
+ * school-wide tracking centre — e.g. attendance monthly/report:
+ *   - teachers are granted "attendance.view"
+ *   - Academic Master / school-wide roles are granted "attendance.trackall"
+ * A user with either one must be able to load the data (scoping is enforced
+ * separately via getTeacherScope / classAllowed).
+ */
+export function requireAnyPermission(user: SessionUser | null, perms: PermissionKey[]): Response | null {
+  const authErr = requireAuth(user);
+  if (authErr) return authErr;
+  const allowed = perms.some((p) => hasPermission(user!, p));
+  if (!allowed) {
+    return Response.json({ error: "You do not have permission for this action." }, { status: 403 });
+  }
+  return null;
+}
+
 export function requireAdmin(user: SessionUser | null): Response | null {
   const authErr = requireAuth(user);
   if (authErr) return authErr;

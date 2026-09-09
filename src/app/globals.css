@@ -29,3 +29,84 @@
 html {
   scroll-behavior: smooth;
 }
+
+/* ============================================================
+   PRINT STYLES — Attendance Register & Report Cards
+   - Hides the app chrome (sidebar / top nav / buttons / filters)
+   - Landscape A4 so a FULL month (30/31 days × AM+PM) fits
+   - Prevents the browser from clipping the scrollable table
+   ============================================================ */
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    font-size: 8px !important;
+  }
+
+  /* Hide everything that is not the printed document itself */
+  aside,
+  header,
+  nav,
+  button,
+  input,
+  select,
+  textarea,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Let the app content take the whole sheet */
+  .lg\:pl-64 {
+    padding-left: 0 !important;
+  }
+  main {
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  /* Un-clip the scrollable register so the WHOLE month prints */
+  .overflow-x-auto {
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+
+  /* Keep colors (school banner, P/A/L column tints) */
+  * {
+    print-color-adjust: exact !important;
+    -webkit-print-color-adjust: exact !important;
+  }
+
+  /* Squeeze the register onto the sheet without clipping */
+  table {
+    font-size: 8px !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    zoom: 0.85 !important;
+  }
+  table thead {
+    display: table-header-group; /* repeat header on every page */
+  }
+  table tr {
+    page-break-inside: avoid;
+  }
+  th,
+  td {
+    padding: 1px 2px !important;
+    min-width: 0 !important;
+  }
+  /* Sticky columns overlap badly on paper — make them static */
+  .sticky {
+    position: static !important;
+  }
+  /* Keep the register banner looking right on paper */
+  .rounded-2xl {
+    border-radius: 0 !important;
+  }
+}

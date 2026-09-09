@@ -33,24 +33,32 @@ type GradeRow = {
 };
 type ActiveExam = { id: number; name: string; examType: string; academicYear: string; classIds: number[]; appliesToAllClasses: boolean };
 
+// Only two exam types are used in this school — see src/lib/examTypes.ts.
 const EXAM_TYPES = [
-  { key: "assignment", label: "Assignment" },
-  { key: "quiz", label: "Quiz" },
-  { key: "midterm", label: "Midterm Exam" },
-  { key: "final", label: "Final Exam" },
-  { key: "project", label: "Project" },
+  { key: "SE", label: "School Examination (SE)" },
+  { key: "CA", label: "Continuously Assessment (CAs)" },
 ];
 const TERMS = ["Term 1", "Term 2", "Term 3", "Full Year"];
 
 function examLabel(key: string): string {
-  return EXAM_TYPES.find((e) => e.key === key)?.label ?? key;
+  if (key === "SE") return "School Examination (SE)";
+  if (key === "CA") return "Continuously Assessment (CAs)";
+  // Legacy values from before the two-type rule.
+  const legacy: Record<string, string> = {
+    midterm: "School Examination (SE)",
+    final: "School Examination (SE)",
+    assignment: "Continuously Assessment (CAs)",
+    quiz: "Continuously Assessment (CAs)",
+    project: "Continuously Assessment (CAs)",
+  };
+  return legacy[key] ?? key;
 }
 
 export default function GradesPage() {
   // ---- Bulk entry state ----
   const [classId, setClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
-  const [examType, setExamType] = useState("midterm");
+  const [examType, setExamType] = useState("SE");
   const [term, setTerm] = useState("Term 1");
   const [examId, setExamId] = useState("");
   const [scores, setScores] = useState<Record<number, string>>({});
@@ -63,8 +71,11 @@ export default function GradesPage() {
   const [fSubject, setFSubject] = useState("");
   const [fExam, setFExam] = useState("");
 
-  const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const subjectsFetch = useFetch<SubjectRow[]>("/api/subjects");
+  // ?strict=1 → Academic Master pia anaona TU classes/subjects alizopewa na
+  // admin, hii page ni ya Submit Scores. (Ukurasa wa Students hana strict —
+  // Academic Master anaona classes ZOTE ili aweze kuadmit wanafunzi popote.)
+  const classesFetch = useFetch<ClassRow[]>("/api/classes?strict=1");
+  const subjectsFetch = useFetch<SubjectRow[]>("/api/subjects?strict=1");
   const activeExamsFetch = useFetch<ActiveExam[]>("/api/exams/active");
   const classList = classesFetch.data ?? [];
   const subjectList = subjectsFetch.data ?? [];

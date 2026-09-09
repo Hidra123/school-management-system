@@ -55,7 +55,23 @@ export type TeacherScope = {
   subjectIds: number[];
 };
 
-export async function getTeacherScope(user: SessionUser | null): Promise<TeacherScope> {
+export type TeacherScopeOptions = {
+  /**
+   * When true, the Academic Master is treated like any other teacher and is
+   * scoped to THEIR OWN assigned classes/subjects. Used by Submit Scores
+   * (/grades) — the Academic Master admits students to ANY class (see
+   * getTeacherScope without this flag) but may only submit scores for the
+   * classes the admin has assigned to them.
+   * Default behaviour (no flag): Academic Master is a school-wide role and
+   * sees ALL classes/subjects/students.
+   */
+  strictForAcademicMaster?: boolean;
+};
+
+export async function getTeacherScope(
+  user: SessionUser | null,
+  opts: TeacherScopeOptions = {},
+): Promise<TeacherScope> {
   if (!user || user.role === "admin") return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
   // Academic Master is a school-wide role (like a deputy/vice-principal for
   // academics) — even though they get a `teachers` profile row (so they can
@@ -63,7 +79,7 @@ export async function getTeacherScope(user: SessionUser | null): Promise<Teacher
   // classes/subjects. Without this check, a newly-created Academic Master
   // with no class/subject assignments would see literally nothing, instead
   // of everything, which defeats the purpose of the role.
-  if (user.staffRole === "academic_master") {
+  if (user.staffRole === "academic_master" && !opts.strictForAcademicMaster) {
     return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
   }
   const teacher = await getTeacherByUserId(user.id);

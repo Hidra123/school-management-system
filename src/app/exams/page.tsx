@@ -1,23 +1,62 @@
 "use client";
 
+import { useState } from "react";
 import AppShell from "@/components/AppShell";
-import { PageHeader } from "@/components/ui";
+import { useAuth } from "@/components/AuthProvider";
+import ExamRoutineResultsTab from "@/components/exams/ExamRoutineResultsTab";
+import ManageExaminationsTab from "@/components/exams/ManageExaminationsTab";
+import { EmptyState, PageHeader } from "@/components/ui";
+import { staffRoleLabel } from "@/lib/permissions";
+import { cls } from "@/lib/utils";
 
 export default function ExaminationsPage() {
+  const { user, hasPerm } = useAuth();
+  const canManage = hasPerm("exams.manage");
+  const canPublish = hasPerm("exams.results");
+
+  const tabs = [
+    canManage && { key: "manage" as const, label: "Manage Examinations", icon: "📝" },
+    canPublish && { key: "results" as const, label: "Exam Routine & Results", icon: "📊" },
+  ].filter(Boolean) as { key: "manage" | "results"; label: string; icon: string }[];
+
+  const [tab, setTab] = useState<"manage" | "results">(tabs[0]?.key ?? "manage");
+  const roleBadge = user?.role === "member" ? staffRoleLabel(user.staffRole) : "🛡️ Admin";
+
   return (
     <AppShell permission="exams.view">
-      <PageHeader icon="📋" title="Examinations" subtitle="Manage examinations, routines and publish results" />
+      <PageHeader icon="📋" title="Examinations" subtitle="Manage examinations, routines and publish results">
+        {roleBadge && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
+            {roleBadge}
+          </span>
+        )}
+      </PageHeader>
 
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-        <div className="text-5xl">📋</div>
-        <h2 className="mt-4 text-xl font-bold text-slate-800">Examinations</h2>
-        <p className="mt-2 max-w-md mx-auto text-sm text-slate-500">
-          Manage examinations, routines and publish results. This module is coming soon — it will be built in the next update.
-        </p>
-        <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">
-          🚧 Under Development
-        </div>
-      </div>
+      {tabs.length === 0 ? (
+        <EmptyState icon="🔒" title="View-only access" message="You can view this page but do not have permission to manage examinations or publish results. Contact the admin to request access." />
+      ) : (
+        <>
+          {tabs.length > 1 && (
+            <div className="mb-5 flex flex-wrap gap-2">
+              {tabs.map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition",
+                    tab === t.key ? "bg-violet-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  {t.icon} {t.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {tab === "manage" && canManage && <ManageExaminationsTab />}
+          {tab === "results" && canPublish && <ExamRoutineResultsTab />}
+        </>
+      )}
     </AppShell>
   );
 }

@@ -151,7 +151,7 @@ export default function ScoreTrackingPage() {
 
   return (
     <AppShell permission="grades.track">
-      <div className="space-y-5 print:hidden">
+      <div className="space-y-5 screen-only">
         <PageHeader icon="📊" title="Score Tracking" subtitle="Track and analyze student score trends">
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
             {roleBadge}
@@ -356,7 +356,7 @@ export default function ScoreTrackingPage() {
 
         {/* ==================== PRINT-ONLY REPORT (modern, letterhead style) ==================== */}
         {report.data && (
-          <div className="hidden print:block">
+          <div className="print-only">
             {/* Letterhead */}
             <div className="flex items-center justify-between gap-4 border-b-4 border-indigo-600 pb-4">
               <div className="flex items-center gap-4">

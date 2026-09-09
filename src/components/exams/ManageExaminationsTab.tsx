@@ -115,9 +115,7 @@ export default function ManageExaminationsTab() {
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Exam Type *</label>
               <select className={inputCls} value={form.examType} onChange={(e) => setForm({ ...form, examType: e.target.value })}>
                 <option value="SE">School Examination (SE)</option>
-                <option value="MOCK">Mock Examination</option>
-                <option value="NECTA">NECTA Examination</option>
-                <option value="OTHER">Other</option>
+                <option value="CAs">Continuous Assessment (CAs)</option>
               </select>
             </div>
             <div>

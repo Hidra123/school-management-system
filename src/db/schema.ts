@@ -30,6 +30,7 @@ export const examTypeEnum = pgEnum("exam_type", [
 ]);
 export const userRoleEnum = pgEnum("user_role", ["admin", "member"]);
 export const attendanceSessionEnum = pgEnum("attendance_session", ["morning", "afternoon"]);
+export const examStatusEnum = pgEnum("exam_status", ["active", "inactive"]);
 
 // ---------- Auth Tables ----------
 export const users = pgTable("users", {
@@ -161,6 +162,70 @@ export const attendance = pgTable(
   ],
 );
 
+// ---------- Examinations (NECTA-style) ----------
+export const exams = pgTable("exams", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 150 }).notNull(),
+  // Short exam-type code shown as a badge, e.g. "SE" (School Examination).
+  examType: varchar("exam_type", { length: 20 }).notNull().default("SE"),
+  academicYear: varchar("academic_year", { length: 10 }).notNull().default(""),
+  startDate: date("start_date", { mode: "string" }),
+  endDate: date("end_date", { mode: "string" }),
+  remarks: varchar("remarks", { length: 300 }).notNull().default(""),
+  // Inactive exams are hidden from teachers (cannot submit scores against them).
+  status: examStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Which classes an exam applies to. No rows for an exam = applies to ALL classes
+// (matches the "Leave blank for all classes" hint in the Create Examination form).
+export const examClasses = pgTable(
+  "exam_classes",
+  {
+    id: serial("id").primaryKey(),
+    examId: integer("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+  },
+  (t) => [uniqueIndex("exam_class_idx").on(t.examId, t.classId)],
+);
+
+// Single global window during which teachers may submit exam scores.
+// Stored as one row (id=1) rather than a generic key/value table for simplicity.
+export const examSettings = pgTable("exam_settings", {
+  id: serial("id").primaryKey(),
+  submissionOpensAt: timestamp("submission_opens_at", { withTimezone: true }),
+  submissionClosesAt: timestamp("submission_closes_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Behavioural ratings + comments shown on an individual student's report card.
+// One row per (student, exam).
+export const studentExamRemarks = pgTable(
+  "student_exam_remarks",
+  {
+    id: serial("id").primaryKey(),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    examId: integer("exam_id")
+      .notNull()
+      .references(() => exams.id, { onDelete: "cascade" }),
+    // JSON map of criteria label -> rating letter (A-F), e.g.
+    // {"Communication Skills":"B","Team Work & Collaboration":"A"}
+    behaviorRatings: text("behavior_ratings").notNull().default("{}"),
+    academicComment: varchar("academic_comment", { length: 300 }).notNull().default(""),
+    principalComment: varchar("principal_comment", { length: 300 }).notNull().default(""),
+    academicMasterName: varchar("academic_master_name", { length: 120 }).notNull().default(""),
+    headmasterName: varchar("headmaster_name", { length: 120 }).notNull().default(""),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("student_exam_remarks_idx").on(t.studentId, t.examId)],
+);
+
 export const grades = pgTable(
   "grades",
   {
@@ -174,9 +239,17 @@ export const grades = pgTable(
     examType: examTypeEnum("exam_type").notNull(),
     term: varchar("term", { length: 60 }).notNull().default("Term 1"),
     score: doublePrecision("score").notNull().default(0),
+    // Links a score entry to a specific named Examination (Manage Examinations
+    // module). Nullable for backward compatibility with older ad-hoc scores
+    // entered before this module existed (assignment/quiz/project entries
+    // typically won't have an exam attached).
+    examId: integer("exam_id").references(() => exams.id, { onDelete: "cascade" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("grades_student_subject_idx").on(t.studentId, t.subjectId)],
+  (t) => [
+    index("grades_student_subject_idx").on(t.studentId, t.subjectId),
+    index("grades_exam_idx").on(t.examId),
+  ],
 );
 
 export const fees = pgTable("fees", {
@@ -202,3 +275,7 @@ export type StudentRow = typeof students.$inferSelect;
 export type AttendanceRow = typeof attendance.$inferSelect;
 export type GradeRow = typeof grades.$inferSelect;
 export type FeeRow = typeof fees.$inferSelect;
+export type ExamRow = typeof exams.$inferSelect;
+export type ExamClassRow = typeof examClasses.$inferSelect;
+export type ExamSettingsRow = typeof examSettings.$inferSelect;
+export type StudentExamRemarksRow = typeof studentExamRemarks.$inferSelect;

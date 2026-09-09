@@ -129,4 +129,111 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
         <div className="bg-white p-2.5"><p className="text-[10px] uppercase text-slate-400">Position</p><p className="text-lg font-extrabold text-slate-800">{data.position} / {data.outOf}</p></div>
       </div>
 
-      {/* Beh
+      {/* Behaviour & Personality Assessment */}
+      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+        <p className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">BEHAVIOUR &amp; PERSONALITY ASSESSMENT</p>
+        <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+          {DEFAULT_BEHAVIOR_CRITERIA.map((crit) => (
+            <div key={crit} className="flex items-center justify-between gap-2 bg-white px-3 py-2">
+              <span className="text-xs font-semibold text-slate-700">{crit}</span>
+              {editable ? (
+                <select
+                  className="rounded-md border border-slate-200 px-1.5 py-1 text-xs font-bold text-slate-700 print:hidden"
+                  value={ratings[crit] ?? ""}
+                  onChange={(e) => setRatings({ ...ratings, [crit]: e.target.value })}
+                >
+                  <option value="">—</option>
+                  {["A", "B", "C", "D", "F"].map((g) => (
+                    <option key={g} value={g}>
+                      {g} — {behaviorScaleLabel(g)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className={cls("text-xs font-bold", GRADE_COLOR[ratings[crit]] ?? "text-slate-400")}>
+                  {ratings[crit] ? `${ratings[crit]} — ${behaviorScaleLabel(ratings[crit])}` : "—"}
+                </span>
+              )}
+              {editable && ratings[crit] && (
+                <span className={cls("hidden text-xs font-bold print:inline", GRADE_COLOR[ratings[crit]] ?? "text-slate-400")}>
+                  {ratings[crit]} — {behaviorScaleLabel(ratings[crit])}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <p className="bg-slate-50 px-3 py-1.5 text-[10px] text-slate-400">
+          Scale: A = Excellent · B = Very Good · C = Good · D = Needs Improvement · F = Fail
+        </p>
+      </div>
+
+      {/* Comments & signatures */}
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div>
+          <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Master&apos;s Comment</label>
+          {editable ? (
+            <textarea
+              className={inputCls}
+              rows={2}
+              value={academicComment}
+              onChange={(e) => setAcademicComment(e.target.value)}
+              placeholder="Comment on academic performance..."
+            />
+          ) : (
+            <p className="min-h-[3rem] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">{academicComment || "—"}</p>
+          )}
+          <div className="mt-2">
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">Academic Master (Name &amp; Signature)</label>
+            {editable ? (
+              <input
+                className={inputCls}
+                value={academicMasterName}
+                onChange={(e) => setAcademicMasterName(e.target.value)}
+                placeholder="Full name"
+              />
+            ) : (
+              <p className="border-b border-slate-300 pb-0.5 text-sm font-semibold text-slate-700">{academicMasterName || "\u00A0"}</p>
+            )}
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Headmaster&apos;s Comment</label>
+          {editable ? (
+            <textarea
+              className={inputCls}
+              rows={2}
+              value={principalComment}
+              onChange={(e) => setPrincipalComment(e.target.value)}
+              placeholder="Headmaster's remarks..."
+            />
+          ) : (
+            <p className="min-h-[3rem] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700">{principalComment || "—"}</p>
+          )}
+          <div className="mt-2">
+            <label className="mb-1 block text-[10px] font-bold uppercase tracking-wide text-slate-400">Headmaster (Name &amp; Signature)</label>
+            {editable ? (
+              <input
+                className={inputCls}
+                value={headmasterName}
+                onChange={(e) => setHeadmasterName(e.target.value)}
+                placeholder="Full name"
+              />
+            ) : (
+              <p className="border-b border-slate-300 pb-0.5 text-sm font-semibold text-slate-700">{headmasterName || "\u00A0"}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {editable && (
+        <div className="mt-5 flex items-center justify-end gap-3 print:hidden">
+          {remarksFetch.error && <span className="text-xs font-semibold text-rose-600">{remarksFetch.error}</span>}
+          <ActionButton onClick={saveRemarks} loading={saving} done={done} doneText="Saved!">
+            💾 Save Remarks &amp; Comments
+          </ActionButton>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -122,20 +122,6 @@ export default function GradesPage() {
       ),
     [allActiveExams, examType, classId],
   );
-
-  // STEP 3 options: show ONLY the categories that actually have at least one
-  // ACTIVE examination (for the selected class). A category with no active
-  // exam is hidden — teachers cannot pick a category that has nothing to submit.
-  const activeCategories = useMemo(() => {
-    const classIdNum = Number(classId);
-    return EXAM_TYPES.filter((t) =>
-      allActiveExams.some(
-        (e) =>
-          e.examType === t.value &&
-          (!classId || e.appliesToAllClasses || e.classIds.includes(classIdNum)),
-      ),
-    );
-  }, [allActiveExams, classId]);
   const selectedExam = useMemo(
     () => examOptions.find((e) => String(e.id) === examId) ?? null,
     [examOptions, examId],
@@ -186,28 +172,23 @@ export default function GradesPage() {
       setEntryErr("Complete all 4 steps (Class, Subject, Exam Category and Exam Name) before saving.");
       return;
     }
+    if (entryCount === 0) {
+      setEntryErr("Fill in at least one score before saving.");
+      return;
+    }
     setSaving(true);
     setEntryErr(null);
     setEntryMsg(null);
     try {
-      // Empty scores are ALLOWED (a student may not have sat the exam) — they
-      // are simply left without a grade record. Any score outside 0–100 is
-      // REJECTED before reaching the server.
-      const entries: { studentId: number; score: number }[] = [];
-      for (const s of studentList) {
-        const raw = scores[s.id]?.trim();
-        if (!raw) continue; // empty → skip (student did not sit the exam)
-        const n = Number(raw);
-        if (!Number.isFinite(n) || n < 0 || n > 100) {
-          setEntryErr(`⚠️ Score for ${s.name} must be between 0 and 100. Please correct it.`);
-          return;
-        }
-        entries.push({ studentId: s.id, score: n });
-      }
-      if (entries.length === 0) {
-        setEntryMsg("ℹ️ No scores were entered — nothing to save. Leave the fields empty for students who did not sit the exam.");
-        return;
-      }
+      const entries = studentList
+        .map((s) => {
+          const raw = scores[s.id]?.trim();
+          if (!raw) return null;
+          const n = Number(raw);
+          if (!Number.isFinite(n)) return null;
+          return { studentId: s.id, score: Math.min(100, Math.max(0, n)) };
+        })
+        .filter((x): x is { studentId: number; score: number } => x !== null);
       await postJSON("/api/grades", {
         subjectId: Number(subjectId),
         examType,
@@ -215,7 +196,7 @@ export default function GradesPage() {
         examId: Number(examId) || null,
         entries,
       });
-      setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}). Students left empty kept no score.`);
+      setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}).`);
       entryGrades.refresh();
     } catch (err) {
       setEntryErr(err instanceof Error ? err.message : "Failed to save.");
@@ -328,19 +309,14 @@ export default function GradesPage() {
                     className={cls(inputCls, !step2Done && "opacity-50")}
                   >
                     <option value="">— Select Category —</option>
-                    {activeCategories.map((t) => (
+                    {EXAM_TYPES.map((t) => (
                       <option key={t.value} value={t.value}>
                         {t.label}
                       </option>
                     ))}
                   </select>
-                  {step2Done && activeCategories.length === 0 && (
-                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      ⚠️ Hakuna exam ACTIVE kwa class hii bado — iunde kwenye Examinations, kisha itaonekana hapa.
-                    </p>
-                  )}
                   <p className="mt-1 text-[11px] text-slate-400">
-                    Only categories with an ACTIVE examination are shown.
+                    Exam Category = Exam Type: School Examination (SE) or Continuously Assessment (CAs).
                   </p>
                 </>
               ))}
@@ -366,7 +342,7 @@ export default function GradesPage() {
                   </p>
                   {step3Done && examOptions.length === 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      ⚠️ Hakuna {examLabel(examType)} active kwa class hii bado — iunde kwenye Examinations.
+                      ⚠️ There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
                     </p>
                   )}
                 </>
@@ -422,6 +398,14 @@ export default function GradesPage() {
                       Max: <b>100</b> · {entryCount}/{studentList.length} entered
                     </span>
                   </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => setScores(Object.fromEntries(studentList.map((s) => [s.id, ""])))} className={btnGhost}>
+                      Clear
+                    </button>
+                    <button onClick={() => void saveEntry()} disabled={saving || entryCount === 0} className={btnPrimary}>
+                      {saving ? "Saving..." : `💾 Save scores (${entryCount})`}
+                    </button>
+                  </div>
                 </div>
 
                 {entryMsg && (
@@ -460,13 +444,7 @@ export default function GradesPage() {
                               max={100}
                               step="0.5"
                               value={scores[s.id] ?? ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                // Guard in real time: only 0–100 (or empty) is accepted.
-                                if (v !== "" && (Number(v) > 100 || Number(v) < 0)) return;
-                                setEntryErr(null);
-                                setScores({ ...scores, [s.id]: v });
-                              }}
+                              onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
                               className={cls(
                                 inputCls,
                                 "w-24",
@@ -478,37 +456,6 @@ export default function GradesPage() {
                       ))}
                     </tbody>
                   </table>
-                </div>
-
-                {/* Action bar — placed at the BOTTOM of the student list */}
-                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
-                  <button
-                    onClick={() => setScores(Object.fromEntries(studentList.map((s) => [s.id, ""])))}
-                    className={btnGhost}
-                  >
-                    ✖ Clear
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Edit mode: reload any already-saved scores into the form
-                      // so the teacher can correct them, then press Save.
-                      if (existingGrades.length === 0) {
-                        setEntryMsg("ℹ️ No saved scores for these settings yet — just type the scores and press Save Scores.");
-                        return;
-                      }
-                      const m: Record<number, string> = {};
-                      for (const s of studentList) m[s.id] = "";
-                      for (const g of existingGrades) m[g.studentId] = String(g.score);
-                      setScores(m);
-                      setEntryMsg("✏️ Saved scores loaded — correct them then press Save Scores to update.");
-                    }}
-                    className={btnGhost}
-                  >
-                    ✏️ Edit
-                  </button>
-                  <button onClick={() => void saveEntry()} disabled={saving} className={btnPrimary}>
-                    {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
-                  </button>
                 </div>
               </div>
             )}

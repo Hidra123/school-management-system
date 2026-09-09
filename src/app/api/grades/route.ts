@@ -80,10 +80,16 @@ export async function GET(req: Request) {
   return Response.json(rows);
 }
 
+/**
+ * Strict score parser: only 0–100 is accepted. Values above 100 or below 0
+ * (or non-numeric) return null so the entry is rejected — a teacher cannot
+ * accidentally save an impossible mark.
+ */
 function scoreOf(v: unknown): number | null {
   const n = Number(v);
   if (!Number.isFinite(n)) return null;
-  return Math.min(100, Math.max(0, n));
+  if (n < 0 || n > 100) return null;
+  return n;
 }
 
 export async function POST(req: Request) {

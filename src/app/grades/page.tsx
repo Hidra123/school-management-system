@@ -13,6 +13,7 @@ import {
   scoreTone,
 } from "@/components/ui";
 import AppShell from "@/components/AppShell";
+import { useAuth } from "@/components/AuthProvider";
 import { cls, delJSON, postJSON, shortDate, useFetch } from "@/lib/utils";
 
 type ClassRow = { id: number; name: string; section: string };
@@ -55,6 +56,7 @@ function examLabel(key: string): string {
 }
 
 export default function GradesPage() {
+  const { user } = useAuth();
   // ---- Bulk entry state ----
   const [classId, setClassId] = useState("");
   const [subjectId, setSubjectId] = useState("");
@@ -90,7 +92,7 @@ export default function GradesPage() {
   );
 
   const entryStudentsUrl = useMemo(
-    () => (classId ? `/api/students?classId=${classId}` : null),
+    () => (classId ? `/api/students?classId=${classId}&strict=1` : null),
     [classId],
   );
   const entryGradesUrl = useMemo(
@@ -190,6 +192,11 @@ export default function GradesPage() {
   return (
     <AppShell permission="grades.view">
     <div className="space-y-6">
+      {user?.staffRole === "academic_master" && (
+        <div className="flex items-center gap-2 rounded-xl bg-violet-50 px-4 py-2.5 text-xs font-semibold text-violet-700 ring-1 ring-inset ring-violet-100">
+          🎓 As Academic Master you admit students in ALL classes (Students page), but here in Submit Scores you only see the classes and subjects assigned to you by the admin.
+        </div>
+      )}
       <PageHeader icon="📝" title="Grades" subtitle="Enter and manage exam and assessment scores" />
 
       {/* Bulk entry */}
@@ -248,6 +255,11 @@ export default function GradesPage() {
             </select>
           </Field>
         </div>
+        {classList.length === 0 && !classesFetch.loading && (
+          <p className="mt-2 text-xs font-semibold text-amber-700">
+            ⚠️ No classes assigned to you yet — ask the admin to assign you classes via Manage Teachers, otherwise you cannot submit scores.
+          </p>
+        )}
         {examOptions.length > 0 && (
           <p className="mt-2 text-xs text-slate-500">
             💡 Select an Examination above to link these scores to the "Examinations" module so the Academic Master can publish class results and report cards from them.

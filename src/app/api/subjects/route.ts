@@ -35,6 +35,10 @@ export async function GET(req: Request) {
       .leftJoin(teachers, eq(subjects.teacherId, teachers.id))
       .orderBy(asc(subjects.name));
 
+    // A strictly-scoped user with no teacher profile sees no subjects —
+    // never "all" (defense in depth for strict mode).
+    if (scope.scoped && scope.teacherId === null) return Response.json([]);
+
     const rows = scope.scoped
       ? await query.where(eq(subjects.teacherId, scope.teacherId!))
       : await query;

@@ -83,7 +83,13 @@ export async function getTeacherScope(
     return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
   }
   const teacher = await getTeacherByUserId(user.id);
-  if (!teacher) return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
+  if (!teacher) {
+    // Strict mode must NEVER fall through to "see everything": a strictly
+    // scoped user with no teacher profile (e.g. an Academic Master who was
+    // never given one) sees NOTHING until the admin assigns them.
+    if (opts.strictForAcademicMaster) return { scoped: true, teacherId: null, classIds: [], subjectIds: [] };
+    return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
+  }
   const [classIds, subjectIds] = await Promise.all([
     getAssignedClassIds(teacher.id),
     getAssignedSubjectIds(teacher.id),

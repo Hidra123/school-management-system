@@ -20,9 +20,13 @@ export async function GET(req: Request) {
   if (err) return err;
 
   try {
-    const scope = await getTeacherScope(user);
-
     const url = new URL(req.url);
+    // ?strict=1 → Academic Master pia huchujwa kwa assignment (Submit Scores:
+    // orodha ya wanafunzi wa kuweka scores). Bila flag hii Academic anaona
+    // classes ZOTE hapa (admissions duty — ana-admit wanafunzi popote).
+    const strict = url.searchParams.get("strict") === "1";
+    const scope = await getTeacherScope(user, strict ? { strictForAcademicMaster: true } : undefined);
+
     const classIdRaw = url.searchParams.get("classId");
     const q = url.searchParams.get("q")?.trim() ?? "";
 

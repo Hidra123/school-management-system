@@ -100,6 +100,13 @@ export default function ScoreTrackingPage() {
   const examListLabel = exams.length
     ? exams.map((e) => `${e.name} (${e.examType})`).join(", ")
     : "—";
+  // Print report title — kila tab ina report yake binafsi
+  const printSubtitle =
+    tab === "progress"
+      ? "Score Submission Progress Report"
+      : tab === "detailed"
+        ? "Detailed Score View Report"
+        : "Submission by Teacher Report";
 
   // ---- Group by class (Submission Progress) ----
   const classGroups = useMemo(() => {
@@ -366,7 +373,7 @@ export default function ScoreTrackingPage() {
                 <div>
                   <h1 className="text-3xl font-black tracking-tight text-slate-900">SHULEHUB SCHOOL</h1>
                   <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600">
-                    Score Submission Tracking Report
+                    {printSubtitle}
                   </p>
                 </div>
               </div>
@@ -392,111 +399,168 @@ export default function ScoreTrackingPage() {
               ))}
             </div>
 
-            {/* Section 1 — Detailed Score View */}
-            <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
-              <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
-              1 · Detailed Score View ({rows.length} assignments)
-            </h2>
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="bg-slate-800 text-left text-white">
-                  <th className="px-2 py-1.5 font-bold">#</th>
-                  <th className="px-2 py-1.5 font-bold">Class</th>
-                  <th className="px-2 py-1.5 font-bold">Subject</th>
-                  <th className="px-2 py-1.5 font-bold">Exam</th>
-                  <th className="px-2 py-1.5 font-bold">Teacher</th>
-                  <th className="px-2 py-1.5 text-right font-bold">Students</th>
-                  <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
-                  <th className="px-2 py-1.5 font-bold">Status</th>
-                  <th className="px-2 py-1.5 font-bold">%</th>
-                  <th className="px-2 py-1.5 font-bold">Submitted At</th>
-                </tr>
-              </thead>
-              <tbody className="border border-slate-200">
-                {rows.map((r, i) => (
-                  <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                    <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">
-                      {r.className}{r.section ? ` ${r.section}` : ""}
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.subjectName}</td>
-                    <td className="border-b border-slate-200 px-2 py-1">
-                      <span className="inline-block rounded-full bg-indigo-100 px-1.5 py-0.5 text-[8px] font-black text-indigo-700">
-                        {r.examType}
-                      </span>
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.teacherName}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{r.students}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-slate-800">
-                      {r.submitted}/{r.expected}
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1">
-                      <span className={r.status === "submitted"
-                        ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
-                        : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200">
+            {/* ============ SECTION — inategemea TAB iliyochaguliwa ============ */}
+            {tab === "progress" && (
+              <>
+                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
+                  <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
+                  1 · Score Submission Progress ({classGroups.length} classes)
+                </h2>
+                <div className="space-y-5">
+                  {classGroups.map((g) => (
+                    <div key={g.name} className="print-block overflow-hidden rounded-xl border border-slate-200">
+                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-800 px-4 py-2">
+                        <p className="text-[11px] font-black uppercase tracking-wide text-white">{g.name}</p>
+                        <p className="text-[10px] font-bold text-slate-300">
+                          {g.submittedCount}/{g.total} submitted
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2">
+                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-200">
                           <div
-                            className={r.status === "submitted" ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-amber-400"}
-                            style={{ width: `${Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%` }}
+                            className={g.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
+                            style={{ width: `${g.pct}%` }}
                           />
                         </div>
-                        <span className="text-[9px] font-bold text-slate-700">
-                          {Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%
+                        <span className={g.pct === 100 ? "text-[11px] font-black text-emerald-600" : "text-[11px] font-black text-violet-600"}>
+                          {g.pct}%
                         </span>
                       </div>
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{fmtDT(r.submittedAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <table className="w-full text-[10px]">
+                        <tbody>
+                          {g.list.map((r, i) => (
+                            <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                              <td className="border-b border-slate-200 px-4 py-1 font-bold text-slate-800">{r.subjectName}</td>
+                              <td className="border-b border-slate-200 px-4 py-1 text-right">
+                                <span className="mr-4 text-[9px] text-slate-400">{r.teacherName}</span>
+                                <span className={r.status === "submitted"
+                                  ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
+                                  : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
+                                  {r.status}
+                                </span>
+                                <span className="ml-3 text-[9px] text-slate-400">{fmtDT(r.submittedAt)}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
 
-            {/* Section 2 — By Teacher */}
-            <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
-              <span className="inline-block h-4 w-1.5 rounded-full bg-violet-600" />
-              2 · Submission by Teacher ({teacherAgg.length} teachers)
-            </h2>
-            <table className="w-full text-[10px]">
-              <thead>
-                <tr className="bg-slate-800 text-left text-white">
-                  <th className="px-2 py-1.5 font-bold">#</th>
-                  <th className="px-2 py-1.5 font-bold">Teacher</th>
-                  <th className="px-2 py-1.5 text-right font-bold">Assignments</th>
-                  <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
-                  <th className="px-2 py-1.5 text-right font-bold">Pending</th>
-                  <th className="px-2 py-1.5 font-bold">Completion</th>
-                  <th className="px-2 py-1.5 font-bold">Classes / Subjects</th>
-                </tr>
-              </thead>
-              <tbody className="border border-slate-200">
-                {teacherAgg.map((t, i) => (
-                  <tr key={t.name} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                    <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">{t.name}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{t.assignments}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-emerald-700">{t.submitted}</td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-amber-600">{t.pending}</td>
-                    <td className="border-b border-slate-200 px-2 py-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200">
-                          <div
-                            className={t.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
-                            style={{ width: `${t.pct}%` }}
-                          />
-                        </div>
-                        <span className="text-[9px] font-bold text-slate-700">{t.pct}%</span>
-                      </div>
-                    </td>
-                    <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{t.combos.join(", ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            {tab === "detailed" && (
+              <>
+                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
+                  <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
+                  1 · Detailed Score View ({rows.length} assignments)
+                </h2>
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-800 text-left text-white">
+                      <th className="px-2 py-1.5 font-bold">#</th>
+                      <th className="px-2 py-1.5 font-bold">Class</th>
+                      <th className="px-2 py-1.5 font-bold">Subject</th>
+                      <th className="px-2 py-1.5 font-bold">Exam</th>
+                      <th className="px-2 py-1.5 font-bold">Teacher</th>
+                      <th className="px-2 py-1.5 text-right font-bold">Students</th>
+                      <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
+                      <th className="px-2 py-1.5 font-bold">Status</th>
+                      <th className="px-2 py-1.5 font-bold">%</th>
+                      <th className="px-2 py-1.5 font-bold">Submitted At</th>
+                    </tr>
+                  </thead>
+                  <tbody className="border border-slate-200">
+                    {rows.map((r, i) => (
+                      <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                        <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">
+                          {r.className}{r.section ? ` ${r.section}` : ""}
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.subjectName}</td>
+                        <td className="border-b border-slate-200 px-2 py-1">
+                          <span className="inline-block rounded-full bg-indigo-100 px-1.5 py-0.5 text-[8px] font-black text-indigo-700">
+                            {r.examType}
+                          </span>
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.teacherName}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{r.students}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-slate-800">
+                          {r.submitted}/{r.expected}
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1">
+                          <span className={r.status === "submitted"
+                            ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
+                            : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
+                            {r.status}
+                          </span>
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200">
+                              <div
+                                className={r.status === "submitted" ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-amber-400"}
+                                style={{ width: `${Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-700">
+                              {Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%
+                            </span>
+                          </div>
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{fmtDT(r.submittedAt)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
+
+            {tab === "teacher" && (
+              <>
+                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
+                  <span className="inline-block h-4 w-1.5 rounded-full bg-violet-600" />
+                  1 · Submission by Teacher ({teacherAgg.length} teachers)
+                </h2>
+                <table className="w-full text-[10px]">
+                  <thead>
+                    <tr className="bg-slate-800 text-left text-white">
+                      <th className="px-2 py-1.5 font-bold">#</th>
+                      <th className="px-2 py-1.5 font-bold">Teacher</th>
+                      <th className="px-2 py-1.5 text-right font-bold">Assignments</th>
+                      <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
+                      <th className="px-2 py-1.5 text-right font-bold">Pending</th>
+                      <th className="px-2 py-1.5 font-bold">Completion</th>
+                      <th className="px-2 py-1.5 font-bold">Classes / Subjects</th>
+                    </tr>
+                  </thead>
+                  <tbody className="border border-slate-200">
+                    {teacherAgg.map((t, i) => (
+                      <tr key={t.name} className={i % 2 ? "bg-slate-50" : "bg-white"}>
+                        <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">{t.name}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{t.assignments}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-emerald-700">{t.submitted}</td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-amber-600">{t.pending}</td>
+                        <td className="border-b border-slate-200 px-2 py-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200">
+                              <div
+                                className={t.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
+                                style={{ width: `${t.pct}%` }}
+                              />
+                            </div>
+                            <span className="text-[9px] font-bold text-slate-700">{t.pct}%</span>
+                          </div>
+                        </td>
+                        <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{t.combos.join(", ")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            )}
 
             {/* Signatures */}
             <div className="mt-10 grid grid-cols-2 gap-10">

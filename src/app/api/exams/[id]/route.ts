@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { classes, examClasses, exams } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
+import { isExamType, normalizeExamType } from "@/lib/examTypes";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,16 @@ export async function PUT(req: Request, ctx: Ctx) {
   try {
     const values: Partial<typeof exams.$inferInsert> = {};
     if (typeof body.name === "string" && body.name.trim()) values.name = body.name.trim();
-    if (typeof body.examType === "string") values.examType = body.examType.trim() || "SE";
+    if (typeof body.examType === "string") {
+      // Exam Type: only SE (School Examination) or CA (Continuously Assessment).
+      if (body.examType.trim() && !isExamType(body.examType.trim())) {
+        return Response.json(
+          { error: "Exam Type must be either SE (School Examination) or CA (Continuously Assessment)." },
+          { status: 400 },
+        );
+      }
+      values.examType = body.examType.trim() ? normalizeExamType(body.examType) : "SE";
+    }
     if (typeof body.academicYear === "string") values.academicYear = body.academicYear.trim();
     if (body.startDate !== undefined)
       values.startDate = typeof body.startDate === "string" && body.startDate ? body.startDate : null;

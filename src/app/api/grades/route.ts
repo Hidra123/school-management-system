@@ -55,6 +55,7 @@ export async function GET(req: Request) {
       subjectId: grades.subjectId,
       examType: grades.examType,
       term: grades.term,
+      examId: grades.examId,
       score: grades.score,
       createdAt: grades.createdAt,
       studentName: students.name,
@@ -86,11 +87,15 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });
 
-  // Bulk mode: { subjectId, examType, term, entries: [{studentId, score}] }
+  // Bulk mode: { subjectId, examType, term, examId?, entries: [{studentId, score}] }
   if (Array.isArray(body.entries)) {
     const subjectId = Number(body.subjectId);
     const examType = body.examType;
     const term = typeof body.term === "string" && body.term.trim() ? body.term.trim() : "Term 1";
+    const examId =
+      body.examId !== undefined && body.examId !== null && body.examId !== "" && Number.isFinite(Number(body.examId))
+        ? Number(body.examId)
+        : null;
     if (!Number.isFinite(subjectId) || !EXAM_TYPES.includes(examType)) {
       return Response.json({ error: "Subject or exam type is invalid." }, { status: 400 });
     }
@@ -140,6 +145,7 @@ export async function POST(req: Request) {
           subjectId,
           examType: examType as (typeof grades.examType)["enumValues"][number],
           term,
+          examId,
           score: e.score,
         })),
       );

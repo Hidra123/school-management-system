@@ -31,21 +31,20 @@ html {
 }
 
 /* ============================================================
-   PRINT STYLES — Attendance Register & Report Cards
+   PRINT STYLES — Attendance Register & Score Reports
    - Hides the app chrome (sidebar / top nav / buttons / filters)
-   - Landscape A4 so a FULL month (30/31 days × AM+PM) fits
-   - Prevents the browser from clipping the scrollable table
+   - Landscape A4 so wide tables (full month, score tracking) fit
+   - The scrollable register must NOT be clipped by the browser
    ============================================================ */
 @media print {
   @page {
     size: A4 landscape;
-    margin: 8mm;
+    margin: 9mm;
   }
 
   html,
   body {
     background: #fff !important;
-    font-size: 8px !important;
   }
 
   /* Hide everything that is not the printed document itself */
@@ -70,25 +69,16 @@ html {
     max-width: none !important;
   }
 
-  /* Un-clip the scrollable register so the WHOLE month prints */
-  .overflow-x-auto {
-    overflow: visible !important;
-    border: none !important;
-    border-radius: 0 !important;
-  }
-
-  /* Keep colors (school banner, P/A/L column tints) */
+  /* Keep colors (school banner, badges, completion bars) */
   * {
     print-color-adjust: exact !important;
     -webkit-print-color-adjust: exact !important;
   }
 
-  /* Squeeze the register onto the sheet without clipping */
   table {
-    font-size: 8px !important;
-    min-width: 0 !important;
+    border-collapse: collapse !important;
     width: 100% !important;
-    zoom: 0.85 !important;
+    min-width: 0 !important;
   }
   table thead {
     display: table-header-group; /* repeat header on every page */
@@ -96,17 +86,25 @@ html {
   table tr {
     page-break-inside: avoid;
   }
-  th,
-  td {
+  h1,
+  h2,
+  h3,
+  section,
+  .print-block {
+    break-inside: avoid;
+  }
+
+  /* Dense compact tables (monthly attendance register) */
+  .overflow-x-auto table {
+    font-size: 8px !important;
+    zoom: 0.85 !important;
+  }
+  .overflow-x-auto th,
+  .overflow-x-auto td {
     padding: 1px 2px !important;
-    min-width: 0 !important;
   }
   /* Sticky columns overlap badly on paper — make them static */
   .sticky {
     position: static !important;
-  }
-  /* Keep the register banner looking right on paper */
-  .rounded-2xl {
-    border-radius: 0 !important;
   }
 }

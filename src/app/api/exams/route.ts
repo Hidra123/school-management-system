@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { classes, examClasses, exams } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
+import { isExamType, normalizeExamType } from "@/lib/examTypes";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,13 @@ export async function POST(req: Request) {
   if (!body || typeof body.name !== "string" || !body.name.trim()) {
     return Response.json({ error: "Exam name is required." }, { status: 400 });
   }
+  // Exam Type: only SE (School Examination) or CA (Continuously Assessment).
+  if (body.examType !== undefined && !isExamType(typeof body.examType === "string" ? body.examType : "")) {
+    return Response.json(
+      { error: "Exam Type must be either SE (School Examination) or CA (Continuously Assessment)." },
+      { status: 400 },
+    );
+  }
 
   try {
     const classNames = parseClassNames(body.classes);
@@ -83,7 +91,7 @@ export async function POST(req: Request) {
       .insert(exams)
       .values({
         name: body.name.trim(),
-        examType: typeof body.examType === "string" && body.examType.trim() ? body.examType.trim() : "SE",
+        examType: typeof body.examType === "string" && body.examType.trim() ? normalizeExamType(body.examType) : "SE",
         academicYear: typeof body.academicYear === "string" ? body.academicYear.trim() : "",
         startDate: typeof body.startDate === "string" && body.startDate ? body.startDate : null,
         endDate: typeof body.endDate === "string" && body.endDate ? body.endDate : null,

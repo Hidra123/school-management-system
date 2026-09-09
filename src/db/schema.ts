@@ -21,7 +21,16 @@ export const attendanceStatusEnum = pgEnum("attendance_status", [
   "late",
   "excused",
 ]);
+/**
+ * Exam types for grades (Submit Scores).
+ * "SE" and "CA" are the two CURRENT types — see src/lib/examTypes.ts:
+ *   SE = School Examination, CA = Continuously Assessment.
+ * The old values are kept only so existing rows and older clients keep
+ * working; the UI never offers them and Neon SQL migrates old rows to SE/CA.
+ */
 export const examTypeEnum = pgEnum("exam_type", [
+  "SE",
+  "CA",
   "assignment",
   "quiz",
   "midterm",
@@ -166,7 +175,9 @@ export const attendance = pgTable(
 export const exams = pgTable("exams", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 150 }).notNull(),
-  // Short exam-type code shown as a badge, e.g. "SE" (School Examination).
+  // ONLY two values are allowed: "SE" (School Examination) or
+  // "CA" (Continuously Assessment) — validated in the API and enforced in the
+  // UI dropdown. See src/lib/examTypes.ts.
   examType: varchar("exam_type", { length: 20 }).notNull().default("SE"),
   academicYear: varchar("academic_year", { length: 10 }).notNull().default(""),
   startDate: date("start_date", { mode: "string" }),
@@ -236,7 +247,8 @@ export const grades = pgTable(
     subjectId: integer("subject_id")
       .notNull()
       .references(() => subjects.id, { onDelete: "cascade" }),
-    examType: examTypeEnum("exam_type").notNull(),
+    // "SE" (School Examination) or "CA" (Continuously Assessment).
+    examType: examTypeEnum("exam_type").notNull().default("SE"),
     term: varchar("term", { length: 60 }).notNull().default("Term 1"),
     score: doublePrecision("score").notNull().default(0),
     // Links a score entry to a specific named Examination (Manage Examinations

@@ -108,3 +108,25 @@ html {
     position: static !important;
   }
 }
+
+/* ============================================================
+   SCREEN vs PRINT TOGGLES (bulletproof — !important, no cascade
+   order dependency). Use:
+     screen-only  → element inaonekana SCREEN tu (hufichwa print)
+     print-only   → element inaonekana PRINT tu (hufichwa screen)
+   ============================================================ */
+.print-only {
+  display: none !important;
+}
+.screen-only {
+  display: block !important;
+}
+@media print {
+
+  .print-only {
+    display: block !important;
+  }
+  .screen-only {
+    display: none !important;
+  }
+}

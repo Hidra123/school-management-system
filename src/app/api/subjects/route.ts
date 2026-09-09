@@ -10,13 +10,17 @@ export const dynamic = "force-dynamic";
 // NOTE: intentionally only requires being logged in (not the granular
 // "subjects.view" permission) — see the matching comment in
 // src/app/api/classes/route.ts for the rationale.
-export async function GET() {
+//
+// ?strict=1 → Academic Master included: only THEIR assigned subjects are
+// returned (used by Submit Scores — see /api/classes for the full story).
+export async function GET(req: Request) {
   const user = await getSessionUser();
   const err = requireAuth(user);
   if (err) return err;
 
   try {
-    const scope = await getTeacherScope(user);
+    const strict = new URL(req.url).searchParams.get("strict") === "1";
+    const scope = await getTeacherScope(user, { strictForAcademicMaster: strict });
 
     const query = db
       .select({

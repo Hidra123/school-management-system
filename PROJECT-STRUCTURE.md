@@ -107,7 +107,7 @@ shulehub-sms/
     │   ├── attendance-tracking/page.tsx # ✅ School-wide (Admin + Academic Master, 5 tabs)
     │   ├── exams/page.tsx               # 🔧 SE|CA — Manage Examinations + Routine & Results tabs
     │   ├── grades/
-    │   │   ├── page.tsx                 # 🔧 Submit Scores (strict scope + banner ya Academic Master)
+    │   │   ├── page.tsx                 # 🔧 Submit Scores — step-by-step (Class → Subject → Exam Category SE/CA → Exam Name ACTIVE) then students
     │   │   ├── tracking/page.tsx        # 🚧 STUB
     │   │   └── report/page.tsx          # 🚧 STUB
     │   ├── fees/page.tsx                # ✅ ⚠️ bado haijascope kwa teachers

@@ -3,17 +3,26 @@ import { db } from "@/db";
 import { grades, students, subjects } from "@/db/schema";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { classAllowed, getTeacherScope, subjectAllowed } from "@/lib/teachers";
+import { normalizeExamType } from "@/lib/examTypes";
 
 export const dynamic = "force-dynamic";
 
-const EXAM_TYPES = ["assignment", "quiz", "midterm", "final", "project"];
+/**
+ * Exam types accepted for grades.
+ * SE and CA are the only two choices offered in the UI (src/lib/examTypes.ts).
+ * The legacy values stay here so rows saved before this rule (and any old
+ * client still sending them) keep working instead of throwing.
+ */
+const EXAM_TYPES = ["SE", "CA", "assignment", "quiz", "midterm", "final", "project"];
 
 export async function GET(req: Request) {
   const user = await getSessionUser();
   const err = requirePermission(user, "grades.view");
   if (err) return err;
 
-  const scope = await getTeacherScope(user);
+  // Submit Scores: Academic Master included — they only see the classes/subjects
+  // the admin has assigned to them (strictForAcademicMaster).
+  const scope = await getTeacherScope(user, { strictForAcademicMaster: true });
 
   const url = new URL(req.url);
   const classIdRaw = url.searchParams.get("classId");
@@ -82,7 +91,9 @@ export async function POST(req: Request) {
   const err = requirePermission(user, "grades.submit");
   if (err) return err;
 
-  const scope = await getTeacherScope(user);
+  // Submit Scores: Academic Master included — they only see the classes/subjects
+  // the admin has assigned to them (strictForAcademicMaster).
+  const scope = await getTeacherScope(user, { strictForAcademicMaster: true });
 
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });

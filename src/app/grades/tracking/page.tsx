@@ -51,6 +51,172 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
+/** Builds a standalone HTML document for the print preview (iframe method).
+ *  No Tailwind / no app CSS — its own inline styles => 100% reliable print. */
+function buildPrintDoc(d: {
+  tab: TabKey;
+  rows: TrackRow[];
+  classGroups: { name: string; list: TrackRow[]; submittedCount: number; total: number; pct: number }[];
+  teacherAgg: { name: string; assignments: number; submitted: number; pending: number; pct: number; combos: string[] }[];
+  stats: TrackResponse["stats"];
+  filterSummary: string;
+  generatedAt: string;
+  printSubtitle: string;
+  examListLabel: string;
+}): string {
+  const rows = d.rows;
+  const cls = (n: string) => n; // placeholder to keep template readable
+  const badge = (status: "submitted" | "pending") =>
+    status === "submitted"
+      ? `<span style="display:inline-block;background:#d1fae5;color:#047857;padding:1px 8px;border-radius:999px;font-size:9px;font-weight:800;text-transform:uppercase">submitted</span>`
+      : `<span style="display:inline-block;background:#fef3c7;color:#b45309;padding:1px 8px;border-radius:999px;font-size:9px;font-weight:800;text-transform:uppercase">pending</span>`;
+  const pctOf = (sub: number, exp: number) => Math.round((sub / Math.max(exp, 1)) * 100);
+  const fmt = (iso: string | null) => {
+    if (!iso) return "—";
+    const dt = new Date(iso);
+    if (Number.isNaN(dt.getTime())) return "—";
+    return dt.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  };
+
+  // ---- Section per tab ----
+  let section = "";
+  if (d.tab === "progress") {
+    section = d.classGroups.map((g) => `
+      <div style="border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;margin-bottom:16px;break-inside:avoid;">
+        <div style="background:#1e293b;color:#fff;padding:8px 16px;display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;">${g.name}</strong>
+          <span style="font-size:10px;color:#cbd5e1;">${g.submittedCount}/${g.total} submitted</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;padding:7px 16px;background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+          <div style="flex:1;height:9px;background:#e2e8f0;border-radius:999px;overflow:hidden;">
+            <div style="height:100%;width:${g.pct}%;border-radius:999px;background:${g.pct === 100 ? "#10b981" : "#8b5cf6"};"></div>
+          </div>
+          <strong style="font-size:11px;color:${g.pct === 100 ? "#059669" : "#7c3aed"};">${g.pct}%</strong>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:10px;">
+          ${g.list.map((r, i) => `
+            <tr style="background:${i % 2 ? "#f8fafc" : "#fff"};">
+              <td style="padding:5px 16px;font-weight:700;color:#1e293b;border-bottom:1px solid #e2e8f0;">${r.subjectName}</td>
+              <td style="padding:5px 16px;text-align:right;border-bottom:1px solid #e2e8f0;">
+                <span style="color:#64748b;font-size:9px;margin-right:12px;">${r.teacherName}</span>
+                ${badge(r.status)}
+                <span style="color:#94a3b8;font-size:9px;margin-left:10px;">${fmt(r.submittedAt)}</span>
+              </td>
+            </tr>`).join("")}
+        </table>
+      </div>`).join("");
+  } else if (d.tab === "detailed") {
+    section = `
+    <table style="width:100%;border-collapse:collapse;font-size:10px;border:1px solid #e2e8f0;">
+      <thead>
+        <tr style="background:#1e293b;color:#fff;text-align:left;">
+          ${["#", "Class", "Subject", "Exam", "Teacher", "Students", "Submitted", "Status", "%", "Submitted At"].map((h, i) => `<th style="padding:6px 8px;font-weight:800;${i >= 5 && i <= 6 ? "text-align:right;" : ""}">${h}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r, i) => `
+          <tr style="background:${i % 2 ? "#f8fafc" : "#fff"};">
+            <td style="padding:5px 8px;color:#64748b;border-bottom:1px solid #e2e8f0;">${i + 1}</td>
+            <td style="padding:5px 8px;font-weight:800;color:#1e293b;border-bottom:1px solid #e2e8f0;">${r.className}${r.section ? " " + r.section : ""}</td>
+            <td style="padding:5px 8px;color:#334155;border-bottom:1px solid #e2e8f0;">${r.subjectName}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;"><span style="display:inline-block;background:#e0e7ff;color:#4338ca;padding:1px 8px;border-radius:999px;font-size:9px;font-weight:800;">${r.examType}</span></td>
+            <td style="padding:5px 8px;color:#334155;border-bottom:1px solid #e2e8f0;">${r.teacherName}</td>
+            <td style="padding:5px 8px;text-align:right;color:#334155;border-bottom:1px solid #e2e8f0;">${r.students}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:800;color:#1e293b;border-bottom:1px solid #e2e8f0;">${r.submitted}/${r.expected}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;">${badge(r.status)}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="flex:1;height:7px;max-width:70px;background:#e2e8f0;border-radius:999px;overflow:hidden;">
+                  <div style="height:100%;width:${pctOf(r.submitted, r.expected)}%;background:${r.status === "submitted" ? "#10b981" : "#f59e0b"};"></div>
+                </div>
+                <span style="font-size:9px;font-weight:700;color:#334155;">${pctOf(r.submitted, r.expected)}%</span>
+              </div>
+            </td>
+            <td style="padding:5px 8px;font-size:9px;color:#64748b;border-bottom:1px solid #e2e8f0;">${fmt(r.submittedAt)}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+  } else {
+    section = `
+    <table style="width:100%;border-collapse:collapse;font-size:10px;border:1px solid #e2e8f0;">
+      <thead>
+        <tr style="background:#1e293b;color:#fff;text-align:left;">
+          ${["#", "Teacher", "Assignments", "Submitted", "Pending", "Completion", "Classes / Subjects"].map((h, i) => `<th style="padding:6px 8px;font-weight:800;${i >= 2 && i <= 4 ? "text-align:right;" : ""}">${h}</th>`).join("")}
+        </tr>
+      </thead>
+      <tbody>
+        ${d.teacherAgg.map((t, i) => `
+          <tr style="background:${i % 2 ? "#f8fafc" : "#fff"};">
+            <td style="padding:5px 8px;color:#64748b;border-bottom:1px solid #e2e8f0;">${i + 1}</td>
+            <td style="padding:5px 8px;font-weight:800;color:#1e293b;border-bottom:1px solid #e2e8f0;">${t.name}</td>
+            <td style="padding:5px 8px;text-align:right;color:#334155;border-bottom:1px solid #e2e8f0;">${t.assignments}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:800;color:#047857;border-bottom:1px solid #e2e8f0;">${t.submitted}</td>
+            <td style="padding:5px 8px;text-align:right;font-weight:800;color:#b45309;border-bottom:1px solid #e2e8f0;">${t.pending}</td>
+            <td style="padding:5px 8px;border-bottom:1px solid #e2e8f0;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <div style="flex:1;height:7px;max-width:110px;background:#e2e8f0;border-radius:999px;overflow:hidden;">
+                  <div style="height:100%;width:${t.pct}%;background:${t.pct === 100 ? "#10b981" : "#8b5cf6"};"></div>
+                </div>
+                <span style="font-size:9px;font-weight:700;color:#334155;">${t.pct}%</span>
+              </div>
+            </td>
+            <td style="padding:5px 8px;font-size:9px;color:#64748b;border-bottom:1px solid #e2e8f0;">${t.combos.join(", ")}</td>
+          </tr>`).join("")}
+      </tbody>
+    </table>`;
+  }
+
+  const kpi = [
+    { label: "Total Assignments", value: d.stats.totalAssignments, color: "#4f46e5" },
+    { label: "Scores Submitted", value: d.stats.submitted, color: "#059669" },
+    { label: "Pending", value: d.stats.pending, color: "#d97706" },
+    { label: "Completion Rate", value: d.stats.completionRate + "%", color: "#0284c7" },
+  ];
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${d.printSubtitle}</title><style>
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; margin: 0; }
+    .kpi { display:flex; gap:12px; margin:18px 0 22px; }
+    .kpi div { flex:1; border:1px solid #e2e8f0; border-left:4px solid ${kpi[0].color}; border-radius:12px; padding:10px 14px; background:#fff; }
+    .kpi div:nth-child(2){ border-left-color:${kpi[1].color}; }
+    .kpi div:nth-child(3){ border-left-color:${kpi[2].color}; }
+    .kpi div:nth-child(4){ border-left-color:${kpi[3].color}; }
+    .kpi p { margin:0; font-size:8px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#64748b; }
+    .kpi strong { display:block; margin-top:4px; font-size:24px; color:#0f172a; }
+    h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:#1e293b; margin:0 0 8px; }
+    .sect { display:flex; align-items:center; gap:8px; }
+    .sect span { display:inline-block; width:5px; height:16px; border-radius:99px; background:#4f46e5; }
+    .sig { display:flex; gap:40px; margin-top:34px; }
+    .sig div { flex:1; border-top:2px solid #94a3b8; padding-top:6px; font-size:9px; color:#475569; }
+    .sig strong { text-transform:uppercase; letter-spacing:.05em; color:#1e293b; }
+    .foot { margin-top:28px; border-top:1px solid #e2e8f0; padding-top:8px; text-align:center; font-size:8px; color:#94a3b8; }
+  </style></head><body>
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:20px;border-bottom:4px solid #4f46e5;padding-bottom:14px;">
+      <div style="display:flex;gap:14px;align-items:center;">
+        <div style="width:58px;height:58px;border-radius:16px;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:26px;">🎓</div>
+        <div>
+          <h1 style="margin:0;font-size:26px;font-weight:900;letter-spacing:-.01em;">SHULEHUB SCHOOL</h1>
+          <p style="margin:2px 0 0;font-size:10px;font-weight:800;letter-spacing:.22em;text-transform:uppercase;color:#4f46e5;">${d.printSubtitle}</p>
+        </div>
+      </div>
+      <div style="text-align:right;font-size:9px;color:#64748b;line-height:1.6;">
+        <p style="margin:0;font-weight:800;text-transform:uppercase;color:#334155;">Generated: ${d.generatedAt}</p>
+        <p style="margin:0;">Filters: <strong>${d.filterSummary}</strong></p>
+        <p style="margin:0;">Exams: <strong>${d.examListLabel}</strong></p>
+      </div>
+    </div>
+    <div class="kpi">${kpi.map((k) => `<div><p>${k.label}</p><strong>${k.value}</strong></div>`).join("")}</div>
+    <div class="sect"><span></span><h2>1 · ${d.printSubtitle.replace(" Report", "")} (${d.tab === "teacher" ? d.teacherAgg.length + " teachers" : d.tab === "progress" ? d.classGroups.length + " classes" : rows.length + " assignments"})</h2></div>
+    ${section}
+    <div class="sig">
+      <div><strong>Prepared by (Academic Master)</strong><p>Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p></div>
+      <div><strong>Approved by (Head of School)</strong><p>Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p></div>
+    </div>
+    <p class="foot">Generated by ShuleHub School Management System · ${d.generatedAt} · ${d.filterSummary}</p>
+  </body></html>`;
+}
+
 export default function ScoreTrackingPage() {
   const { user } = useAuth();
   const classesFetch = useFetch<ClassRow[]>("/api/classes");
@@ -107,6 +273,48 @@ export default function ScoreTrackingPage() {
       : tab === "detailed"
         ? "Detailed Score View Report"
         : "Submission by Teacher Report";
+  // ---------- PRINT via dedicated iframe (100% reliable — no app CSS) ----------
+  function printReport() {
+    if (!report.data || rows.length === 0) {
+      window.print();
+      return;
+    }
+    const html = buildPrintDoc({
+      tab,
+      rows,
+      classGroups,
+      teacherAgg,
+      stats,
+      filterSummary,
+      generatedAt,
+      printSubtitle,
+      examListLabel,
+    });
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentDocument;
+    if (!doc) {
+      document.body.removeChild(iframe);
+      window.print();
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    const win = iframe.contentWindow;
+    if (win) {
+      win.focus();
+      win.print();
+    }
+    setTimeout(() => document.body.removeChild(iframe), 3000);
+  }
+
 
   // ---- Group by class (Submission Progress) ----
   const classGroups = useMemo(() => {
@@ -208,7 +416,7 @@ export default function ScoreTrackingPage() {
           </div>
           <div className="flex gap-2">
             <button onClick={loadReport} className={btnPrimary}>🔍 Load Report</button>
-            <button onClick={() => window.print()} className={btnGhost} disabled={!report.data}>🖨️ Print</button>
+            <button onClick={printReport} className={btnGhost} disabled={!report.data}>🖨️ Print</button>
           </div>
         </div>
 
@@ -361,224 +569,6 @@ export default function ScoreTrackingPage() {
           </div>
         )}
 
-        {/* ==================== PRINT-ONLY REPORT (modern, letterhead style) ==================== */}
-        {report.data && (
-          <div className="print-only">
-            {/* Letterhead */}
-            <div className="flex items-center justify-between gap-4 border-b-4 border-indigo-600 pb-4">
-              <div className="flex items-center gap-4">
-                <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-3xl shadow-md">
-                  🎓
-                </div>
-                <div>
-                  <h1 className="text-3xl font-black tracking-tight text-slate-900">SHULEHUB SCHOOL</h1>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-indigo-600">
-                    {printSubtitle}
-                  </p>
-                </div>
-              </div>
-              <div className="text-right text-[10px] leading-relaxed text-slate-500">
-                <p className="font-bold uppercase tracking-wide text-slate-700">Generated: {generatedAt}</p>
-                <p>Filters: <span className="font-semibold text-slate-700">{filterSummary}</span></p>
-                <p>Exams: <span className="font-semibold text-slate-700">{examListLabel}</span></p>
-              </div>
-            </div>
-
-            {/* KPI band */}
-            <div className="mt-5 grid grid-cols-4 gap-3">
-              {[
-                { label: "Total Assignments", value: stats.totalAssignments, border: "border-l-indigo-600", text: "text-indigo-700" },
-                { label: "Scores Submitted", value: stats.submitted, border: "border-l-emerald-600", text: "text-emerald-700" },
-                { label: "Pending", value: stats.pending, border: "border-l-amber-500", text: "text-amber-600" },
-                { label: "Completion Rate", value: `${stats.completionRate}%`, border: "border-l-sky-600", text: "text-sky-700" },
-              ].map((k) => (
-                <div key={k.label} className={`rounded-xl border border-slate-200 border-l-4 ${k.border} bg-white px-4 py-3 shadow-sm`}>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{k.label}</p>
-                  <p className={`mt-1 text-2xl font-black ${k.text}`}>{k.value}</p>
-                </div>
-              ))}
-            </div>
-
-            {/* ============ SECTION — inategemea TAB iliyochaguliwa ============ */}
-            {tab === "progress" && (
-              <>
-                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
-                  <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
-                  1 · Score Submission Progress ({classGroups.length} classes)
-                </h2>
-                <div className="space-y-5">
-                  {classGroups.map((g) => (
-                    <div key={g.name} className="print-block overflow-hidden rounded-xl border border-slate-200">
-                      <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-800 px-4 py-2">
-                        <p className="text-[11px] font-black uppercase tracking-wide text-white">{g.name}</p>
-                        <p className="text-[10px] font-bold text-slate-300">
-                          {g.submittedCount}/{g.total} submitted
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2">
-                        <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-slate-200">
-                          <div
-                            className={g.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
-                            style={{ width: `${g.pct}%` }}
-                          />
-                        </div>
-                        <span className={g.pct === 100 ? "text-[11px] font-black text-emerald-600" : "text-[11px] font-black text-violet-600"}>
-                          {g.pct}%
-                        </span>
-                      </div>
-                      <table className="w-full text-[10px]">
-                        <tbody>
-                          {g.list.map((r, i) => (
-                            <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                              <td className="border-b border-slate-200 px-4 py-1 font-bold text-slate-800">{r.subjectName}</td>
-                              <td className="border-b border-slate-200 px-4 py-1 text-right">
-                                <span className="mr-4 text-[9px] text-slate-400">{r.teacherName}</span>
-                                <span className={r.status === "submitted"
-                                  ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
-                                  : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
-                                  {r.status}
-                                </span>
-                                <span className="ml-3 text-[9px] text-slate-400">{fmtDT(r.submittedAt)}</span>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
-
-            {tab === "detailed" && (
-              <>
-                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
-                  <span className="inline-block h-4 w-1.5 rounded-full bg-indigo-600" />
-                  1 · Detailed Score View ({rows.length} assignments)
-                </h2>
-                <table className="w-full text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-800 text-left text-white">
-                      <th className="px-2 py-1.5 font-bold">#</th>
-                      <th className="px-2 py-1.5 font-bold">Class</th>
-                      <th className="px-2 py-1.5 font-bold">Subject</th>
-                      <th className="px-2 py-1.5 font-bold">Exam</th>
-                      <th className="px-2 py-1.5 font-bold">Teacher</th>
-                      <th className="px-2 py-1.5 text-right font-bold">Students</th>
-                      <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
-                      <th className="px-2 py-1.5 font-bold">Status</th>
-                      <th className="px-2 py-1.5 font-bold">%</th>
-                      <th className="px-2 py-1.5 font-bold">Submitted At</th>
-                    </tr>
-                  </thead>
-                  <tbody className="border border-slate-200">
-                    {rows.map((r, i) => (
-                      <tr key={`${r.classId}-${r.subjectId}-${r.examId}-${i}`} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                        <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">
-                          {r.className}{r.section ? ` ${r.section}` : ""}
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.subjectName}</td>
-                        <td className="border-b border-slate-200 px-2 py-1">
-                          <span className="inline-block rounded-full bg-indigo-100 px-1.5 py-0.5 text-[8px] font-black text-indigo-700">
-                            {r.examType}
-                          </span>
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-slate-700">{r.teacherName}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{r.students}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-slate-800">
-                          {r.submitted}/{r.expected}
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1">
-                          <span className={r.status === "submitted"
-                            ? "inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[8px] font-black text-emerald-700"
-                            : "inline-block rounded-full bg-amber-100 px-2 py-0.5 text-[8px] font-black text-amber-700"}>
-                            {r.status}
-                          </span>
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1">
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-2 w-20 overflow-hidden rounded-full bg-slate-200">
-                              <div
-                                className={r.status === "submitted" ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-amber-400"}
-                                style={{ width: `${Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-[9px] font-bold text-slate-700">
-                              {Math.round((r.submitted / Math.max(r.expected, 1)) * 100)}%
-                            </span>
-                          </div>
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{fmtDT(r.submittedAt)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {tab === "teacher" && (
-              <>
-                <h2 className="mt-7 mb-2 flex items-center gap-2 text-[13px] font-extrabold uppercase tracking-wide text-slate-800">
-                  <span className="inline-block h-4 w-1.5 rounded-full bg-violet-600" />
-                  1 · Submission by Teacher ({teacherAgg.length} teachers)
-                </h2>
-                <table className="w-full text-[10px]">
-                  <thead>
-                    <tr className="bg-slate-800 text-left text-white">
-                      <th className="px-2 py-1.5 font-bold">#</th>
-                      <th className="px-2 py-1.5 font-bold">Teacher</th>
-                      <th className="px-2 py-1.5 text-right font-bold">Assignments</th>
-                      <th className="px-2 py-1.5 text-right font-bold">Submitted</th>
-                      <th className="px-2 py-1.5 text-right font-bold">Pending</th>
-                      <th className="px-2 py-1.5 font-bold">Completion</th>
-                      <th className="px-2 py-1.5 font-bold">Classes / Subjects</th>
-                    </tr>
-                  </thead>
-                  <tbody className="border border-slate-200">
-                    {teacherAgg.map((t, i) => (
-                      <tr key={t.name} className={i % 2 ? "bg-slate-50" : "bg-white"}>
-                        <td className="border-b border-slate-200 px-2 py-1 text-slate-500">{i + 1}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 font-bold text-slate-800">{t.name}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-right text-slate-700">{t.assignments}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-emerald-700">{t.submitted}</td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-right font-bold text-amber-600">{t.pending}</td>
-                        <td className="border-b border-slate-200 px-2 py-1">
-                          <div className="flex items-center gap-1.5">
-                            <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-200">
-                              <div
-                                className={t.pct === 100 ? "h-full rounded-full bg-emerald-500" : "h-full rounded-full bg-violet-500"}
-                                style={{ width: `${t.pct}%` }}
-                              />
-                            </div>
-                            <span className="text-[9px] font-bold text-slate-700">{t.pct}%</span>
-                          </div>
-                        </td>
-                        <td className="border-b border-slate-200 px-2 py-1 text-[9px] text-slate-500">{t.combos.join(", ")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </>
-            )}
-
-            {/* Signatures */}
-            <div className="mt-10 grid grid-cols-2 gap-10">
-              <div className="border-t-2 border-slate-400 pt-2 text-[10px] text-slate-600">
-                <p className="font-bold uppercase tracking-wide text-slate-800">Prepared by (Academic Master)</p>
-                <p className="mt-6">Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p>
-              </div>
-              <div className="border-t-2 border-slate-400 pt-2 text-[10px] text-slate-600">
-                <p className="font-bold uppercase tracking-wide text-slate-800">Approved by (Head of School)</p>
-                <p className="mt-6">Name: ______________________ &nbsp;&nbsp; Signature: ______________ &nbsp;&nbsp; Date: ____________</p>
-              </div>
-            </div>
-
-            <p className="mt-8 border-t border-slate-200 pt-3 text-center text-[9px] text-slate-400">
-              Generated by ShuleHub School Management System · {generatedAt} · {filterSummary}
-            </p>
-          </div>
-        )}
       </div>
     </AppShell>
   );

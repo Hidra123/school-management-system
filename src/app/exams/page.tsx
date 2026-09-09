@@ -32,6 +32,22 @@ export default function ExaminationsPage() {
         )}
       </PageHeader>
 
+      {/* Exam Type legend — the school uses exactly two exam types */}
+      <div className="mb-5 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-indigo-100 bg-indigo-50/70 px-4 py-3">
+          <p className="text-sm font-bold text-indigo-900">SE — School Examination</p>
+          <p className="mt-0.5 text-xs text-indigo-700">
+            Official school examinations: mid-term, terminal and final papers.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/70 px-4 py-3">
+          <p className="text-sm font-bold text-amber-900">CA — Continuously Assessment (CAs)</p>
+          <p className="mt-0.5 text-xs text-amber-700">
+            Continuous assessment: tests, quizzes, assignments and projects.
+          </p>
+        </div>
+      </div>
+
       {tabs.length === 0 ? (
         <EmptyState icon="🔒" title="View-only access" message="You can view this page but do not have permission to manage examinations or publish results. Contact the admin to request access." />
       ) : (

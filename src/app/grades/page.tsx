@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  Badge,
   EmptyState,
   Field,
   Loader,
@@ -85,6 +86,7 @@ export default function GradesPage() {
   const [term, setTerm] = useState("Term 1");
 
   const [scores, setScores] = useState<Record<number, string>>({});
+  const [editing, setEditing] = useState(true); // false = view mode (scores saved), true = editable
   const [saving, setSaving] = useState(false);
   const [entryMsg, setEntryMsg] = useState<string | null>(null);
   const [entryErr, setEntryErr] = useState<string | null>(null);
@@ -217,6 +219,7 @@ export default function GradesPage() {
         entries,
       });
       setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}).`);
+      setEditing(false);
       entryGrades.refresh();
     } catch (err) {
       setEntryErr(err instanceof Error ? err.message : "Failed to save.");
@@ -423,14 +426,9 @@ export default function GradesPage() {
                     <span className="text-xs text-slate-500">
                       Max: <b>100</b> · {entryCount}/{studentList.length} entered
                     </span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => setScores(Object.fromEntries(studentList.map((s) => [s.id, ""])))} className={btnGhost}>
-                      Clear
-                    </button>
-                    <button onClick={() => void saveEntry()} disabled={saving || entryCount === 0} className={btnPrimary}>
-                      {saving ? "Saving..." : `💾 Save scores (${entryCount})`}
-                    </button>
+                    {!editing && (
+                      <Badge tone="emerald">Saved — press Edit to modify</Badge>
+                    )}
                   </div>
                 </div>
 
@@ -470,10 +468,12 @@ export default function GradesPage() {
                               max={100}
                               step="0.5"
                               value={scores[s.id] ?? ""}
+                              disabled={!editing}
                               onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
                               className={cls(
                                 inputCls,
                                 "w-24",
+                                !editing && "bg-slate-50 text-slate-700",
                                 scores[s.id]?.trim() !== "" && scoreTone(Number(scores[s.id])),
                               )}
                             />
@@ -482,6 +482,30 @@ export default function GradesPage() {
                       ))}
                     </tbody>
                   </table>
+                </div>
+
+                {/* FOOTER — buttons 3 ziko CHINI ya jedwali */}
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
+                  <button
+                    onClick={() => { setScores(Object.fromEntries(studentList.map((st) => [st.id, ""]))); setEditing(true); }}
+                    className={btnGhost}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    onClick={() => void saveEntry()}
+                    disabled={saving || entryCount === 0}
+                    className={btnPrimary}
+                  >
+                    {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
+                  </button>
+                  <button
+                    onClick={() => setEditing(true)}
+                    disabled={editing}
+                    className={cls(btnGhost, "border-violet-200 text-violet-700 hover:bg-violet-50", editing && "opacity-50")}
+                  >
+                    ✏️ Edit
+                  </button>
                 </div>
               </div>
             )}

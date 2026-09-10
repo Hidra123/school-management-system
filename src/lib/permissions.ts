@@ -173,6 +173,7 @@ export const ADMIN_SIDEBAR = [
   { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
   { href: "/map-students", label: "Map Students", icon: "👥", group: "STAFF MANAGEMENT" },
   { href: "/year-progression", label: "Year Progression", icon: "➔", group: "STAFF MANAGEMENT" },
+  { href: "/tod", label: "TOD Report", icon: "🔰", group: "STAFF MANAGEMENT" },
   // PARENTS
   { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
   { href: "/admin/parent-assignments", label: "Assignments", icon: "🎯", group: "PARENTS" },

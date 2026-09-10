@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
   Badge,
@@ -17,9 +17,9 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/components/AuthProvider";
 import { staffRoleLabel } from "@/lib/permissions";
-import { cls, delJSON, putJSON, useFetch } from "@/lib/utils";
+import { cls, delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
-type ClassItem = { id: number; name: string; section: string; capacity: number };
+type ClassItem = { id: number; name: string; section: string; capacity: number; studentCount?: number };
 type SubjectItem = { id: number; name: string; code: string; teacherId: number | null };
 type TeacherItem = { id: number; name: string; subject: string; phone: string; email: string };
 type TimetableSlot = {
@@ -104,7 +104,7 @@ function getExtraForDay(settings: TimetableSettings, dayOfWeek: number) {
   }
 }
 
-/** Subject badge styling for timetable grids */
+/** Subject display with fallback logic that NEVER outputs raw "SUBJ" */
 function getSlotDisplay(slot: TimetableSlot | undefined) {
   if (!slot) return { label: "—", sub: "", tone: "empty", isSpecial: false };
   if (slot.customLabel) {
@@ -118,18 +118,33 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
       isSpecial,
     };
   }
-  // Prefer the real subject code (e.g. "GEO-013", "MATH-041"); fall back to a
-  // name-derived short code; never invent a fake "SUBJ" label — when a slot
-  // truly has no subject yet, leave it blank and just show the teacher.
-  const code = slot.subjectCode
-    ? slot.subjectCode.toUpperCase()
-    : (slot.subjectName?.slice(0, 6).toUpperCase() ?? "");
+  // Prefer exact subject code (e.g. KISW-021, MATH-041, GEO-013), or subjectName, or teacher default
+  const code =
+    slot.subjectCode ||
+    (slot.subjectName ? slot.subjectName.slice(0, 8).toUpperCase() : "");
   return {
-    label: code || "·",
+    label: code || (slot.teacherName ? "CLASS" : "—"),
     sub: slot.teacherName || slot.subjectName || "",
-    tone: code ? "subject" : "empty",
+    tone: "subject",
     isSpecial: false,
   };
+}
+
+/** Format Roman numeral or class name for print display (e.g. "I", "II", "IVA", "IV B") */
+function formatClassPrint(name: string, section?: string | null) {
+  let roman = name
+    .replace(/^Form\s*1\b/i, "I")
+    .replace(/^Form\s*2\b/i, "II")
+    .replace(/^Form\s*3\b/i, "III")
+    .replace(/^Form\s*4\b/i, "IV")
+    .replace(/^Form\s*5\b/i, "V")
+    .replace(/^Form\s*6\b/i, "VI");
+
+  const cleanSec = section && section.trim() && section !== "—" && section !== "A & B" ? section.trim() : "";
+  if (cleanSec) {
+    return `${roman} ${cleanSec}`;
+  }
+  return roman;
 }
 
 // -------------------------------------------------------------
@@ -171,9 +186,9 @@ export default function TimetablePage() {
     user?.staffRole === "academic_master" ||
     data?.isManager === true;
 
-  // Tabs
-  // For Manager (Academic Master / Admin): General Timetable | Class Timetable | Teacher Timetable
-  // For Teacher / Class Teacher: My Timetable | Class Timetable
+  // Tabs:
+  // For Manager: general | class | teacher
+  // For Teacher: my | class
   const [activeTab, setActiveTab] = useState<string>("auto");
 
   const effectiveTab = useMemo(() => {
@@ -203,6 +218,16 @@ export default function TimetablePage() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<TimetableSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Class Row modal (Add stream e.g. Form 4 B, Form 1 A)
+  const [addClassModalOpen, setAddClassModalOpen] = useState(false);
+  const [classForm, setClassForm] = useState({ name: "Form 4", section: "B", capacity: 40 });
+  const [savingClass, setSavingClass] = useState(false);
+  const [classMsg, setClassMsg] = useState<string | null>(null);
+
+  // Manage Classes Modal
+  const [manageClassesOpen, setManageClassesOpen] = useState(false);
+  const [editingClass, setEditingClass] = useState<{ id: number; name: string; section: string } | null>(null);
 
   // Auto-init class filter when classes load
   const availableClasses = useMemo(() => {
@@ -237,11 +262,12 @@ export default function TimetablePage() {
     return map;
   }, [data?.slots]);
 
-  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot[]
+  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot
   const mySlotsMap = useMemo(() => {
-    const targetId = isManager && effectiveTab === "teacher"
-      ? Number(currentTeacherId)
-      : data?.teacherId;
+    const targetId =
+      isManager && effectiveTab === "teacher"
+        ? Number(currentTeacherId)
+        : data?.teacherId;
     const map = new Map<string, TimetableSlot>();
     if (!targetId) return map;
     for (const slot of data?.slots ?? []) {
@@ -335,6 +361,51 @@ export default function TimetablePage() {
     }
   }
 
+  // Add Class/Stream Row (e.g. Form 4 B)
+  async function handleAddClassRow(e: React.FormEvent) {
+    e.preventDefault();
+    setSavingClass(true);
+    setClassMsg(null);
+    try {
+      await postJSON("/api/timetable/class", {
+        name: classForm.name,
+        section: classForm.section,
+        capacity: classForm.capacity,
+        academicYear: data?.settings.academicYear || "2026",
+      });
+      setAddClassModalOpen(false);
+      timetableFetch.refresh();
+    } catch (err) {
+      setClassMsg(err instanceof Error ? err.message : "Failed to add class stream.");
+    } finally {
+      setSavingClass(false);
+    }
+  }
+
+  // Update Class Section/Stream
+  async function handleUpdateClass(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editingClass) return;
+    try {
+      await putJSON("/api/timetable/class", editingClass);
+      setEditingClass(null);
+      timetableFetch.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update class.");
+    }
+  }
+
+  // Remove Class from Timetable
+  async function handleDeleteClass(classId: number, className: string) {
+    if (!window.confirm(`Clear timetable for ${className}? If this class has no enrolled students, it will be removed.`)) return;
+    try {
+      await delJSON(`/api/timetable/class?id=${classId}`);
+      timetableFetch.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to remove class.");
+    }
+  }
+
   // Open Settings Modal
   function openSettings() {
     if (!data?.settings) return;
@@ -367,12 +438,12 @@ export default function TimetablePage() {
       ...editSlot,
       subjectId: idNum,
       teacherId: matchedSubject?.teacherId ?? editSlot.teacherId,
-      customLabel: idNum ? "" : editSlot.customLabel, // clear custom label if subject picked
+      customLabel: idNum ? "" : editSlot.customLabel,
     });
   }
 
   // -------------------------------------------------------------
-  // PRINT: Master General Teaching Timetable (Exact match to image 2)
+  // PRINT: Master General Teaching Timetable (Shows code & teacher name)
   // -------------------------------------------------------------
   function handlePrintGeneral() {
     if (!data) return;
@@ -386,9 +457,10 @@ export default function TimetablePage() {
           .map((p) => {
             const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
             const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
             </td>`;
           })
           .join("");
@@ -398,9 +470,10 @@ export default function TimetablePage() {
           .map((p) => {
             const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
             const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
             </td>`;
           })
           .join("");
@@ -420,14 +493,14 @@ export default function TimetablePage() {
             .map((p) => {
               const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
               const disp = getSlotDisplay(slot);
-              return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;">
-                ${disp.label}
+              return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;">
+                <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+                ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
               </td>`;
             })
             .join("");
         }
 
-        // Spanning cells for Break, Lunch, Assembly, Extra Curriculum on first class row
         const breakCell =
           cIdx === 0
             ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
@@ -448,24 +521,23 @@ export default function TimetablePage() {
             : "";
         const extraCell =
           cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9.5px;font-weight:800;padding:4px 4px;background:#fff;">
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9px;font-weight:800;padding:4px 2px;background:#fff;">
                 ${getExtraForDay(s, day.id)}
               </td>`
             : "";
 
         const dayCell =
           cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9.5px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
                 ${day.name.toUpperCase()}
               </td>`
             : "";
 
-        // Roman numeral style class label or standard name
-        const classLabel = c.name.replace("Form ", "").replace(" 1", "I").replace(" 2", "II").replace(" 3", "III").replace(" 4", "IV");
+        const classLabel = formatClassPrint(c.name, c.section);
 
         return `<tr>
           ${dayCell}
-          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:800;">${classLabel}</td>
+          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:900;background:#f8fafc;">${classLabel}</td>
           ${p1_4}
           ${breakCell}
           ${p5_7}
@@ -481,17 +553,17 @@ export default function TimetablePage() {
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>${s.title}</title>
       <style>
-        @page { size: A4 landscape; margin: 8mm 6mm; }
+        @page { size: A4 landscape; margin: 6mm 5mm; }
         * { box-sizing: border-box; }
         body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
-        .hdr { text-align: center; margin-bottom: 8px; }
-        .hdr h2 { margin: 0; font-size: 14px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
-        .hdr h1 { margin: 3px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr { text-align: center; margin-bottom: 6px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
         table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
-        table.tt td { border: 1px solid #000; height: 18px; }
-        .notes { margin-top: 8px; font-size: 8.5px; line-height: 1.35; font-weight: 700; }
+        table.tt td { border: 1px solid #000; }
+        .notes { margin-top: 6px; font-size: 8px; line-height: 1.35; font-weight: 700; }
       </style>
     </head><body>
       <div class="hdr">
@@ -502,15 +574,15 @@ export default function TimetablePage() {
       <table class="tt">
         <thead>
           <tr style="background:#fff;">
-            <th rowspan="2" style="width:24px;">DAYS</th>
-            <th rowspan="2" style="width:26px;">CLASS</th>
+            <th rowspan="2" style="width:22px;">DAYS</th>
+            <th rowspan="2" style="width:32px;">CLASS</th>
             <th>1</th><th>2</th><th>3</th><th>4</th>
             <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
             <th>5</th><th>6</th><th>7</th>
             <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
             <th>8</th><th>9</th>
-            <th rowspan="2" style="width:26px;font-size:7.5px;">${s.assemblyTime}</th>
-            <th rowspan="2" style="width:78px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
+            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
           </tr>
           <tr style="background:#fff;font-size:7px;">
             <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
@@ -611,7 +683,6 @@ export default function TimetablePage() {
 
     const rowsHtml = DAYS.map((day) => {
       const pCells = PERIODS.map((p) => {
-        // Find if this teacher teaches in this period
         const slot = data.slots.find(
           (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p.num,
         );
@@ -619,8 +690,8 @@ export default function TimetablePage() {
           return `<td style="border:1px solid #cbd5e1;text-align:center;padding:6px;color:#94a3b8;font-size:9px;background:#f8fafc;">—</td>`;
         }
         return `<td style="border:1px solid #334155;text-align:center;padding:6px 4px;background:#eef2ff;">
-          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className || "Class"}</div>
-          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectName || slot.subjectCode || "Subject"}</div>
+          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className} ${slot.classSection ? `(${slot.classSection})` : ""}</div>
+          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
           ${slot.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
         </td>`;
       }).join("");
@@ -677,18 +748,32 @@ export default function TimetablePage() {
   return (
     <AppShell permission="timetable.view">
       <div className="space-y-5">
-        <PageHeader icon="📅" title="Timetable" subtitle="General teaching schedule, class timetables, and teacher workloads">
+        <PageHeader icon="📅" title="Timetable" subtitle="General teaching schedule, class streams, and teacher workloads">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
               {roleBadge}
             </span>
             {isManager && (
-              <button
-                onClick={openSettings}
-                className={cls(btnGhost, "text-xs font-bold text-slate-700")}
-              >
-                ⚙️ Timetable Settings
-              </button>
+              <>
+                <button
+                  onClick={() => setAddClassModalOpen(true)}
+                  className={cls(btnPrimary, "text-xs font-bold")}
+                >
+                  ➕ Add Class / Stream Row
+                </button>
+                <button
+                  onClick={() => setManageClassesOpen(true)}
+                  className={cls(btnGhost, "text-xs font-bold text-slate-700")}
+                >
+                  🏫 Manage Class Rows
+                </button>
+                <button
+                  onClick={openSettings}
+                  className={cls(btnGhost, "text-xs font-bold text-slate-700")}
+                >
+                  ⚙️ Settings
+                </button>
+              </>
             )}
           </div>
         </PageHeader>
@@ -828,7 +913,7 @@ export default function TimetablePage() {
                   </div>
                 </div>
 
-                {/* Day filter */}
+                {/* Day filter & tools */}
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold text-slate-600">Filter Day:</span>
@@ -923,7 +1008,12 @@ export default function TimetablePage() {
                                   </td>
                                 )}
                                 <td className="border border-slate-200 px-2.5 py-2 font-extrabold text-slate-800 text-center bg-slate-50">
-                                  {c.name}
+                                  <div>{c.name}</div>
+                                  {c.section && (
+                                    <span className="inline-block mt-0.5 rounded bg-violet-100 px-1.5 py-0.2 text-[9px] font-extrabold text-violet-700">
+                                      {c.section}
+                                    </span>
+                                  )}
                                 </td>
 
                                 {/* Periods 1 to 4 */}
@@ -940,13 +1030,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* BREAK TIME (spans all classes of day) */}
+                                {/* BREAK TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -970,13 +1060,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* LUNCH TIME (spans all classes of day) */}
+                                {/* LUNCH TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1021,14 +1111,14 @@ export default function TimetablePage() {
                                         )}
                                         title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                       >
-                                        <div className="font-bold">{disp.label}</div>
-                                        {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                        <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                        {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                       </td>
                                     );
                                   })
                                 )}
 
-                                {/* ASSEMBLY (spans all classes) */}
+                                {/* ASSEMBLY */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1038,7 +1128,7 @@ export default function TimetablePage() {
                                   </td>
                                 )}
 
-                                {/* EXTRA CURRICULUM (spans all classes) */}
+                                {/* EXTRA CURRICULUM */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1291,7 +1381,6 @@ export default function TimetablePage() {
                                   {day.name}
                                 </td>
                                 {PERIODS.map((p) => {
-                                  // Look up this teacher's assignment in this slot
                                   const slot = data.slots.find(
                                     (sl) =>
                                       sl.teacherId === Number(currentTeacherId) &&
@@ -1316,10 +1405,10 @@ export default function TimetablePage() {
                                       className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/60"
                                     >
                                       <div className="font-black text-indigo-950 text-sm">
-                                        {slot.className}
+                                        {slot.className} {slot.classSection ? `(${slot.classSection})` : ""}
                                       </div>
                                       <div className="font-bold text-indigo-700 text-[10px] mt-0.5">
-                                        {slot.subjectName || slot.subjectCode || "Subject"}
+                                        {slot.subjectCode || slot.subjectName || "Subject"}
                                       </div>
                                       {slot.room && (
                                         <div className="text-[9px] text-slate-500">{slot.room}</div>
@@ -1456,6 +1545,225 @@ export default function TimetablePage() {
                 </div>
               </div>
             </form>
+          </Modal>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: ADD CLASS / STREAM ROW TO TIMETABLE (Academic)     */}
+        {/* ========================================================= */}
+        {addClassModalOpen && (
+          <Modal
+            open={addClassModalOpen}
+            onClose={() => setAddClassModalOpen(false)}
+            title="➕ Add Class or Stream Row (e.g. Form 4 A, Form 4 B)"
+          >
+            <form onSubmit={handleAddClassRow} className="space-y-4">
+              <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-xs text-indigo-900 leading-relaxed">
+                💡 Unaweza kuongeza mkondo/stream kwa darasa lolote (k.m. <b>Form 4 A</b> au <b>Form 4 B</b>, <b>Form 1 A</b> au <b>Form 1 B</b>).
+                Mfumo utatengeneza kiotomatiki safu ya darasa hilo kwenye ratiba kuu kwa vipindi 1 hadi 9 kwa wiki nzima!
+              </div>
+
+              {classMsg && (
+                <div className="p-3 text-xs font-semibold rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
+                  {classMsg}
+                </div>
+              )}
+
+              <Field label="Class Name (Darasa)" required>
+                <input
+                  type="text"
+                  value={classForm.name}
+                  onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
+                  placeholder="e.g. Form 1, Form 2, Form 3, Form 4"
+                  className={inputCls}
+                  required
+                />
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {["Form 1", "Form 2", "Form 3", "Form 4"].map((cn) => (
+                    <button
+                      key={cn}
+                      type="button"
+                      onClick={() => setClassForm({ ...classForm, name: cn })}
+                      className="rounded-lg bg-slate-100 hover:bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700"
+                    >
+                      {cn}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Stream / Section (Mkondo)" required>
+                <input
+                  type="text"
+                  value={classForm.section}
+                  onChange={(e) => setClassForm({ ...classForm, section: e.target.value })}
+                  placeholder="e.g. A, B, C, Science, Arts"
+                  className={inputCls}
+                  required
+                />
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {["A", "B", "C", "A & B", "Science", "Arts"].map((sec) => (
+                    <button
+                      key={sec}
+                      type="button"
+                      onClick={() => setClassForm({ ...classForm, section: sec })}
+                      className="rounded-lg bg-violet-50 hover:bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700 border border-violet-200"
+                    >
+                      {sec}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Student Capacity (Optional)">
+                <input
+                  type="number"
+                  min={1}
+                  value={classForm.capacity}
+                  onChange={(e) => setClassForm({ ...classForm, capacity: Number(e.target.value) || 40 })}
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setAddClassModalOpen(false)}
+                  className={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingClass}
+                  className={btnPrimary}
+                >
+                  {savingClass ? "Adding..." : "➕ Create & Add to Timetable"}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: MANAGE TIMETABLE CLASSES / STREAMS                 */}
+        {/* ========================================================= */}
+        {manageClassesOpen && (
+          <Modal
+            open={manageClassesOpen}
+            onClose={() => { setManageClassesOpen(false); setEditingClass(null); }}
+            title="🏫 Manage Timetable Classes & Stream Rows"
+            wide
+          >
+            <div className="space-y-4">
+              <p className="text-xs text-slate-500">
+                Orodha ya madarasa na mikondo yote iliyopo kwenye ratiba. Unaweza kubadilisha mkondo (k.m. kuweka A au B) au kufuta safu ya darasa kwenye ratiba.
+              </p>
+
+              {editingClass ? (
+                <form onSubmit={handleUpdateClass} className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
+                  <p className="font-extrabold text-xs text-violet-900 uppercase">
+                    ✏️ Edit Class Row: {editingClass.name}
+                  </p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Class Name" required>
+                      <input
+                        type="text"
+                        value={editingClass.name}
+                        onChange={(e) => setEditingClass({ ...editingClass, name: e.target.value })}
+                        className={inputCls}
+                        required
+                      />
+                    </Field>
+                    <Field label="Stream / Section" required>
+                      <input
+                        type="text"
+                        value={editingClass.section}
+                        onChange={(e) => setEditingClass({ ...editingClass, section: e.target.value })}
+                        placeholder="e.g. A, B"
+                        className={inputCls}
+                        required
+                      />
+                    </Field>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <button type="button" onClick={() => setEditingClass(null)} className={btnGhost}>
+                      Cancel
+                    </button>
+                    <button type="submit" className={btnPrimary}>
+                      Save Changes
+                    </button>
+                  </div>
+                </form>
+              ) : null}
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 text-slate-700">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-bold">Class Name</th>
+                      <th className="px-3 py-2 text-left font-bold">Stream / Section</th>
+                      <th className="px-3 py-2 text-center font-bold">Print Format</th>
+                      <th className="px-3 py-2 text-right font-bold">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {data?.classes.map((c) => (
+                      <tr key={c.id} className="hover:bg-slate-50">
+                        <td className="px-3 py-2.5 font-bold text-slate-800">{c.name}</td>
+                        <td className="px-3 py-2.5">
+                          {c.section ? (
+                            <span className="rounded bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">
+                              {c.section}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 italic">No section</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-700">
+                          {formatClassPrint(c.name, c.section)}
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <div className="flex justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditingClass({ id: c.id, name: c.name, section: c.section })}
+                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteClass(c.id, c.name)}
+                              className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                            >
+                              🗑️ Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-between items-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setManageClassesOpen(false); setAddClassModalOpen(true); }}
+                  className={cls(btnPrimary, "text-xs font-bold")}
+                >
+                  ➕ Add New Class / Stream Row
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManageClassesOpen(false)}
+                  className={btnGhost}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
           </Modal>
         )}
 

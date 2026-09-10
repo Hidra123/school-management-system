@@ -168,6 +168,7 @@ export const students = pgTable(
     guardianPhone: varchar("guardian_phone", { length: 40 }).notNull().default(""),
     guardianAddress: varchar("guardian_address", { length: 200 }).notNull().default(""),
     enrollmentDate: date("enrollment_date", { mode: "string" }),
+    admissionStatus: varchar("admission_status", { length: 20 }).notNull().default("approved"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // Admission number must be unique per class (not school-wide). Students
@@ -259,6 +260,7 @@ export const studentExamRemarks = pgTable(
     principalComment: varchar("principal_comment", { length: 300 }).notNull().default(""),
     academicMasterName: varchar("academic_master_name", { length: 120 }).notNull().default(""),
     headmasterName: varchar("headmaster_name", { length: 120 }).notNull().default(""),
+    isApproved: boolean("is_approved").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("student_exam_remarks_idx").on(t.studentId, t.examId)],

@@ -1,726 +1,1608 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
+import {
+  Badge,
+  EmptyState,
+  Field,
+  Loader,
+  Modal,
+  PageHeader,
+  StatCard,
+  btnDanger,
+  btnGhost,
+  btnPrimary,
+  inputCls,
+} from "@/components/ui";
 import { useAuth } from "@/components/AuthProvider";
-import { EmptyState, Field, Loader, PageHeader, btnPrimary, inputCls } from "@/components/ui";
-import { DAYS, EXTRA_ACTIVITIES, LESSON_PERIODS, SLOTS, periodTime, subjectCodeOf } from "@/lib/timetableConfig";
-import { cls, postJSON, useFetch } from "@/lib/utils";
+import { staffRoleLabel } from "@/lib/permissions";
+import { cls, delJSON, putJSON, useFetch } from "@/lib/utils";
 
-type ClassRow = { id: number; name: string; section: string };
-type SubjectRow = { id: number; name: string; code: string; teacherId: number | null; teacherName: string | null };
-type EntryRow = {
+type ClassItem = { id: number; name: string; section: string; capacity: number };
+type SubjectItem = { id: number; name: string; code: string; teacherId: number | null };
+type TeacherItem = { id: number; name: string; subject: string; phone: string; email: string };
+type TimetableSlot = {
   id: number;
+  dayOfWeek: number; // 1 to 5
+  period: number; // 1 to 9
   classId: number;
-  className: string;
-  section: string;
-  dayOfWeek: number;
-  period: number;
-  subjectId: number;
-  subjectName: string;
-  subjectCode: string;
+  subjectId: number | null;
+  teacherId: number | null;
+  customLabel: string | null;
+  room: string | null;
+  academicYear: string;
+  subjectName: string | null;
+  subjectCode: string | null;
+  teacherName: string | null;
+  className: string | null;
+  classSection: string | null;
+};
+type TimetableSettings = {
+  id: number;
+  councilName: string;
+  schoolName: string;
+  academicYear: string;
+  title: string;
+  breakTime: string;
+  lunchTime: string;
+  assemblyTime: string;
+  extraCurriculumTime: string;
+  mondayExtra: string;
+  tuesdayExtra: string;
+  wednesdayExtra: string;
+  thursdayExtra: string;
+  fridayExtra: string;
+  notes: string;
+};
+type TimetableResponse = {
+  settings: TimetableSettings;
+  slots: TimetableSlot[];
+  classes: ClassItem[];
+  subjects: SubjectItem[];
+  teachers: TeacherItem[];
+  isManager: boolean;
   teacherId: number | null;
   teacherName: string | null;
+  assignedClassIds: number[];
 };
 
-function esc(v: string): string {
-  return v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
+const DAYS = [
+  { id: 1, name: "Monday", short: "MON" },
+  { id: 2, name: "Tuesday", short: "TUE" },
+  { id: 3, name: "Wednesday", short: "WED" },
+  { id: 4, name: "Thursday", short: "THU" },
+  { id: 5, name: "Friday", short: "FRI" },
+] as const;
 
-async function delWithBody(url: string, body: unknown): Promise<void> {
-  const r = await fetch(url, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) {
-    const d = (await r.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(d?.error ?? "Request failed.");
+const PERIODS = [
+  { num: 1, time: "08:00 - 08:40" },
+  { num: 2, time: "08:40 - 09:20" },
+  { num: 3, time: "09:20 - 10:00" },
+  { num: 4, time: "10:00 - 10:40" },
+  { num: 5, time: "11:00 - 11:40" },
+  { num: 6, time: "11:40 - 12:20" },
+  { num: 7, time: "12:20 - 13:00" },
+  { num: 8, time: "13:30 - 14:10" },
+  { num: 9, time: "14:10 - 14:50" },
+] as const;
+
+function getExtraForDay(settings: TimetableSettings, dayOfWeek: number) {
+  switch (dayOfWeek) {
+    case 1:
+      return settings.mondayExtra || "Sport & Game";
+    case 2:
+      return settings.tuesdayExtra || "Subject Clubs";
+    case 3:
+      return settings.wednesdayExtra || "Debate";
+    case 4:
+      return settings.thursdayExtra || "Self Study";
+    case 5:
+      return settings.fridayExtra || "General Cleanliness";
+    default:
+      return "Extra Curriculum";
   }
 }
 
-function groupKey(day: number, period: number): string {
-  return `${day}|${period}`;
+/** Subject badge styling for timetable grids */
+function getSlotDisplay(slot: TimetableSlot | undefined) {
+  if (!slot) return { label: "—", sub: "", tone: "empty", isSpecial: false };
+  if (slot.customLabel) {
+    const isSpecial = ["RELIGIO", "MEWAKA", "PS", "SPORTS", "DEBATE"].includes(
+      slot.customLabel.toUpperCase(),
+    );
+    return {
+      label: slot.customLabel,
+      sub: slot.customLabel === "PS" ? "Private Studies" : "",
+      tone: isSpecial ? "special" : "normal",
+      isSpecial,
+    };
+  }
+  const code = slot.subjectCode || slot.subjectName?.slice(0, 4).toUpperCase() || "SUBJ";
+  return {
+    label: code,
+    sub: slot.teacherName || slot.subjectName || "",
+    tone: "subject",
+    isSpecial: false,
+  };
 }
 
-/** Unique subject-code → subject-name legend from a set of entries. */
-function legendOf(entries: EntryRow[]): string {
-  const map = new Map<string, string>();
-  for (const e of entries) map.set(subjectCodeOf(e.subjectName, e.subjectCode), e.subjectName);
-  return Array.from(map.entries())
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([code, name]) => `${code} – ${name}`)
-    .join("; ");
-}
-
-function printShell(title: string, subtitle: string, filters: string, tableHtml: string, legend: string) {
-  const today = new Date().toLocaleString("en-GB", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" });
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${esc(title)}</title><style>
-    @page { size: A4 landscape; margin: 9mm; }
-    * { box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; color: #000; margin: 0; }
-    .hd { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #1e1b4b; padding-bottom: 10px; }
-    .logo { width: 46px; height: 46px; border-radius: 10px; background: #6d28d9; color: #fff; font-size: 26px; display: inline-flex; align-items: center; justify-content: center; }
-    .hd h1 { font-size: 20px; margin: 0; letter-spacing: 0.5px; }
-    .hd .sub { font-size: 10px; letter-spacing: 2px; color: #444; margin-top: 2px; }
-    .meta { margin-left: auto; text-align: right; font-size: 9px; color: #333; }
-    .meta b { display: block; font-size: 9.5px; }
-    table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 7.5px; margin-top: 8px; }
-    th, td { border: 1px solid #333; padding: 2px 2px; text-align: center; overflow: hidden; }
-    th { background: #1e1b4b; color: #fff; font-size: 7.5px; }
-    th .t { display: block; font-size: 6px; font-weight: normal; color: #c7d2fe; }
-    td.day { background: #1e1b4b; color: #fff; font-weight: bold; font-size: 8px; writing-mode: vertical-rl; letter-spacing: 1px; }
-    td.cls { font-weight: bold; background: #eef2ff; width: 12mm; }
-    td.band { background: #e2e8f0; font-size: 6px; letter-spacing: 1px; color: #475569; }
-    td.cell b { font-size: 8px; }
-    td.cell .tn { display: block; font-size: 6px; color: #555; white-space: nowrap; }
-    td.extra { background: #fef9c3; font-size: 7px; font-weight: bold; }
-    .legend { margin-top: 8px; font-size: 7.5px; color: #222; }
-    .footer { margin-top: 14px; display: flex; justify-content: space-between; font-size: 8.5px; }
-    .footer div { border-top: 1px solid #000; width: 30%; text-align: center; padding-top: 3px; }
-    .toolbar { text-align: center; margin: 10px 0; }
-    .toolbar button { font-size: 13px; padding: 7px 20px; cursor: pointer; }
-    @media print { .toolbar { display: none; } }
-  </style></head><body>
-    <div class="toolbar"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
-    <div class="hd"><span class="logo">🎓</span><div><h1>SHULEHUB SCHOOL</h1><div class="sub">${esc(subtitle)}</div></div>
-      <div class="meta"><b>GENERATED: ${esc(today.toUpperCase())}</b>${esc(filters)}<br/>${esc(title)}</div></div>
-    ${tableHtml}
-    ${legend ? `<div class="legend"><b>Note:</b> ${esc(legend)}.</div>` : ""}
-    <div class="footer"><div>Class Teacher</div><div>Academic Master</div><div>Head of School</div></div>
-    <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };</script>
-  </body></html>`;
-  const w = window.open("", "_blank", "width=1250,height=850");
-  if (!w) {
+// -------------------------------------------------------------
+// PRINT HELPERS: Dedicated Iframe Printing (100% reliable)
+// -------------------------------------------------------------
+function printViaIframe(htmlContent: string) {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+  const doc = iframe.contentDocument;
+  if (!doc) {
+    document.body.removeChild(iframe);
     window.print();
     return;
   }
-  w.document.write(html);
-  w.document.close();
-  w.focus();
-}
-
-/** GENERAL school timetable — days as row bands, all classes in each day. */
-function generalTableHtml(classes: ClassRow[], entries: EntryRow[]): string {
-  const byKey = new Map<string, EntryRow>();
-  for (const e of entries) byKey.set(`${e.classId}|${e.dayOfWeek}|${e.period}`, e);
-  const head =
-    `<tr><th style="width:9mm">DAY</th><th style="width:12mm">CLASS</th>` +
-    SLOTS.map((s) => {
-      if (s.kind === "lesson") return `<th>${s.n}<span class="t">${s.start} - ${s.end}</span></th>`;
-      if (s.kind === "assembly") return "";
-      return `<th style="width:12mm">${s.label.split(" ")[0]}<span class="t">${s.start} - ${s.end}</span></th>`;
-    }).join("") +
-    `</tr>`;
-  let body = "";
-  for (const d of DAYS) {
-    classes.forEach((c, ci) => {
-      const dayCell = ci === 0 ? `<td class="day" rowspan="${classes.length}">${d.label}</td>` : "";
-      const clsCell = `<td class="cls">${esc(c.name)}${c.section ? ` ${esc(c.section)}` : ""}</td>`;
-      const cells = SLOTS.map((s) => {
-        if (s.kind === "assembly") return "";
-        if (s.kind !== "lesson") return `<td class="band">${s.label.split(" ")[0]}</td>`;
-        const e = byKey.get(`${c.id}|${d.num}|${s.n}`);
-        if (!e) return `<td class="cell"></td>`;
-        const tn = e.teacherName ? `<span class="tn">${esc(e.teacherName)}</span>` : "";
-        return `<td class="cell"><b>${esc(subjectCodeOf(e.subjectName, e.subjectCode))}</b>${tn}</td>`;
-      }).join("");
-      body += `<tr>${dayCell}${clsCell}${cells}</tr>`;
-    });
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+  const win = iframe.contentWindow;
+  if (win) {
+    win.focus();
+    win.print();
   }
-  // Extra-curriculum column note row (bottom, per school wall clock).
-  return `<table>${head}${body}</table>`;
-}
-
-/** One class / one teacher grid — periods as rows, days as columns. */
-function gridTableHtml(
-  entries: EntryRow[],
-  renderCell: (e: EntryRow) => string,
-): string {
-  const byKey = new Map<string, EntryRow>();
-  for (const e of entries) byKey.set(groupKey(e.dayOfWeek, e.period), e);
-  const head = `<tr><th style="width:16mm">PERIOD</th><th style="width:22mm">TIME</th>${DAYS.map((d) => `<th>${d.label}</th>`).join("")}<th style="width:30mm">EXTRA CURRICULUM</th></tr>`;
-  let body = "";
-  for (const s of SLOTS) {
-    if (s.kind !== "lesson") {
-      const filler = s.kind === "extra" ? EXTRA_ACTIVITIES : null;
-      body += `<tr><td class="band">${esc(s.label)}</td><td class="band">${s.start} - ${s.end}</td>${DAYS.map((d) => `<td class="${filler ? "extra" : "band"}">${filler ? esc(filler[d.num] ?? "") : esc(s.label.split(" ")[0])}</td>`).join("")}<td class="${s.kind === "extra" ? "extra" : "band"}">${s.kind === "extra" ? "" : esc(s.label)}</td></tr>`;
-      continue;
-    }
-    const cells = DAYS.map((d) => {
-      const e = byKey.get(groupKey(d.num, s.n as number));
-      return e ? `<td class="cell"><b>${esc(subjectCodeOf(e.subjectName, e.subjectCode))}</b>${renderCell(e)}</td>` : `<td class="cell"></td>`;
-    }).join("");
-    body += `<tr><td class="band">${s.n}</td><td class="band">${s.start} - ${s.end}</td>${cells}<td class="extra">${esc(EXTRA_ACTIVITIES[s.n as number] ?? "")}</td></tr>`;
-  }
-  return `<table>${head}${body}</table>`;
-}
-
-function getEntriesByKey(entries: EntryRow[]): Map<string, EntryRow> {
-  const m = new Map<string, EntryRow>();
-  for (const e of entries) m.set(groupKey(e.dayOfWeek, e.period), e);
-  return m;
+  setTimeout(() => document.body.removeChild(iframe), 3000);
 }
 
 export default function TimetablePage() {
-  const { user, hasPerm } = useAuth();
-  const manage = user?.role === "admin" || hasPerm("timetable.manage");
-  const canView = user?.role === "admin" || manage || hasPerm("timetable.view");
+  const { user } = useAuth();
+  const timetableFetch = useFetch<TimetableResponse>("/api/timetable");
+  const data = timetableFetch.data;
 
-  const [tab, setTab] = useState<string>(manage ? "builder" : "my");
-  const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const subjectsFetch = useFetch<SubjectRow[]>(manage ? "/api/subjects" : null);
-  const classList = useMemo(() => classesFetch.data ?? [], [classesFetch.data]);
-  const subjectList = useMemo(() => subjectsFetch.data ?? [], [subjectsFetch.data]);
+  const isManager =
+    user?.role === "admin" ||
+    user?.staffRole === "academic_master" ||
+    data?.isManager === true;
 
-  // ---- Builder state (Academic) ----
-  const [editClassId, setEditClassId] = useState("");
-  const builderUrl = manage && editClassId ? `/api/timetable?mode=class&classId=${editClassId}` : null;
-  const builderFetch = useFetch<EntryRow[]>(builderUrl);
-  const builderEntries = useMemo(() => builderFetch.data ?? [], [builderFetch.data]);
-  const [modal, setModal] = useState<{ day: number; period: number } | null>(null);
-  const [modalSubject, setModalSubject] = useState("");
-  const [modalBusy, setModalBusy] = useState(false);
-  const [modalErr, setModalErr] = useState<string | null>(null);
+  // Tabs
+  // For Manager (Academic Master / Admin): General Timetable | Class Timetable | Teacher Timetable
+  // For Teacher / Class Teacher: My Timetable | Class Timetable
+  const [activeTab, setActiveTab] = useState<string>("auto");
 
-  // ---- General view (Academic) ----
-  const generalFetch = useFetch<EntryRow[]>(manage && (tab === "general" || tab === "class") ? "/api/timetable?mode=general" : null);
-  const generalEntries = useMemo(() => generalFetch.data ?? [], [generalFetch.data]);
-  const [viewClassId, setViewClassId] = useState("");
+  const effectiveTab = useMemo(() => {
+    if (activeTab !== "auto") return activeTab;
+    return isManager ? "general" : "my";
+  }, [activeTab, isManager]);
 
-  // ---- Teacher views ----
-  const myFetch = useFetch<EntryRow[]>(!manage && tab === "my" ? "/api/timetable?mode=my" : null);
-  const myEntries = useMemo(() => myFetch.data ?? [], [myFetch.data]);
-  const [myClassId, setMyClassId] = useState("");
-  const myClassFetch = useFetch<EntryRow[]>(!manage && tab === "cls" && myClassId ? `/api/timetable?mode=class&classId=${myClassId}` : null);
-  const myClassEntries = useMemo(() => myClassFetch.data ?? [], [myClassFetch.data]);
+  // Selected filters
+  const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
+  const [dayFilter, setDayFilter] = useState<string>("all");
 
-  const editClass = useMemo(() => classList.find((c) => String(c.id) === editClassId) ?? null, [classList, editClassId]);
-  const viewClass = useMemo(() => classList.find((c) => String(c.id) === viewClassId) ?? null, [classList, viewClassId]);
-  const myClass = useMemo(() => classList.find((c) => String(c.id) === myClassId) ?? null, [classList, myClassId]);
+  // Modals
+  const [editSlot, setEditSlot] = useState<{
+    dayOfWeek: number;
+    period: number;
+    classId: number;
+    subjectId: number | null;
+    teacherId: number | null;
+    customLabel: string;
+    room: string;
+    slotId?: number;
+  } | null>(null);
+  const [savingSlot, setSavingSlot] = useState(false);
+  const [slotMsg, setSlotMsg] = useState<string | null>(null);
 
-  function openModal(day: number, period: number, existing: EntryRow | undefined) {
-    setModal({ day, period });
-    setModalSubject(existing ? String(existing.subjectId) : "");
-    setModalErr(null);
-  }
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [settingsForm, setSettingsForm] = useState<TimetableSettings | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
 
-  async function saveCell() {
-    if (!modal || !editClassId || !modalSubject) return;
-    setModalBusy(true);
-    setModalErr(null);
-    try {
-      await postJSON("/api/timetable", {
-        classId: Number(editClassId),
-        dayOfWeek: modal.day,
-        period: modal.period,
-        subjectId: Number(modalSubject),
-      });
-      setModal(null);
-      builderFetch.refresh();
-      generalFetch.refresh();
-    } catch (err) {
-      setModalErr(err instanceof Error ? err.message : "Failed to save.");
-    } finally {
-      setModalBusy(false);
+  // Auto-init class filter when classes load
+  const availableClasses = useMemo(() => {
+    if (!data) return [];
+    if (isManager) return data.classes;
+    if (data.assignedClassIds && data.assignedClassIds.length > 0) {
+      return data.classes.filter((c) => data.assignedClassIds.includes(c.id));
     }
-  }
+    return data.classes;
+  }, [data, isManager]);
 
-  async function clearCell(existing: EntryRow | undefined) {
-    if (!modal || !editClassId || !existing) {
-      setModal(null);
-      return;
-    }
-    setModalBusy(true);
-    setModalErr(null);
-    try {
-      await delWithBody("/api/timetable", { id: existing.id });
-      setModal(null);
-      builderFetch.refresh();
-      generalFetch.refresh();
-    } catch (err) {
-      setModalErr(err instanceof Error ? err.message : "Failed to clear.");
-    } finally {
-      setModalBusy(false);
-    }
-  }
-
-  const builderGrid = useMemo(() => getEntriesByKey(builderEntries), [builderEntries]);
-  const myGrid = useMemo(() => getEntriesByKey(myEntries), [myEntries]);
-  const myClassGrid = useMemo(() => getEntriesByKey(myClassEntries), [myClassEntries]);
-  const visibleViewEntries = useMemo(
-    () => (viewClass ? generalEntries.filter((e) => e.classId === viewClass.id) : []),
-    [generalEntries, viewClass],
+  const defaultClassId = useMemo(
+    () => (availableClasses[0]?.id ? String(availableClasses[0].id) : ""),
+    [availableClasses],
   );
 
-  const tabs = manage
-    ? [
-        { key: "builder", label: "🛠️ Timetable Builder", icon: "" },
-        { key: "general", label: "🏫 General Timetable", icon: "" },
-        { key: "class", label: "📄 Class Timetable", icon: "" },
-      ]
-    : [
-        { key: "my", label: "👨‍🏫 My Timetable", icon: "" },
-        { key: "cls", label: "🏫 My Classes", icon: "" },
-      ];
+  const currentClassId = selectedClassId || defaultClassId;
 
-  const modalExisting = modal ? builderGrid.get(groupKey(modal.day, modal.period)) : undefined;
-  const modalSubjectRow = subjectList.find((s) => String(s.id) === modalSubject) ?? null;
+  // Auto-init teacher filter
+  const currentTeacherId = useMemo(() => {
+    if (selectedTeacherId) return selectedTeacherId;
+    if (data?.teacherId) return String(data.teacherId);
+    return data?.teachers[0]?.id ? String(data.teachers[0].id) : "";
+  }, [selectedTeacherId, data]);
 
-  function cellContent(e: EntryRow): string {
-    return `<span class="tn">${esc(e.className)}${e.section ? ` ${esc(e.section)}` : ""}</span>`;
+  // Map of slot by composite key: `${dayOfWeek}-${period}-${classId}`
+  const slotMap = useMemo(() => {
+    const map = new Map<string, TimetableSlot>();
+    for (const slot of data?.slots ?? []) {
+      map.set(`${slot.dayOfWeek}-${slot.period}-${slot.classId}`, slot);
+    }
+    return map;
+  }, [data?.slots]);
+
+  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot[]
+  const mySlotsMap = useMemo(() => {
+    const targetId = isManager && effectiveTab === "teacher"
+      ? Number(currentTeacherId)
+      : data?.teacherId;
+    const map = new Map<string, TimetableSlot>();
+    if (!targetId) return map;
+    for (const slot of data?.slots ?? []) {
+      if (slot.teacherId === targetId) {
+        map.set(`${slot.dayOfWeek}-${slot.period}`, slot);
+      }
+    }
+    return map;
+  }, [data?.slots, data?.teacherId, isManager, effectiveTab, currentTeacherId]);
+
+  // Workload statistics for the teacher
+  const teacherStats = useMemo(() => {
+    let periodsCount = 0;
+    const classSet = new Set<number>();
+    const subjectSet = new Set<number>();
+    mySlotsMap.forEach((slot) => {
+      periodsCount++;
+      if (slot.classId) classSet.add(slot.classId);
+      if (slot.subjectId) subjectSet.add(slot.subjectId);
+    });
+    const totalPossibleSlots = 5 * 9; // 45
+    return {
+      periodsCount,
+      classesCount: classSet.size,
+      subjectsCount: subjectSet.size,
+      freePeriods: Math.max(0, totalPossibleSlots - periodsCount),
+    };
+  }, [mySlotsMap]);
+
+  // Open Edit Slot Modal
+  function handleSlotClick(dayOfWeek: number, period: number, classId: number) {
+    if (!isManager) return;
+    const existing = slotMap.get(`${dayOfWeek}-${period}-${classId}`);
+    setSlotMsg(null);
+    setEditSlot({
+      dayOfWeek,
+      period,
+      classId,
+      subjectId: existing?.subjectId ?? null,
+      teacherId: existing?.teacherId ?? null,
+      customLabel: existing?.customLabel ?? "",
+      room: existing?.room ?? "",
+      slotId: existing?.id,
+    });
   }
 
-  return (
-    <AppShell>
-      <PageHeader icon="📅" title="Timetable" subtitle="Create, manage and print class timetables">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cls(
-              "rounded-xl px-4 py-2 text-xs font-bold transition",
-              tab === t.key ? "bg-indigo-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </PageHeader>
+  // Save Slot
+  async function handleSaveSlot(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editSlot) return;
+    setSavingSlot(true);
+    setSlotMsg(null);
+    try {
+      await putJSON("/api/timetable/slot", {
+        dayOfWeek: editSlot.dayOfWeek,
+        period: editSlot.period,
+        classId: editSlot.classId,
+        subjectId: editSlot.subjectId || null,
+        teacherId: editSlot.teacherId || null,
+        customLabel: editSlot.customLabel || null,
+        room: editSlot.room || null,
+        academicYear: data?.settings.academicYear || "2026",
+      });
+      setEditSlot(null);
+      timetableFetch.refresh();
+    } catch (err) {
+      setSlotMsg(err instanceof Error ? err.message : "Failed to save slot.");
+    } finally {
+      setSavingSlot(false);
+    }
+  }
 
-      {!canView ? (
-        <EmptyState icon="🔒" title="Access Denied" message="Your account has no Timetable permission. Ask the admin to enable it in Assignments." />
-      ) : classesFetch.loading ? (
-        <Loader label="Loading classes..." />
-      ) : classesFetch.error ? (
-        <EmptyState icon="⚠️" title="Could not load classes" message={classesFetch.error} />
-      ) : tab === "builder" && manage ? (
-        /* ================= BUILDER (Academic) ================= */
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label="Class">
-              <select value={editClassId} onChange={(e) => setEditClassId(e.target.value)} className={inputCls}>
-                <option value="">— Select class to build —</option>
-                {classList.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.section ? ` — ${c.section}` : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {editClassId && (
+  // Clear Slot
+  async function handleClearSlot() {
+    if (!editSlot) return;
+    setSavingSlot(true);
+    try {
+      if (editSlot.slotId) {
+        await delJSON(`/api/timetable/slot?id=${editSlot.slotId}`);
+      } else {
+        await delJSON(
+          `/api/timetable/slot?dayOfWeek=${editSlot.dayOfWeek}&period=${editSlot.period}&classId=${editSlot.classId}&academicYear=${data?.settings.academicYear || "2026"}`,
+        );
+      }
+      setEditSlot(null);
+      timetableFetch.refresh();
+    } catch (err) {
+      setSlotMsg(err instanceof Error ? err.message : "Failed to clear slot.");
+    } finally {
+      setSavingSlot(false);
+    }
+  }
+
+  // Open Settings Modal
+  function openSettings() {
+    if (!data?.settings) return;
+    setSettingsForm({ ...data.settings });
+    setSettingsModalOpen(true);
+  }
+
+  // Save Settings
+  async function handleSaveSettings(e: React.FormEvent) {
+    e.preventDefault();
+    if (!settingsForm) return;
+    setSavingSettings(true);
+    try {
+      await putJSON("/api/timetable/settings", settingsForm);
+      setSettingsModalOpen(false);
+      timetableFetch.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to save settings.");
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  // Quick subject select auto-selects teacher
+  function onSubjectChange(subId: string) {
+    if (!editSlot) return;
+    const idNum = subId ? Number(subId) : null;
+    const matchedSubject = data?.subjects.find((s) => s.id === idNum);
+    setEditSlot({
+      ...editSlot,
+      subjectId: idNum,
+      teacherId: matchedSubject?.teacherId ?? editSlot.teacherId,
+      customLabel: idNum ? "" : editSlot.customLabel, // clear custom label if subject picked
+    });
+  }
+
+  // -------------------------------------------------------------
+  // PRINT: Master General Teaching Timetable (Exact match to image 2)
+  // -------------------------------------------------------------
+  function handlePrintGeneral() {
+    if (!data) return;
+    const s = data.settings;
+    const clList = data.classes;
+
+    const daysRowsHtml = DAYS.map((day) => {
+      const dayClasses = clList.map((c, cIdx) => {
+        // Periods 1 to 4
+        const p1_4 = [1, 2, 3, 4]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+            const disp = getSlotDisplay(slot);
+            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
+              ${disp.label}
+            </td>`;
+          })
+          .join("");
+
+        // Periods 5 to 7
+        const p5_7 = [5, 6, 7]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+            const disp = getSlotDisplay(slot);
+            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
+              ${disp.label}
+            </td>`;
+          })
+          .join("");
+
+        // Periods 8 & 9 (Special handling for Wed: RELIGIO and Fri: MEWAKA)
+        let p8_9 = "";
+        if (day.id === 3 && cIdx === 0) {
+          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+            RELIGIO
+          </td>`;
+        } else if (day.id === 5 && cIdx === 0) {
+          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+            MEWAKA
+          </td>`;
+        } else if (day.id !== 3 && day.id !== 5) {
+          p8_9 = [8, 9]
+            .map((p) => {
+              const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+              const disp = getSlotDisplay(slot);
+              return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;">
+                ${disp.label}
+              </td>`;
+            })
+            .join("");
+        }
+
+        // Spanning cells for Break, Lunch, Assembly, Extra Curriculum on first class row
+        const breakCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
+                BREAK TIME
+              </td>`
+            : "";
+        const lunchCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
+                LUNCH TIME
+              </td>`
+            : "";
+        const assemblyCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
+                ASSEMBLY
+              </td>`
+            : "";
+        const extraCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9.5px;font-weight:800;padding:4px 4px;background:#fff;">
+                ${getExtraForDay(s, day.id)}
+              </td>`
+            : "";
+
+        const dayCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9.5px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
+                ${day.name.toUpperCase()}
+              </td>`
+            : "";
+
+        // Roman numeral style class label or standard name
+        const classLabel = c.name.replace("Form ", "").replace(" 1", "I").replace(" 2", "II").replace(" 3", "III").replace(" 4", "IV");
+
+        return `<tr>
+          ${dayCell}
+          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:800;">${classLabel}</td>
+          ${p1_4}
+          ${breakCell}
+          ${p5_7}
+          ${lunchCell}
+          ${p8_9}
+          ${assemblyCell}
+          ${extraCell}
+        </tr>`;
+      }).join("");
+      return dayClasses;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>${s.title}</title>
+      <style>
+        @page { size: A4 landscape; margin: 8mm 6mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
+        .hdr { text-align: center; margin-bottom: 8px; }
+        .hdr h2 { margin: 0; font-size: 14px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 3px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
+        table.tt td { border: 1px solid #000; height: 18px; }
+        .notes { margin-top: 8px; font-size: 8.5px; line-height: 1.35; font-weight: 700; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>${s.title}</h3>
+      </div>
+      <table class="tt">
+        <thead>
+          <tr style="background:#fff;">
+            <th rowspan="2" style="width:24px;">DAYS</th>
+            <th rowspan="2" style="width:26px;">CLASS</th>
+            <th>1</th><th>2</th><th>3</th><th>4</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
+            <th>5</th><th>6</th><th>7</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
+            <th>8</th><th>9</th>
+            <th rowspan="2" style="width:26px;font-size:7.5px;">${s.assemblyTime}</th>
+            <th rowspan="2" style="width:78px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#fff;font-size:7px;">
+            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
+            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
+            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${daysRowsHtml}
+        </tbody>
+      </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
+  }
+
+  // -------------------------------------------------------------
+  // PRINT: Single Class Timetable (Sorted from main timetable)
+  // -------------------------------------------------------------
+  function handlePrintClass(targetClassId: number) {
+    if (!data) return;
+    const s = data.settings;
+    const targetClass = data.classes.find((c) => c.id === targetClassId);
+    if (!targetClass) return;
+
+    const rowsHtml = DAYS.map((day) => {
+      const pCells = PERIODS.map((p) => {
+        const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
+        const disp = getSlotDisplay(slot);
+        return `<td style="border:1px solid #334155;text-align:center;padding:6px 3px;">
+          <div style="font-weight:900;font-size:11px;color:#0f172a;">${disp.label}</div>
+          <div style="font-size:8.5px;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+          ${slot?.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+        </td>`;
+      }).join("");
+
+      return `<tr>
+        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
+        ${pCells}
+        <td style="border:1px solid #334155;text-align:center;padding:6px;font-size:9.5px;font-weight:700;background:#f8fafc;">${getExtraForDay(s, day.id)}</td>
+      </tr>`;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Class Timetable - ${targetClass.name}</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
+        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 12px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
+        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
+        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
+        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
+        td { border: 1px solid #334155; }
+        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
+        .sig div { border-top: 2px solid #94a3b8; width: 28%; padding-top: 6px; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>CLASS TIMETABLE — ${targetClass.name.toUpperCase()}${targetClass.section ? " (" + targetClass.section + ")" : ""} · ${s.academicYear}</h3>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px;">DAY</th>
+            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
+            <th style="width:110px;">EXTRA<br/><span style="font-size:7.5px;font-weight:400;">15:00 - 16:30</span></th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div style="margin-top:10px;font-size:9px;color:#475569;font-weight:600;">
+        Break Time: ${s.breakTime} · Lunch Time: ${s.lunchTime} · Assembly: ${s.assemblyTime}
+      </div>
+      <div class="sig">
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Class Teacher:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
+  }
+
+  // -------------------------------------------------------------
+  // PRINT: Teacher Timetable (Personalized)
+  // -------------------------------------------------------------
+  function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
+    if (!data) return;
+    const s = data.settings;
+
+    const rowsHtml = DAYS.map((day) => {
+      const pCells = PERIODS.map((p) => {
+        // Find if this teacher teaches in this period
+        const slot = data.slots.find(
+          (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p.num,
+        );
+        if (!slot) {
+          return `<td style="border:1px solid #cbd5e1;text-align:center;padding:6px;color:#94a3b8;font-size:9px;background:#f8fafc;">—</td>`;
+        }
+        return `<td style="border:1px solid #334155;text-align:center;padding:6px 4px;background:#eef2ff;">
+          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className || "Class"}</div>
+          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectName || slot.subjectCode || "Subject"}</div>
+          ${slot.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+        </td>`;
+      }).join("");
+
+      return `<tr>
+        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
+        ${pCells}
+      </tr>`;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Teacher Timetable - ${targetTeacherName}</title>
+      <style>
+        @page { size: A4 landscape; margin: 10mm; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
+        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 14px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
+        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
+        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
+        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
+        td { border: 1px solid #334155; }
+        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
+        .sig div { border-top: 2px solid #94a3b8; width: 30%; padding-top: 6px; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>TEACHER TIMETABLE — ${targetTeacherName.toUpperCase()} · ${s.academicYear}</h3>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th style="width:90px;">DAY</th>
+            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="sig">
+        <div><strong>Teacher:</strong> ${targetTeacherName}</div>
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
+  }
+
+  const roleBadge = user?.role === "member" ? staffRoleLabel(user.staffRole) : "🛡️ Admin";
+
+  return (
+    <AppShell permission="timetable.view">
+      <div className="space-y-5">
+        <PageHeader icon="📅" title="Timetable" subtitle="General teaching schedule, class timetables, and teacher workloads">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
+              {roleBadge}
+            </span>
+            {isManager && (
               <button
-                onClick={() => {
-                  if (!viewClassId) setViewClassId(editClassId);
-                }}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                onClick={openSettings}
+                className={cls(btnGhost, "text-xs font-bold text-slate-700")}
               >
-                ↗ Preview in Class Timetable
+                ⚙️ Timetable Settings
               </button>
             )}
           </div>
+        </PageHeader>
 
-          {!editClassId ? (
-            <div className="mt-6">
-              <EmptyState icon="🛠️" title="Pick a class" message="Choose a class above, then click any cell to assign a subject to that day & period." />
-            </div>
-          ) : builderFetch.loading ? (
-            <div className="mt-6"><Loader label="Loading timetable..." /></div>
-          ) : (
-            <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full min-w-[760px] border-collapse text-center text-xs">
-                <thead>
-                  <tr className="bg-slate-900 text-white">
-                    <th className="border border-slate-700 px-2 py-2 text-left">PERIOD</th>
-                    {DAYS.map((d) => (
-                      <th key={d.num} className="border border-slate-700 px-2 py-2">
-                        {d.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {SLOTS.map((s) =>
-                    s.kind !== "lesson" ? (
-                      <tr key={`${s.kind}-${s.start}`} className="bg-slate-100">
-                        <td className="border border-slate-200 px-2 py-1 text-left text-[10px] font-bold text-slate-500">
-                          {s.label}
-                          <span className="ml-1 font-normal">{s.start} - {s.end}</span>
-                        </td>
-                        <td colSpan={5} className="border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                          {s.kind === "extra" ? DAYS.map((d) => EXTRA_ACTIVITIES[d.num]).join(" · ") : s.label}
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={`p-${s.n}`}>
-                        <td className="whitespace-nowrap border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[10px] font-bold text-slate-500">
-                          {s.n}
-                          <span className="ml-1 font-normal">{s.start} - {s.end}</span>
-                        </td>
-                        {DAYS.map((d) => {
-                          const e = builderGrid.get(groupKey(d.num, s.n as number));
-                          return (
-                            <td key={d.num} className="border border-slate-200 p-1">
-                              <button
-                                onClick={() => openModal(d.num, s.n as number, e)}
-                                className={cls(
-                                  "w-full rounded-lg px-1 py-2 text-[11px] font-bold transition",
-                                  e ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-50 text-slate-300 hover:bg-indigo-50 hover:text-indigo-500",
-                                )}
-                                title={e ? `${e.subjectName} — ${e.teacherName ?? "unassigned"}` : "Assign subject"}
-                              >
-                                {e ? (
-                                  <>
-                                    {subjectCodeOf(e.subjectName, e.subjectCode)}
-                                    <span className="mt-0.5 block text-[9px] font-normal opacity-90">{e.teacherName ?? "—"}</span>
-                                  </>
-                                ) : (
-                                  "+"
-                                )}
-                              </button>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ),
+        {/* Tab switchers */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex flex-wrap gap-2">
+            {isManager ? (
+              <>
+                <button
+                  onClick={() => setActiveTab("general")}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                    effectiveTab === "general"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                   )}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* Editor modal */}
-          {modal && editClass && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={() => !modalBusy && setModal(null)}>
-              <div className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                <p className="text-sm font-extrabold text-slate-900">
-                  {editClass.name} · {DAYS.find((d) => d.num === modal.day)?.label} · Period {modal.period}
-                  <span className="ml-1 text-xs font-normal text-slate-500">{periodTime(modal.period)}</span>
-                </p>
-                <Field label="Subject">
-                  <select value={modalSubject} onChange={(e) => setModalSubject(e.target.value)} className={inputCls}>
-                    <option value="">— Select subject —</option>
-                    {subjectList.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                        {s.code ? ` (${s.code})` : ""}
-                        {s.teacherName ? ` — ${s.teacherName}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                {modalSubjectRow && (
-                  <p className="mt-1.5 text-xs font-semibold text-slate-500">
-                    Teacher: {modalSubjectRow.teacherName ?? "not assigned yet (set it via Manage Teachers)"}
-                  </p>
-                )}
-                {modalErr && <p className="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">⚠️ {modalErr}</p>}
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button onClick={saveCell} disabled={modalBusy || !modalSubject} className={btnPrimary}>
-                    {modalBusy ? "Saving..." : modalExisting ? "💾 Update" : "💾 Assign"}
-                  </button>
-                  {modalExisting && (
-                    <button onClick={() => clearCell(modalExisting)} disabled={modalBusy} className="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-bold text-rose-600 hover:bg-rose-50">
-                      🗑️ Clear
-                    </button>
+                >
+                  🌐 General Timetable
+                </button>
+                <button
+                  onClick={() => setActiveTab("class")}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                    effectiveTab === "class"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
                   )}
-                  <button onClick={() => setModal(null)} disabled={modalBusy} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      ) : tab === "general" && manage ? (
-        /* ================= GENERAL VIEW (Academic) ================= */
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-bold text-slate-900">🏫 General School Timetable</h2>
-            <button
-              onClick={() => print(generalEntries)}
-              disabled={generalEntries.length === 0}
-              className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700 disabled:opacity-40"
-            >
-              🖨️ Print General Timetable
-            </button>
+                >
+                  🏫 Class Timetable
+                </button>
+                <button
+                  onClick={() => setActiveTab("teacher")}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                    effectiveTab === "teacher"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  👨‍🏫 By Teacher
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={() => setActiveTab("my")}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                    effectiveTab === "my"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  👤 My Timetable
+                </button>
+                <button
+                  onClick={() => setActiveTab("class")}
+                  className={cls(
+                    "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                    effectiveTab === "class"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+                  )}
+                >
+                  🏫 My Assigned Classes
+                </button>
+              </>
+            )}
           </div>
-          {generalFetch.loading ? (
-            <div className="mt-6"><Loader label="Loading general timetable..." /></div>
-          ) : generalEntries.length === 0 ? (
-            <div className="mt-6"><EmptyState icon="🏫" title="Nothing built yet" message="Use the Timetable Builder tab to start filling the school timetable." /></div>
-          ) : (
-            <GeneralGrid classes={classList} entries={generalEntries} />
-          )}
-        </section>
-      ) : tab === "class" && manage ? (
-        /* ================= CLASS TIMETABLE (Academic, sorted from general) ================= */
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <Field label="Class">
-              <select value={viewClassId} onChange={(e) => setViewClassId(e.target.value)} className={inputCls}>
-                <option value="">— Select class —</option>
-                {classList.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                    {c.section ? ` — ${c.section}` : ""}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {viewClass && (
+
+          {/* Quick print action according to the tab */}
+          <div className="flex items-center gap-2">
+            {effectiveTab === "general" && isManager && (
               <button
-                onClick={() => printShell(
-                  `CLASS TIMETABLE — ${viewClass.name}${viewClass.section ? ` ${viewClass.section}` : ""}`,
-                  "CLASS WEEKLY TEACHING TIMETABLE",
-                  `Class: ${viewClass.name}${viewClass.section ? ` ${viewClass.section}` : ""} · Sorted from the General Timetable`,
-                  gridTableHtml(visibleViewEntries, (e) => (e.teacherName ? `<span class="tn">${esc(e.teacherName)}</span>` : "")),
-                  legendOf(visibleViewEntries),
-                )}
-                className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                onClick={handlePrintGeneral}
+                className={cls(btnPrimary, "text-xs font-bold")}
+              >
+                🖨️ Print General Timetable
+              </button>
+            )}
+            {effectiveTab === "class" && currentClassId && (
+              <button
+                onClick={() => handlePrintClass(Number(currentClassId))}
+                className={cls(btnPrimary, "text-xs font-bold")}
               >
                 🖨️ Print Class Timetable
               </button>
             )}
-          </div>
-          {!viewClass ? (
-            <div className="mt-6"><EmptyState icon="📄" title="Pick a class" message="The class timetable is automatically sorted out of the general timetable." /></div>
-          ) : (
-            <div className="mt-5">
-              <CellGrid entries={visibleViewEntries} mode="classView" />
-            </div>
-          )}
-        </section>
-      ) : tab === "my" && !manage ? (
-        /* ================= MY TIMETABLE (teacher) ================= */
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-bold text-slate-900">👨‍🏫 My Weekly Timetable</h2>
-            {myEntries.length > 0 && (
+            {(effectiveTab === "my" || effectiveTab === "teacher") && (
               <button
                 onClick={() =>
-                  printShell(
-                    "MY WEEKLY TIMETABLE",
-                    "TEACHER WEEKLY TEACHING SCHEDULE",
-                    `Teacher: ${user?.name ?? ""}`,
-                    gridTableHtml(myEntries, cellContent),
-                    legendOf(myEntries),
+                  handlePrintTeacher(
+                    Number(currentTeacherId),
+                    data?.teachers.find((t) => t.id === Number(currentTeacherId))?.name ||
+                      data?.teacherName ||
+                      user?.name ||
+                      "Teacher",
                   )
                 }
-                className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+                className={cls(btnPrimary, "text-xs font-bold")}
               >
-                🖨️ Print
+                🖨️ Print Teacher Timetable
               </button>
             )}
           </div>
-          {myFetch.loading ? (
-            <div className="mt-6"><Loader label="Loading your timetable..." /></div>
-          ) : myEntries.length === 0 ? (
-            <div className="mt-6"><EmptyState icon="📅" title="No lessons on your timetable yet" message="Once the Academic Master publishes the school timetable, your assigned lessons will appear here automatically." /></div>
-          ) : (
-            <div className="mt-5">
-              <CellGrid entries={myEntries} mode="my" />
-            </div>
-          )}
-        </section>
-      ) : (
-        /* ================= MY CLASSES (teacher, read-only) ================= */
-        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <Field label="My Class">
-            <select value={myClassId} onChange={(e) => setMyClassId(e.target.value)} className={inputCls}>
-              <option value="">— Select one of your classes —</option>
-              {classList.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                  {c.section ? ` — ${c.section}` : ""}
-                </option>
-              ))}
-            </select>
-          </Field>
-          {!myClassId ? (
-            <div className="mt-6"><EmptyState icon="🏫" title="Pick a class" message="You can only view timetables of the classes assigned to you by the admin." /></div>
-          ) : myClassFetch.loading ? (
-            <div className="mt-6"><Loader label="Loading class timetable..." /></div>
-          ) : (
-            <div className="mt-5">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-sm font-bold text-slate-900">
-                  {myClass?.name} {myClass?.section}
-                </p>
-                <button
-                  onClick={() =>
-                    printShell(
-                      `CLASS TIMETABLE — ${myClass?.name ?? ""}${myClass?.section ? ` ${myClass.section}` : ""}`,
-                      "CLASS WEEKLY TEACHING TIMETABLE",
-                      `Class: ${myClass?.name ?? ""}${myClass?.section ? ` ${myClass.section}` : ""} · Read-only`,
-                      gridTableHtml(myClassEntries, (e) => (e.teacherName ? `<span class="tn">${esc(e.teacherName)}</span>` : "")),
-                      legendOf(myClassEntries),
-                    )
+        </div>
+
+        {/* LOADING / ERROR STATE */}
+        {timetableFetch.loading && !data ? (
+          <Loader label="Loading timetable..." />
+        ) : timetableFetch.error ? (
+          <EmptyState icon="⚠️" title="Could not load timetable" message={timetableFetch.error} />
+        ) : !data ? null : (
+          <>
+            {/* ========================================================= */}
+            {/* TAB 1: GENERAL TIMETABLE (Academic Master / Admin only)   */}
+            {/* ========================================================= */}
+            {effectiveTab === "general" && isManager && (
+              <div className="space-y-4">
+                {/* School Letterhead Banner */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm text-center">
+                  <p className="text-xs font-extrabold uppercase tracking-widest text-slate-500">
+                    {data.settings.councilName}
+                  </p>
+                  <h1 className="mt-1 text-xl font-black uppercase text-slate-900 sm:text-2xl">
+                    {data.settings.schoolName}
+                  </h1>
+                  <h2 className="mt-0.5 text-sm font-extrabold text-violet-700 uppercase">
+                    {data.settings.title}
+                  </h2>
+                  <div className="mt-3 flex flex-wrap items-center justify-center gap-4 text-xs font-semibold text-slate-500">
+                    <span>☕ Break: <b>{data.settings.breakTime}</b></span>
+                    <span>🍱 Lunch: <b>{data.settings.lunchTime}</b></span>
+                    <span>🔔 Assembly: <b>{data.settings.assemblyTime}</b></span>
+                    <span>⚽ Extra Curriculum: <b>{data.settings.extraCurriculumTime}</b></span>
+                  </div>
+                </div>
+
+                {/* Day filter */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-bold text-slate-600">Filter Day:</span>
+                    <button
+                      onClick={() => setDayFilter("all")}
+                      className={cls(
+                        "rounded-xl px-3 py-1.5 text-xs font-bold transition",
+                        dayFilter === "all" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                      )}
+                    >
+                      All Days
+                    </button>
+                    {DAYS.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => setDayFilter(String(d.id))}
+                        className={cls(
+                          "rounded-xl px-3 py-1.5 text-xs font-bold transition",
+                          dayFilter === String(d.id)
+                            ? "bg-violet-600 text-white"
+                            : "bg-slate-100 text-slate-700 hover:bg-slate-200",
+                        )}
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="text-xs text-slate-400">
+                    💡 Click on any period slot to edit its subject, teacher, or special label.
+                  </p>
+                </div>
+
+                {/* Full Grid Table */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[980px] border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-900 text-white">
+                          <th className="border border-slate-800 px-3 py-2.5 text-center text-[10px] font-extrabold uppercase">
+                            Day
+                          </th>
+                          <th className="border border-slate-800 px-3 py-2.5 text-center text-[10px] font-extrabold uppercase">
+                            Class
+                          </th>
+                          {PERIODS.slice(0, 4).map((p) => (
+                            <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                              <span className="block font-black text-xs">{p.num}</span>
+                              <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                            </th>
+                          ))}
+                          <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200">
+                            BREAK<br />{data.settings.breakTime}
+                          </th>
+                          {PERIODS.slice(4, 7).map((p) => (
+                            <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                              <span className="block font-black text-xs">{p.num}</span>
+                              <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                            </th>
+                          ))}
+                          <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200">
+                            LUNCH<br />{data.settings.lunchTime}
+                          </th>
+                          {PERIODS.slice(7, 9).map((p) => (
+                            <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                              <span className="block font-black text-xs">{p.num}</span>
+                              <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                            </th>
+                          ))}
+                          <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200">
+                            ASSEMBLY<br />{data.settings.assemblyTime}
+                          </th>
+                          <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200">
+                            EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {DAYS.filter((d) => dayFilter === "all" || dayFilter === String(d.id)).map((day) => (
+                          data.classes.map((c, cIdx) => {
+                            const isFirst = cIdx === 0;
+                            const classCount = data.classes.length;
+
+                            return (
+                              <tr key={`${day.id}-${c.id}`} className={cIdx % 2 ? "bg-slate-50/50" : "bg-white"}>
+                                {isFirst && (
+                                  <td
+                                    rowSpan={classCount}
+                                    className="border border-slate-200 bg-slate-100 text-center font-black text-xs text-slate-800 align-middle uppercase"
+                                  >
+                                    {day.name}
+                                  </td>
+                                )}
+                                <td className="border border-slate-200 px-2.5 py-2 font-extrabold text-slate-800 text-center bg-slate-50">
+                                  {c.name}
+                                </td>
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+                                  const disp = getSlotDisplay(slot);
+                                  return (
+                                    <td
+                                      key={p}
+                                      onClick={() => handleSlotClick(day.id, p, c.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-1.5 text-center cursor-pointer transition hover:bg-violet-50 group",
+                                        disp.isSpecial ? "bg-slate-100 font-extrabold text-slate-700" : "font-bold text-slate-900",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
+                                    >
+                                      <div className="font-bold">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                    </td>
+                                  );
+                                })}
+
+                                {/* BREAK TIME (spans all classes of day) */}
+                                {isFirst && (
+                                  <td
+                                    rowSpan={classCount}
+                                    className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle"
+                                  >
+                                    BREAK
+                                  </td>
+                                )}
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+                                  const disp = getSlotDisplay(slot);
+                                  return (
+                                    <td
+                                      key={p}
+                                      onClick={() => handleSlotClick(day.id, p, c.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-1.5 text-center cursor-pointer transition hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100 font-extrabold text-slate-700" : "font-bold text-slate-900",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
+                                    >
+                                      <div className="font-bold">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                    </td>
+                                  );
+                                })}
+
+                                {/* LUNCH TIME (spans all classes of day) */}
+                                {isFirst && (
+                                  <td
+                                    rowSpan={classCount}
+                                    className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle"
+                                  >
+                                    LUNCH
+                                  </td>
+                                )}
+
+                                {/* Periods 8 and 9 (Special blocks on Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  isFirst ? (
+                                    <td
+                                      colSpan={2}
+                                      rowSpan={classCount}
+                                      className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                    >
+                                      RELIGIO
+                                    </td>
+                                  ) : null
+                                ) : day.id === 5 ? (
+                                  isFirst ? (
+                                    <td
+                                      colSpan={2}
+                                      rowSpan={classCount}
+                                      className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                    >
+                                      MEWAKA
+                                    </td>
+                                  ) : null
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+                                    const disp = getSlotDisplay(slot);
+                                    return (
+                                      <td
+                                        key={p}
+                                        onClick={() => handleSlotClick(day.id, p, c.id)}
+                                        className={cls(
+                                          "border border-slate-200 px-2 py-1.5 text-center cursor-pointer transition hover:bg-violet-50",
+                                          disp.isSpecial ? "bg-slate-100 font-extrabold text-slate-700" : "font-bold text-slate-900",
+                                        )}
+                                        title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
+                                      >
+                                        <div className="font-bold">{disp.label}</div>
+                                        {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY (spans all classes) */}
+                                {isFirst && (
+                                  <td
+                                    rowSpan={classCount}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle"
+                                  >
+                                    ASSEMBLY
+                                  </td>
+                                )}
+
+                                {/* EXTRA CURRICULUM (spans all classes) */}
+                                {isFirst && (
+                                  <td
+                                    rowSpan={classCount}
+                                    className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3"
+                                  >
+                                    {getExtraForDay(data.settings, day.id)}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Notes Footer */}
+                  <div className="border-t border-slate-200 bg-slate-50 p-4 text-[11px] font-medium text-slate-600 leading-relaxed">
+                    {data.settings.notes}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 2: CLASS TIMETABLE (Filtered / Sorted from main)      */}
+            {/* ========================================================= */}
+            {effectiveTab === "class" && (
+              <div className="space-y-4">
+                {/* Selector */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Select Class:</label>
+                    <select
+                      value={currentClassId}
+                      onChange={(e) => setSelectedClassId(e.target.value)}
+                      className={cls(inputCls, "w-48 font-bold")}
+                    >
+                      {availableClasses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.section ? `(${c.section})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    Extracted directly from the General Teaching Timetable ({data.settings.academicYear})
+                  </div>
+                </div>
+
+                {/* Class Schedule Card */}
+                {(() => {
+                  const targetClass = data.classes.find((c) => c.id === Number(currentClassId));
+                  if (!targetClass) {
+                    return <EmptyState icon="🏫" title="No class selected" message="Select a class to view its timetable." />;
                   }
-                  className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-sky-700"
+
+                  return (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
+                        <div>
+                          <p className="text-sm font-bold uppercase tracking-wider">
+                            Class Timetable — {targetClass.name} {targetClass.section ? `(${targetClass.section})` : ""}
+                          </p>
+                          <p className="text-xs text-slate-300">
+                            {data.settings.schoolName} · Academic Year {data.settings.academicYear}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handlePrintClass(targetClass.id)}
+                          className={cls(btnPrimary, "text-xs font-bold")}
+                        >
+                          🖨️ Print Class Timetable
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[800px] border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 text-slate-700">
+                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                                Day
+                              </th>
+                              {PERIODS.map((p) => (
+                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                </th>
+                              ))}
+                              <th className="border border-slate-200 px-3 py-2 text-center font-extrabold text-[11px] text-slate-700 w-36">
+                                Extra Curriculum
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {DAYS.map((day) => (
+                              <tr key={day.id} className="hover:bg-slate-50">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                  {day.name}
+                                </td>
+                                {PERIODS.map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
+                                  const disp = getSlotDisplay(slot);
+
+                                  return (
+                                    <td
+                                      key={p.num}
+                                      onClick={() => isManager && handleSlotClick(day.id, p.num, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
+                                      {slot?.room && (
+                                        <div className="text-[9px] text-slate-400">{slot.room}</div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-2 text-center font-bold text-xs text-emerald-800">
+                                  {getExtraForDay(data.settings, day.id)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 flex flex-wrap gap-4 justify-between">
+                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b></span>
+                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any cell to re-assign.</span>}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 3: TEACHER TIMETABLE / MY TIMETABLE                   */}
+            {/* ========================================================= */}
+            {(effectiveTab === "my" || effectiveTab === "teacher") && (
+              <div className="space-y-4">
+                {/* Manager can pick any teacher */}
+                {isManager && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="text-xs font-bold uppercase tracking-wide text-slate-500">Select Teacher:</label>
+                      <select
+                        value={currentTeacherId}
+                        onChange={(e) => setSelectedTeacherId(e.target.value)}
+                        className={cls(inputCls, "w-64 font-bold")}
+                      >
+                        {data.teachers.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.subject || "Teacher"})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      Personalized teaching schedule for individual staff member
+                    </div>
+                  </div>
+                )}
+
+                {/* Workload Cards */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <StatCard
+                    icon="📚"
+                    label="Teaching Periods"
+                    value={`${teacherStats.periodsCount} / 45`}
+                    tone="indigo"
+                    sub="per week"
+                  />
+                  <StatCard
+                    icon="🏫"
+                    label="Classes Taught"
+                    value={teacherStats.classesCount}
+                    tone="emerald"
+                    sub="assigned classes"
+                  />
+                  <StatCard
+                    icon="📖"
+                    label="Subjects"
+                    value={teacherStats.subjectsCount}
+                    tone="blue"
+                  />
+                  <StatCard
+                    icon="☕"
+                    label="Free Periods"
+                    value={teacherStats.freePeriods}
+                    tone="amber"
+                    sub="preparation periods"
+                  />
+                </div>
+
+                {/* Teacher's Schedule Table */}
+                {(() => {
+                  const targetTeacher = data.teachers.find(
+                    (t) => t.id === Number(currentTeacherId),
+                  ) || { name: data.teacherName || user?.name || "Teacher", id: Number(currentTeacherId) };
+
+                  return (
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
+                        <div>
+                          <p className="text-sm font-bold uppercase tracking-wider">
+                            Weekly Teaching Schedule — {targetTeacher.name}
+                          </p>
+                          <p className="text-xs text-slate-300">
+                            {data.settings.schoolName} · Total: {teacherStats.periodsCount} teaching periods
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handlePrintTeacher(Number(currentTeacherId), targetTeacher.name)}
+                          className={cls(btnPrimary, "text-xs font-bold")}
+                        >
+                          🖨️ Print My Schedule
+                        </button>
+                      </div>
+
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-[760px] border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-slate-100 text-slate-700">
+                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                                Day
+                              </th>
+                              {PERIODS.map((p) => (
+                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {DAYS.map((day) => (
+                              <tr key={day.id} className="hover:bg-slate-50">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                  {day.name}
+                                </td>
+                                {PERIODS.map((p) => {
+                                  // Look up this teacher's assignment in this slot
+                                  const slot = data.slots.find(
+                                    (sl) =>
+                                      sl.teacherId === Number(currentTeacherId) &&
+                                      sl.dayOfWeek === day.id &&
+                                      sl.period === p.num,
+                                  );
+
+                                  if (!slot) {
+                                    return (
+                                      <td
+                                        key={p.num}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  return (
+                                    <td
+                                      key={p.num}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/60"
+                                    >
+                                      <div className="font-black text-indigo-950 text-sm">
+                                        {slot.className}
+                                      </div>
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5">
+                                        {slot.subjectName || slot.subjectCode || "Subject"}
+                                      </div>
+                                      {slot.room && (
+                                        <div className="text-[9px] text-slate-500">{slot.room}</div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: EDIT SLOT (Academic Master / Admin only)           */}
+        {/* ========================================================= */}
+        {editSlot && (
+          <Modal
+            open={!!editSlot}
+            onClose={() => setEditSlot(null)}
+            title={`Edit Timetable Slot · ${DAYS.find((d) => d.id === editSlot.dayOfWeek)?.name} (Period ${editSlot.period})`}
+          >
+            <form onSubmit={handleSaveSlot} className="space-y-4">
+              <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-700 font-semibold border border-slate-200 flex justify-between">
+                <span>Class: <b>{data?.classes.find((c) => c.id === editSlot.classId)?.name}</b></span>
+                <span>Period {editSlot.period}: <b>{PERIODS[editSlot.period - 1]?.time}</b></span>
+              </div>
+
+              {slotMsg && (
+                <div className="p-3 text-xs font-semibold rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
+                  {slotMsg}
+                </div>
+              )}
+
+              <Field label="Subject">
+                <select
+                  value={editSlot.subjectId ?? ""}
+                  onChange={(e) => onSubjectChange(e.target.value)}
+                  className={inputCls}
                 >
-                  🖨️ Print
+                  <option value="">— Select Subject (or leave empty) —</option>
+                  {data?.subjects.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.code || "No code"})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Teacher Assigned">
+                <select
+                  value={editSlot.teacherId ?? ""}
+                  onChange={(e) =>
+                    setEditSlot({
+                      ...editSlot,
+                      teacherId: e.target.value ? Number(e.target.value) : null,
+                    })
+                  }
+                  className={inputCls}
+                >
+                  <option value="">— No Teacher Assigned —</option>
+                  {data?.teachers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.subject || "Teacher"})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+
+              <Field label="Custom Label / Special Activity">
+                <input
+                  type="text"
+                  value={editSlot.customLabel}
+                  onChange={(e) => setEditSlot({ ...editSlot, customLabel: e.target.value })}
+                  placeholder="e.g. PS, RELIGIO, MEWAKA"
+                  className={inputCls}
+                />
+                <p className="text-[11px] text-slate-400 mt-1">Use for special periods like PS, RELIGIO, MEWAKA, or Sports</p>
+                <div className="flex gap-1.5 mt-1.5">
+                  {["PS", "RELIGIO", "MEWAKA", "SPORTS"].map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => setEditSlot({ ...editSlot, customLabel: tag, subjectId: null, teacherId: null })}
+                      className="rounded-lg bg-slate-100 hover:bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700"
+                    >
+                      +{tag}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              <Field label="Room / Location (Optional)">
+                <input
+                  type="text"
+                  value={editSlot.room}
+                  onChange={(e) => setEditSlot({ ...editSlot, room: e.target.value })}
+                  placeholder="e.g. Lab 1, Room 4"
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={handleClearSlot}
+                  disabled={savingSlot}
+                  className={btnDanger}
+                >
+                  🗑️ Clear Slot
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditSlot(null)}
+                    className={btnGhost}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingSlot}
+                    className={btnPrimary}
+                  >
+                    {savingSlot ? "Saving..." : "💾 Save Slot"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </Modal>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: TIMETABLE SETTINGS (Academic Master / Admin only)  */}
+        {/* ========================================================= */}
+        {settingsModalOpen && settingsForm && (
+          <Modal
+            open={settingsModalOpen}
+            onClose={() => setSettingsModalOpen(false)}
+            title="⚙️ Timetable Settings & School Letterhead"
+          >
+            <form onSubmit={handleSaveSettings} className="space-y-3.5">
+              <Field label="Council / District Name" required>
+                <input
+                  type="text"
+                  value={settingsForm.councilName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, councilName: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+
+              <Field label="School Name" required>
+                <input
+                  type="text"
+                  value={settingsForm.schoolName}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, schoolName: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Academic Year" required>
+                  <input
+                    type="text"
+                    value={settingsForm.academicYear}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, academicYear: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Timetable Title" required>
+                  <input
+                    type="text"
+                    value={settingsForm.title}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, title: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Break Time">
+                  <input
+                    type="text"
+                    value={settingsForm.breakTime}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, breakTime: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Lunch Time">
+                  <input
+                    type="text"
+                    value={settingsForm.lunchTime}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, lunchTime: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Assembly Time">
+                  <input
+                    type="text"
+                    value={settingsForm.assemblyTime}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, assemblyTime: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+                <Field label="Extra Curriculum Time">
+                  <input
+                    type="text"
+                    value={settingsForm.extraCurriculumTime}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, extraCurriculumTime: e.target.value })}
+                    className={inputCls}
+                  />
+                </Field>
+              </div>
+
+              <Field label="Extra Curriculum (Days)">
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <input
+                    placeholder="Monday Extra"
+                    value={settingsForm.mondayExtra}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, mondayExtra: e.target.value })}
+                    className={inputCls}
+                  />
+                  <input
+                    placeholder="Tuesday Extra"
+                    value={settingsForm.tuesdayExtra}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, tuesdayExtra: e.target.value })}
+                    className={inputCls}
+                  />
+                  <input
+                    placeholder="Wednesday Extra"
+                    value={settingsForm.wednesdayExtra}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, wednesdayExtra: e.target.value })}
+                    className={inputCls}
+                  />
+                  <input
+                    placeholder="Thursday Extra"
+                    value={settingsForm.thursdayExtra}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, thursdayExtra: e.target.value })}
+                    className={inputCls}
+                  />
+                  <input
+                    placeholder="Friday Extra"
+                    value={settingsForm.fridayExtra}
+                    onChange={(e) => setSettingsForm({ ...settingsForm, fridayExtra: e.target.value })}
+                    className={cls(inputCls, "col-span-2")}
+                  />
+                </div>
+              </Field>
+
+              <Field label="Notes Legend at Bottom">
+                <textarea
+                  rows={3}
+                  value={settingsForm.notes}
+                  onChange={(e) => setSettingsForm({ ...settingsForm, notes: e.target.value })}
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setSettingsModalOpen(false)}
+                  className={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingSettings}
+                  className={btnPrimary}
+                >
+                  {savingSettings ? "Saving..." : "💾 Save Settings"}
                 </button>
               </div>
-              {myClassGrid.size === 0 ? (
-                <EmptyState icon="📅" title="No timetable for this class yet" message="The Academic Master has not filled any lesson for this class yet." />
-              ) : (
-                <CellGrid entries={myClassEntries} mode="classView" />
-              )}
-            </div>
-          )}
-        </section>
-      )}
+            </form>
+          </Modal>
+        )}
+      </div>
     </AppShell>
-  );
-
-  function print(entries: EntryRow[]) {
-    printShell(
-      "GENERAL TEACHING TIMETABLE",
-      "GENERAL SCHOOL TEACHING TIME TABLE",
-      "All Classes · All Teachers",
-      generalTableHtml(classList, entries),
-      legendOf(entries),
-    );
-  }
-}
-
-/** Read-only grid used by class views and "My Timetable" (periods as rows). */
-function CellGrid({ entries, mode }: { entries: EntryRow[]; mode: "my" | "classView" }) {
-  const grid = useMemo(() => {
-    const m = new Map<string, EntryRow>();
-    for (const e of entries) m.set(`${e.dayOfWeek}|${e.period}`, e);
-    return m;
-  }, [entries]);
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[760px] border-collapse text-center text-xs">
-        <thead>
-          <tr className="bg-slate-900 text-white">
-            <th className="border border-slate-700 px-2 py-2 text-left">PERIOD</th>
-            {DAYS.map((d) => (
-              <th key={d.num} className="border border-slate-700 px-2 py-2">
-                {d.label}
-              </th>
-            ))}
-            <th className="border border-slate-700 px-2 py-2">EXTRA CURRICULUM</th>
-          </tr>
-        </thead>
-        <tbody>
-          {SLOTS.map((s) =>
-            s.kind !== "lesson" ? (
-              <tr key={`${s.kind}-${s.start}`} className="bg-slate-100">
-                <td className="border border-slate-200 px-2 py-1 text-left text-[10px] font-bold text-slate-500">
-                  {s.label}
-                  <span className="ml-1 font-normal">{s.start} - {s.end}</span>
-                </td>
-                {DAYS.map((d) => (
-                  <td key={d.num} className={cls("border border-slate-200 text-[10px] font-bold", s.kind === "extra" ? "bg-amber-50 text-amber-800" : "uppercase tracking-widest text-slate-400")}>
-                    {s.kind === "extra" ? EXTRA_ACTIVITIES[d.num] : ""}
-                  </td>
-                ))}
-                <td className={cls("border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-400", s.kind === "extra" && "bg-amber-50")}>
-                  {s.kind !== "extra" ? s.label : ""}
-                </td>
-              </tr>
-            ) : (
-              <tr key={`p-${s.n}`}>
-                <td className="whitespace-nowrap border border-slate-200 bg-slate-50 px-2 py-1.5 text-left text-[10px] font-bold text-slate-500">
-                  {s.n}
-                  <span className="ml-1 font-normal">{s.start} - {s.end}</span>
-                </td>
-                {DAYS.map((d) => {
-                  const e = grid.get(`${d.num}|${s.n}`);
-                  return (
-                    <td key={d.num} className="border border-slate-200 p-1">
-                      {e ? (
-                        <div className="rounded-lg bg-emerald-600 px-1 py-2 font-bold text-white">
-                          {subjectCodeOf(e.subjectName, e.subjectCode)}
-                          <span className="mt-0.5 block text-[9px] font-normal opacity-90">
-                            {mode === "my" ? `${e.className}${e.section ? ` ${e.section}` : ""}` : (e.teacherName ?? "—")}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="rounded-lg bg-slate-50 px-1 py-2 text-slate-300">—</div>
-                      )}
-                    </td>
-                  );
-                })}
-                <td className="border border-slate-200 bg-amber-50 text-[10px] font-bold text-amber-800" />
-              </tr>
-            ),
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-/** On-screen general grid (same shape as the printed one). */
-function GeneralGrid({ classes, entries }: { classes: ClassRow[]; entries: EntryRow[] }) {
-  const byKey = useMemo(() => {
-    const m = new Map<string, EntryRow>();
-    for (const e of entries) m.set(`${e.classId}|${e.dayOfWeek}|${e.period}`, e);
-    return m;
-  }, [entries]);
-
-  if (classes.length === 0) {
-    return <EmptyState icon="🏫" title="No classes yet" message="Add classes first." />;
-  }
-
-  const lessonSlots = SLOTS.filter((s) => s.kind !== "assembly");
-
-  return (
-    <div className="mt-5 overflow-x-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[1100px] border-collapse text-center text-[10px]">
-        <thead>
-          <tr className="bg-slate-900 text-white">
-            <th className="border border-slate-700 px-1.5 py-2">DAY</th>
-            <th className="border border-slate-700 px-1.5 py-2">CLASS</th>
-            {lessonSlots.map((s) => (
-              <th key={`${s.kind}-${s.start}`} className="border border-slate-700 px-1 py-2">
-                {s.kind === "lesson" ? s.n : s.label.split(" ")[0]}
-                <span className="block text-[8px] font-normal text-indigo-300">{s.start}-{s.end}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {DAYS.map((d) =>
-            classes.map((c, ci) => (
-              <tr key={`${d.num}-${c.id}`} className="odd:bg-white even:bg-slate-50/60">
-                {ci === 0 && (
-                  <td rowSpan={classes.length} className="border border-slate-200 bg-slate-900 px-1.5 py-1 font-bold text-white [writing-mode:vertical-rl]">
-                    {d.label}
-                  </td>
-                )}
-                <td className="whitespace-nowrap border border-slate-200 bg-indigo-50/70 px-1.5 py-1 font-bold text-indigo-900">
-                  {c.name}
-                  {c.section ? ` ${c.section}` : ""}
-                </td>
-                {lessonSlots.map((s) => {
-                  if (s.kind !== "lesson") {
-                    return (
-                      <td key={`${d.num}-${c.id}-${s.start}`} className="border border-slate-200 bg-slate-100 text-[8px] font-bold uppercase text-slate-400">
-                        {s.kind === "extra" ? EXTRA_ACTIVITIES[d.num] : s.label.split(" ")[0]}
-                      </td>
-                    );
-                  }
-                  const e = byKey.get(`${c.id}|${d.num}|${s.n}`);
-                  return (
-                    <td key={`${d.num}-${c.id}-${s.n}`} className="border border-slate-200 px-1 py-1">
-                      {e && (
-                        <>
-                          <b className="text-indigo-800">{subjectCodeOf(e.subjectName, e.subjectCode)}</b>
-                          {e.teacherName && <span className="block truncate text-[8px] text-slate-500">{e.teacherName}</span>}
-                        </>
-                      )}
-                    </td>
-                  );
-                })}
-              </tr>
-            )),
-          )}
-        </tbody>
-      </table>
-    </div>
   );
 }

@@ -1,7 +1,6 @@
 import { asc, count, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teacherClasses, teacherSubjectClasses, teachers, users } from "@/db/schema";
-import { sql } from "drizzle-orm";
 import { dbErrorResponse } from "@/lib/apiError";
 import { createMemberAccount, getSessionUser, requireAuth } from "@/lib/auth";
 import { ROLE_PRESETS } from "@/lib/permissions";
@@ -21,27 +20,37 @@ export async function GET() {
       .leftJoin(users, eq(teachers.userId, users.id))
       .orderBy(asc(teachers.name));
 
-    const subjectCounts = await db
-      .select({ teacherId: subjects.teacherId, n: count() })
-      .from(subjects)
-      .groupBy(subjects.teacherId);
-    const classCounts = await db
-      .select({ teacherId: teacherClasses.teacherId, n: count() })
-      .from(teacherClasses)
-      .groupBy(teacherClasses.teacherId);
-    // Matrix-based counts: distinct subjects / classes per teacher from the
-    // subject×class assignment matrix (the authoritative source).
-    const matrixCounts = await db
+    // Count distinct subjects and classes assigned to each teacher via teacher_subject_classes (or fallback to teacher_classes)
+    const tscRows = await db
       .select({
         teacherId: teacherSubjectClasses.teacherId,
-        subjects: sql<number>`count(distinct ${teacherSubjectClasses.subjectId})`,
-        classes: sql<number>`count(distinct ${teacherSubjectClasses.classId})`,
+        subjectId: teacherSubjectClasses.subjectId,
+        classId: teacherSubjectClasses.classId,
       })
-      .from(teacherSubjectClasses)
-      .groupBy(teacherSubjectClasses.teacherId);
-    const matrixMap = new Map(matrixCounts.map((m) => [m.teacherId, m]));
-    const subjMap = new Map(subjectCounts.map((s) => [s.teacherId, s.n]));
-    const classMap = new Map(classCounts.map((c) => [c.teacherId, c.n]));
+      .from(teacherSubjectClasses);
+
+    const tcRows = await db
+      .select({
+        teacherId: teacherClasses.teacherId,
+        classId: teacherClasses.classId,
+      })
+      .from(teacherClasses);
+
+    const teacherSubjSet = new Map<number, Set<number>>();
+    const teacherClassSet = new Map<number, Set<number>>();
+
+    for (const r of tscRows) {
+      if (!teacherSubjSet.has(r.teacherId)) teacherSubjSet.set(r.teacherId, new Set());
+      teacherSubjSet.get(r.teacherId)!.add(r.subjectId);
+
+      if (!teacherClassSet.has(r.teacherId)) teacherClassSet.set(r.teacherId, new Set());
+      teacherClassSet.get(r.teacherId)!.add(r.classId);
+    }
+
+    for (const r of tcRows) {
+      if (!teacherClassSet.has(r.teacherId)) teacherClassSet.set(r.teacherId, new Set());
+      teacherClassSet.get(r.teacherId)!.add(r.classId);
+    }
 
     const isAdmin = user!.role === "admin";
     return Response.json(
@@ -50,10 +59,8 @@ export async function GET() {
         hasAccount: r.userId !== null,
         // Only the admin may see the stored raw password
         rawPassword: isAdmin ? r.rawPassword : null,
-        // Prefer matrix counts; legacy columns fill in when the teacher still
-        // has zero matrix cells (pre-migration assignments).
-        subjectCount: (matrixMap.get(r.id)?.subjects ?? 0) > 0 ? Number(matrixMap.get(r.id)!.subjects) : (subjMap.get(r.id) ?? 0),
-        classCount: (matrixMap.get(r.id)?.classes ?? 0) > 0 ? Number(matrixMap.get(r.id)!.classes) : (classMap.get(r.id) ?? 0),
+        subjectCount: teacherSubjSet.get(r.id)?.size ?? 0,
+        classCount: teacherClassSet.get(r.id)?.size ?? 0,
       })),
     );
   } catch (e) {

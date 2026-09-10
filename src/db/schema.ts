@@ -101,6 +101,9 @@ export const subjects = pgTable("subjects", {
   teacherId: integer("teacher_id").references(() => teachers.id, {
     onDelete: "set null",
   }),
+  // Optional/elective subjects (e.g. Civics F3-4, Computer Application F1...) —
+  // only students mapped to them appear when submitting scores.
+  isOptional: boolean("is_optional").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -431,6 +434,49 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+
+// ---------- Student-Subject Mapping (optional / elective subjects) ----------
+// Academic Master assigns which students enrol in each optional subject.
+// A mapped student may have scores submitted for that subject; unmapped ones
+// never appear in the Submit Scores roster for it.
+export const studentSubjectMap = pgTable(
+  "student_subject_map",
+  {
+    id: serial("id").primaryKey(),
+    studentId: integer("student_id")
+      .notNull()
+      .references(() => students.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => subjects.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("student_subject_map_idx").on(t.studentId, t.subjectId)],
+);
+
+// ---------- Academic Years & Alumni (Year Progression) ----------
+export const academicYears = pgTable("academic_years", {
+  id: serial("id").primaryKey(),
+  year: varchar("year", { length: 10 }).notNull().unique(),
+  isActive: boolean("is_active").notNull().default(false),
+  studentsArchived: integer("students_archived").notNull().default(0),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Graduated students (Form 4 completers). Full snapshot so the row stays
+// readable even if the live student record changes later.
+export const alumni = pgTable("alumni", {
+  id: serial("id").primaryKey(),
+  studentId: integer("student_id").notNull(),
+  admissionNo: varchar("admission_no", { length: 30 }).notNull().default(""),
+  name: varchar("name", { length: 120 }).notNull(),
+  gender: genderEnum("gender").notNull().default("male"),
+  previousClassId: integer("previous_class_id"),
+  previousClassName: varchar("previous_class_name", { length: 60 }).notNull().default(""),
+  graduatedYear: varchar("graduated_year", { length: 10 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Types ----------
 export type UserRow = typeof users.$inferSelect;
 export type UserPermRow = typeof userPermissions.$inferSelect;
@@ -451,3 +497,6 @@ export type TimetableSlotRow = typeof timetableSlots.$inferSelect;
 export type TeacherSubjectClassRow = typeof teacherSubjectClasses.$inferSelect;
 export type ApprovalRow = typeof approvals.$inferSelect;
 export type AppSettingsRow = typeof appSettings.$inferSelect;
+export type StudentSubjectMapRow = typeof studentSubjectMap.$inferSelect;
+export type AcademicYearRow = typeof academicYears.$inferSelect;
+export type AlumniRow = typeof alumni.$inferSelect;

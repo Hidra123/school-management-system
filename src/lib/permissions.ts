@@ -178,6 +178,8 @@ export const ADMIN_SIDEBAR = [
 export const MEMBER_SIDEBAR = [
   { href: "/", label: "Dashboard", icon: "📊", perm: "dashboard", group: "MAIN" },
   { href: "/students", label: "Students", icon: "👨‍🎓", perm: "students.view", group: "STUDENT MANAGEMENT" },
+  { href: "/map-students", label: "Map Students", icon: "🧩", perm: "students.edit", group: "STUDENT MANAGEMENT" },
+  { href: "/year-progression", label: "Year Progression", icon: "🔄", perm: "students.edit", group: "STUDENT MANAGEMENT" },
   { href: "/classes", label: "Classes", icon: "🏫", perm: "classes.view", group: "STUDENT MANAGEMENT" },
   { href: "/subjects", label: "Subjects", icon: "📚", perm: "subjects.view", group: "ACADEMIC" },
   { href: "/attendance", label: "Attendance", icon: "✅", perm: "attendance.view", group: "ACADEMIC" },

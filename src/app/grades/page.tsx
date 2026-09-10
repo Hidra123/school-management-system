@@ -157,8 +157,8 @@ export default function GradesPage() {
   }, [examType, examOptions, activeExamTypes]);
 
   const entryStudentsUrl = useMemo(
-    () => (classId ? `/api/students?classId=${classId}&strict=1` : null),
-    [classId],
+    () => (classId ? `/api/students?classId=${classId}&strict=1&subjectId=${subjectId}` : null),
+    [classId, subjectId],
   );
   const entryGradesUrl = useMemo(
     () =>

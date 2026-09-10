@@ -364,6 +364,31 @@ export const timetableSlots = pgTable(
   ],
 );
 
+
+// ---------- Teaching Assignments (subject x class per teacher) ----------
+// The authoritative "who teaches WHAT subject in WHICH class" matrix. Small
+// schools share subjects across teachers per class (e.g. Teacher X has
+// Kiswahili in Form 3 & 4 while Teacher Y has the SAME subject in Form 1 & 2)
+// - a single subjects.teacherId cannot express that, so assignments live here.
+// One teacher per (subject, class) cell - enforced by the unique index below.
+export const teacherSubjectClasses = pgTable(
+  "teacher_subject_classes",
+  {
+    id: serial("id").primaryKey(),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => subjects.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("teacher_subject_class_idx").on(t.subjectId, t.classId)],
+);
+
 // ---------- Types ----------
 export type UserRow = typeof users.$inferSelect;
 export type UserPermRow = typeof userPermissions.$inferSelect;
@@ -381,3 +406,4 @@ export type ExamSettingsRow = typeof examSettings.$inferSelect;
 export type StudentExamRemarksRow = typeof studentExamRemarks.$inferSelect;
 export type TimetableSettingsRow = typeof timetableSettings.$inferSelect;
 export type TimetableSlotRow = typeof timetableSlots.$inferSelect;
+export type TeacherSubjectClassRow = typeof teacherSubjectClasses.$inferSelect;

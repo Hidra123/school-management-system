@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { subjects, teachers } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
@@ -40,7 +40,12 @@ export async function GET(req: Request) {
     if (scope.scoped && scope.teacherId === null) return Response.json([]);
 
     const rows = scope.scoped
-      ? await query.where(eq(subjects.teacherId, scope.teacherId!))
+      ? await query.where(
+          // Subjects the teacher teaches per the matrix (incl. shared
+          // subject names like "Kiswahili" split across classes between two
+          // teachers), plus legacy single-owner assignments.
+          scope.subjectIds.length > 0 ? inArray(subjects.id, scope.subjectIds) : eq(subjects.id, -1),
+        )
       : await query;
 
     return Response.json(rows);

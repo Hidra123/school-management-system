@@ -1,6 +1,7 @@
 import { asc, count, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { subjects, teacherClasses, teachers, users } from "@/db/schema";
+import { subjects, teacherClasses, teacherSubjectClasses, teachers, users } from "@/db/schema";
+import { sql } from "drizzle-orm";
 import { dbErrorResponse } from "@/lib/apiError";
 import { createMemberAccount, getSessionUser, requireAuth } from "@/lib/auth";
 import { ROLE_PRESETS } from "@/lib/permissions";
@@ -28,6 +29,17 @@ export async function GET() {
       .select({ teacherId: teacherClasses.teacherId, n: count() })
       .from(teacherClasses)
       .groupBy(teacherClasses.teacherId);
+    // Matrix-based counts: distinct subjects / classes per teacher from the
+    // subject×class assignment matrix (the authoritative source).
+    const matrixCounts = await db
+      .select({
+        teacherId: teacherSubjectClasses.teacherId,
+        subjects: sql<number>`count(distinct ${teacherSubjectClasses.subjectId})`,
+        classes: sql<number>`count(distinct ${teacherSubjectClasses.classId})`,
+      })
+      .from(teacherSubjectClasses)
+      .groupBy(teacherSubjectClasses.teacherId);
+    const matrixMap = new Map(matrixCounts.map((m) => [m.teacherId, m]));
     const subjMap = new Map(subjectCounts.map((s) => [s.teacherId, s.n]));
     const classMap = new Map(classCounts.map((c) => [c.teacherId, c.n]));
 
@@ -38,8 +50,10 @@ export async function GET() {
         hasAccount: r.userId !== null,
         // Only the admin may see the stored raw password
         rawPassword: isAdmin ? r.rawPassword : null,
-        subjectCount: subjMap.get(r.id) ?? 0,
-        classCount: classMap.get(r.id) ?? 0,
+        // Prefer matrix counts; legacy columns fill in when the teacher still
+        // has zero matrix cells (pre-migration assignments).
+        subjectCount: (matrixMap.get(r.id)?.subjects ?? 0) > 0 ? Number(matrixMap.get(r.id)!.subjects) : (subjMap.get(r.id) ?? 0),
+        classCount: (matrixMap.get(r.id)?.classes ?? 0) > 0 ? Number(matrixMap.get(r.id)!.classes) : (classMap.get(r.id) ?? 0),
       })),
     );
   } catch (e) {

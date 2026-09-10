@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { subjects, teacherClasses, teachers, users } from "@/db/schema";
+import { subjects, teacherClasses, teacherSubjectClasses, teachers, users } from "@/db/schema";
 import type { SessionUser } from "@/lib/auth";
 
 /** Columns returned for a teacher joined with their login account. */
@@ -37,10 +37,20 @@ export async function getAssignedClassIds(teacherId: number): Promise<number[]> 
   return Array.from(new Set(rows.map((r) => r.classId)));
 }
 
-/** Subject IDs a teacher is assigned to teach (subjects.teacherId, deduplicated). */
+/**
+ * Subject IDs a teacher teaches, from BOTH sources:
+ *  - the authoritative subject×class assignment matrix (teacher_subject_classes)
+ *  - the legacy single-owner subjects.teacherId (kept as backward-compat)
+ * Two teachers may share the same subject NAME for different classes — the
+ * matrix allows that while the legacy column can only name one owner.
+ */
 export async function getAssignedSubjectIds(teacherId: number): Promise<number[]> {
-  const rows = await db.select({ id: subjects.id }).from(subjects).where(eq(subjects.teacherId, teacherId));
-  return Array.from(new Set(rows.map((r) => r.id)));
+  const legacy = await db.select({ id: subjects.id }).from(subjects).where(eq(subjects.teacherId, teacherId));
+  const matrix = await db
+    .select({ subjectId: teacherSubjectClasses.subjectId })
+    .from(teacherSubjectClasses)
+    .where(eq(teacherSubjectClasses.teacherId, teacherId));
+  return Array.from(new Set([...legacy.map((r) => r.id), ...matrix.map((r) => r.subjectId)]));
 }
 
 /**

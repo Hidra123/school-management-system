@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   classes,
   subjects,
+  teacherSubjectClasses,
   teachers,
   timetableSettings,
   timetableSlots,
@@ -131,12 +132,27 @@ export async function GET(req: Request) {
         asc(timetableSlots.period),
       );
 
+    // Subject×class assignment matrix (Manage Teachers → Assign) — the
+    // builder uses it to pre-select the right teacher when two teachers
+    // share one subject across different classes (e.g. Kiswahili F1/F2 vs
+    // F3/F4).
+    const coverage = await db
+      .select({
+        subjectId: teacherSubjectClasses.subjectId,
+        classId: teacherSubjectClasses.classId,
+        teacherId: teacherSubjectClasses.teacherId,
+        teacherName: teachers.name,
+      })
+      .from(teacherSubjectClasses)
+      .innerJoin(teachers, eq(teacherSubjectClasses.teacherId, teachers.id));
+
     return Response.json({
       settings,
       slots,
       classes: allClasses,
       subjects: allSubjects,
       teachers: allTeachers,
+      coverage,
       isManager,
       teacherId: teacher?.id ?? null,
       teacherName: teacher?.name ?? null,

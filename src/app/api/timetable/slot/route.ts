@@ -1,6 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { timetableSlots } from "@/db/schema";
+import { subjects, teacherSubjectClasses, timetableSlots } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, hasPermission, requireAuth } from "@/lib/auth";
 
@@ -61,6 +61,25 @@ export async function PUT(req: Request) {
     typeof body.customLabel === "string" ? body.customLabel.trim() : null;
   const room = typeof body.room === "string" ? body.room.trim() : null;
 
+  // When the client did not pick a teacher but did pick a subject, resolve
+  // the teacher from the subject×class assignment matrix (two teachers may
+  // share one subject across different classes); legacy single-owner is the
+  // fallback.
+  let resolvedTeacherId = teacherId;
+  if (resolvedTeacherId === null && subjectId !== null) {
+    const [matrixOwner] = await db
+      .select({ teacherId: teacherSubjectClasses.teacherId })
+      .from(teacherSubjectClasses)
+      .where(and(eq(teacherSubjectClasses.subjectId, subjectId), eq(teacherSubjectClasses.classId, classId)))
+      .limit(1);
+    if (matrixOwner?.teacherId != null) {
+      resolvedTeacherId = matrixOwner.teacherId;
+    } else {
+      const [subj] = await db.select({ teacherId: subjects.teacherId }).from(subjects).where(eq(subjects.id, subjectId)).limit(1);
+      resolvedTeacherId = subj?.teacherId ?? null;
+    }
+  }
+
   try {
     const [row] = await db
       .insert(timetableSlots)
@@ -69,7 +88,7 @@ export async function PUT(req: Request) {
         period,
         classId,
         subjectId,
-        teacherId,
+        teacherId: resolvedTeacherId,
         customLabel: customLabel || null,
         room: room || null,
         academicYear,
@@ -83,7 +102,7 @@ export async function PUT(req: Request) {
         ],
         set: {
           subjectId,
-          teacherId,
+          teacherId: resolvedTeacherId,
           customLabel: customLabel || null,
           room: room || null,
         },

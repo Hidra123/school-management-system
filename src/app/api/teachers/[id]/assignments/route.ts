@@ -1,6 +1,6 @@
-import { asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
-import { classes, subjects, teacherClasses, teacherSubjectClasses, teachers } from "@/db/schema";
+import { classes, subjects, teacherClasses, teacherSubjectClasses, teachers, timetableSlots } from "@/db/schema";
 import { getSessionUser, requireAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -169,6 +169,17 @@ export async function PUT(req: Request, ctx: Ctx) {
               target: [teacherSubjectClasses.subjectId, teacherSubjectClasses.classId],
               set: { teacherId },
             });
+
+          // Automatically sync timetable slots so the timetable reflects the new teacher immediately
+          await tx
+            .update(timetableSlots)
+            .set({ teacherId })
+            .where(
+              and(
+                eq(timetableSlots.subjectId, pair.subjectId),
+                eq(timetableSlots.classId, pair.classId),
+              ),
+            );
         }
 
         // 3. Keep teacherClasses table in sync with all classes this teacher has in teacher_subject_classes

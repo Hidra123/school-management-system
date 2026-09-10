@@ -2,7 +2,7 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { grades, students, subjects } from "@/db/schema";
 import { getSessionUser, requirePermission } from "@/lib/auth";
-import { classAllowed, getTeacherScope, subjectAllowed } from "@/lib/teachers";
+import { classAllowed, getTeacherScope, subjectAllowed, subjectClassAllowed } from "@/lib/teachers";
 import { normalizeExamType } from "@/lib/examTypes";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,7 @@ export async function GET(req: Request) {
 
   if (classId !== null && !classAllowed(scope, classId)) return Response.json([]);
   if (subjectId !== null && !subjectAllowed(scope, subjectId)) return Response.json([]);
+  if (classId !== null && subjectId !== null && !subjectClassAllowed(scope, subjectId, classId)) return Response.json([]);
   // Scoped teacher browsing without a subject filter → restrict to their own subjects.
   if (scope.scoped && subjectId === null && scope.subjectIds.length === 0) return Response.json([]);
 
@@ -136,9 +137,9 @@ export async function POST(req: Request) {
         .select({ id: students.id, classId: students.classId })
         .from(students)
         .where(inArray(students.id, entries.map((e) => e.studentId)));
-      const badStudent = studentRows.find((s) => !classAllowed(scope, s.classId));
+      const badStudent = studentRows.find((s) => !classAllowed(scope, s.classId) || !subjectClassAllowed(scope, subjectId, s.classId));
       if (badStudent || studentRows.length !== entries.length) {
-        return Response.json({ error: "One or more students are outside your assigned classes." }, { status: 403 });
+        return Response.json({ error: "One or more students are outside your assigned subject/class." }, { status: 403 });
       }
     }
 
@@ -184,8 +185,8 @@ export async function POST(req: Request) {
   }
   if (scope.scoped) {
     const [student] = await db.select({ classId: students.classId }).from(students).where(eq(students.id, studentId)).limit(1);
-    if (!student || !classAllowed(scope, student.classId)) {
-      return Response.json({ error: "This student is outside your assigned classes." }, { status: 403 });
+    if (!student || !classAllowed(scope, student.classId) || !subjectClassAllowed(scope, subjectId, student.classId)) {
+      return Response.json({ error: "This student is outside your assigned subject/class." }, { status: 403 });
     }
   }
 

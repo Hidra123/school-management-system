@@ -66,6 +66,12 @@ export const ALL_PERMISSIONS = [
   { key: "messages.view", label: "View Messages", group: "Messages", icon: "💬" },
   { key: "messages.send", label: "Send Messages", group: "Messages", icon: "💬" },
 
+  // Student–Subject Mapping
+  { key: "students.map", label: "Map Students to Subjects", group: "Students", icon: "👥" },
+
+  // Academic Year Progression & Promotion
+  { key: "year.manage", label: "Year Progression & Promotion", group: "Year Management", icon: "➔" },
+
   // Change Password (all members get this by default)
   { key: "profile.edit", label: "Change Password", group: "Account", icon: "🔑" },
 ] as const;
@@ -89,12 +95,13 @@ export const ROLE_PRESETS = {
     label: "📘 Academic Master",
     description: "Full academic control",
     permissions: [
-      "dashboard", "students.view", "students.create", "students.edit",
+      "dashboard", "students.view", "students.create", "students.edit", "students.map",
       "classes.view", "classes.manage", "subjects.view", "subjects.manage",
       "attendance.view", "attendance.manage", "attendance.trackall",
       "exams.view", "exams.manage", "exams.results",
       "grades.view", "grades.submit", "grades.track", "grades.report",
       "timetable.view", "timetable.manage",
+      "year.manage",
       "lessonplan.view", "lessonplan.manage",
       "logbook.view", "logbook.manage",
       "tod.view", "tod.manage",
@@ -160,6 +167,8 @@ export const ADMIN_SIDEBAR = [
   { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "STAFF MANAGEMENT" },
   { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "STAFF MANAGEMENT" },
   { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
+  { href: "/map-students", label: "Map Students", icon: "👥", group: "STAFF MANAGEMENT" },
+  { href: "/year-progression", label: "Year Progression", icon: "➔", group: "STAFF MANAGEMENT" },
   // PARENTS
   { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
   { href: "/admin/parent-assignments", label: "Assignments", icon: "🎯", group: "PARENTS" },
@@ -178,9 +187,9 @@ export const ADMIN_SIDEBAR = [
 export const MEMBER_SIDEBAR = [
   { href: "/", label: "Dashboard", icon: "📊", perm: "dashboard", group: "MAIN" },
   { href: "/students", label: "Students", icon: "👨‍🎓", perm: "students.view", group: "STUDENT MANAGEMENT" },
-  { href: "/map-students", label: "Map Students", icon: "🧩", perm: "students.edit", group: "STUDENT MANAGEMENT" },
-  { href: "/year-progression", label: "Year Progression", icon: "🔄", perm: "students.edit", group: "STUDENT MANAGEMENT" },
   { href: "/classes", label: "Classes", icon: "🏫", perm: "classes.view", group: "STUDENT MANAGEMENT" },
+  { href: "/map-students", label: "Map Students", icon: "👥", perm: "students.map", group: "STUDENT MANAGEMENT" },
+  { href: "/year-progression", label: "Year Progression", icon: "➔", perm: "year.manage", group: "YEAR MANAGEMENT" },
   { href: "/subjects", label: "Subjects", icon: "📚", perm: "subjects.view", group: "ACADEMIC" },
   { href: "/attendance", label: "Attendance", icon: "✅", perm: "attendance.view", group: "ACADEMIC" },
   { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", perm: "attendance.trackall", group: "MONITORING" },

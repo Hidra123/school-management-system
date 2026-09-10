@@ -118,11 +118,16 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
       isSpecial,
     };
   }
-  const code = slot.subjectCode || slot.subjectName?.slice(0, 4).toUpperCase() || "SUBJ";
+  // Prefer the real subject code (e.g. "GEO-013", "MATH-041"); fall back to a
+  // name-derived short code; never invent a fake "SUBJ" label — when a slot
+  // truly has no subject yet, leave it blank and just show the teacher.
+  const code = slot.subjectCode
+    ? slot.subjectCode.toUpperCase()
+    : (slot.subjectName?.slice(0, 6).toUpperCase() ?? "");
   return {
-    label: code,
+    label: code || "·",
     sub: slot.teacherName || slot.subjectName || "",
-    tone: "subject",
+    tone: code ? "subject" : "empty",
     isSpecial: false,
   };
 }

@@ -1,23 +1,416 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
-import { PageHeader } from "@/components/ui";
+import { useAuth } from "@/components/AuthProvider";
+import { EmptyState, Loader, PageHeader, btnPrimary, inputCls } from "@/components/ui";
+import { cls, putJSON, postJSON, useFetch, todayStr } from "@/lib/utils";
 
-export default function TeacherOnDutyPage() {
+// ---------- 10 duty-report sections (SELECTION fields) ----------
+const SECTIONS: { key: string; label: string; options: string[] }[] = [
+  { key: "1", label: "PUNCTUALITY", options: ["All students arrived on time", "Most students arrived on time", "Some students arrived late", "Many students arrived late", "Other (type below)"] },
+  { key: "2", label: "CLEANLINESS", options: ["School compound and classrooms are clean", "Fairly clean", "Needs improvement", "Other (type below)"] },
+  { key: "3", label: "ACADEMICS", options: ["All lessons conducted as per timetable", "Most lessons conducted as per timetable", "Some lessons were missed", "Lessons interrupted", "Other (type below)"] },
+  { key: "4", label: "DISCIPLINE", options: ["Students were well disciplined throughout the day", "Generally disciplined with minor issues", "Several disciplinary cases reported", "Other (type below)"] },
+  { key: "5", label: "BREAKFAST & MEAL", options: ["Breakfast and meals served on time, students satisfied", "Meals served on time", "Delayed meal service", "Complaints about meals", "Other (type below)"] },
+  { key: "6", label: "HEALTH", options: ["No health issues reported", "A few students received first aid", "Students taken to clinic", "Serious health issue occurred", "Other (type below)"] },
+  { key: "7", label: "VISITORS", options: ["No visitors today", "A few visitors received", "Parents visited", "Government officials visited", "Other (type below)"] },
+  { key: "8", label: "SPECIAL EVENT(S)", options: ["None", "Examination in progress", "School event held", "Special assembly", "Other (type below)"] },
+  { key: "9", label: "SECURITY", options: ["School security is good, no incidents", "Minor security concern", "Security incident occurred", "Other (type below)"] },
+  { key: "10", label: "SPORT AND GAMES", options: ["No sports activities today", "Sports activities conducted", "Inter-class matches held", "Sports day preparations", "Other (type below)"] },
+];
+
+type AttRow = { classId: number; className: string; rb: number; rg: number; ab: number; ag: number; sb: number; sg: number; pb: number; pg: number };
+type ReportRow = { id: number; date: string; teacherId: number | null; teacherName: string; answers: string; attendanceRows: string; todComment: string; headComment: string; headAcknowlednowledged?: boolean; headAcknowledged: boolean };
+type TodData = { roster: AttRow[]; reports: ReportRow[]; mine: ReportRow | null; teacherName: string; teacherId: number | null };
+type SettingsData = { schoolName: string; councilName: string; motto: string; headOfSchoolName: string; logoData: string };
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return parts.map((w) => w[0]!.toUpperCase()).join(".") + (parts.length ? "." : "");
+}
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export default function TodPage() {
+  const { user } = useAuth();
+  const [date, setDate] = useState(todayStr());
+  const dataFetch = useFetch<TodData>(`/api/tod?date=${date}`);
+  const settingsFetch = useFetch<SettingsData>("/api/school-settings");
+  const listFetch = useFetch<ReportRow[]>("/api/tod?mode=list");
+
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [custom, setCustom] = useState<Record<string, string>>({});
+  const [rows, setRows] = useState<AttRow[]>([]);
+  const [todComment, setTodComment] = useState("");
+  const [headDraft, setHeadDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  // Load roster + prefill from existing saved report.
+  useEffect(() => {
+    const d = dataFetch.data;
+    if (!d) return;
+    const savedRows: AttRow[] = d.mine ? (JSON.parse(d.mine.attendanceRows || "[]") as AttRow[]) : [];
+    const byId = new Map(savedRows.map((r) => [r.classId, r]));
+    setRows(d.roster.map((r) => ({ ...r, ...(byId.get(r.classId) ?? {}) })));
+    try {
+      setAnswers(d.mine ? (JSON.parse(d.mine.answers || "{}") as Record<string, string>) : {});
+    } catch {
+      setAnswers({});
+    }
+    setTodComment(d.mine?.todComment ?? "");
+    setHeadDraft(d.mine?.headComment ?? "");
+  }, [dataFetch.data]);
+
+  const totals = useMemo(() => {
+    const t = { rb: 0, rg: 0, ab: 0, ag: 0, sb: 0, sg: 0, pb: 0, pg: 0, presentB: 0, presentG: 0, registered: 0, absent: 0 };
+    for (const r of rows) {
+      t.rb += r.rb; t.rg += r.rg; t.ab += r.ab; t.ag += r.ag; t.sb += r.sb; t.sg += r.sg; t.pb += r.pb; t.pg += r.pg;
+    }
+    t.registered = t.rb + t.rg;
+    t.absent = t.ab + t.ag;
+    t.presentB = t.rb - t.ab;
+    t.presentG = t.rg - t.ag;
+    return t;
+  }, [rows]);
+
+  const percentage = totals.registered > 0 ? Math.round((100 * (totals.presentB + totals.presentG) * 10) / totals.registered) / 10 : 0;
+
+  function setCell(classId: number, field: keyof AttRow, val: string) {
+    setRows((prev) => prev.map((r) => (r.classId === classId ? { ...r, [field]: Math.max(0, Math.min(999, Number(val) || 0)) } : r)));
+  }
+
+  async function save() {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const final: Record<string, string> = {};
+      for (const s of SECTIONS) {
+        const v = answers[s.key] ?? "";
+        final[s.key] = v === "Other (type below)" ? (custom[s.key]?.trim() || "Other") : v;
+      }
+      const res = await postJSON<ReportRow>("/api/tod", {
+        date,
+        answers: JSON.stringify(final),
+        attendanceRows: JSON.stringify(rows),
+        todComment,
+      });
+      setMsg("✅ Duty report saved.");
+      dataFetch.refresh();
+      listFetch.refresh();
+      return res;
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Failed to save.");
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isHead = user?.role === "admin" || user?.staffRole === "academic_master";
+
+  async function saveHead() {
+    if (!dataFetch.data?.mine) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      await putJSON("/api/tod", { id: dataFetch.data.mine.id, headComment: headDraft });
+      setMsg("✅ Head of School comment saved & acknowledged.");
+      dataFetch.refresh();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openPrint(res?: ReportRow | null) {
+    const mine = dataFetch.data?.mine ?? res ?? null;
+    const s = settingsFetch.data;
+    if (!mine || !s) return;
+    const finalAns: Record<string, string> = JSON.parse(mine.answers || "{}");
+    const pr: AttRow[] = JSON.parse(mine.attendanceRows || "[]");
+    const tTot = { rb: 0, rg: 0, ab: 0, ag: 0, sb: 0, sg: 0, pb: 0, pg: 0 };
+    for (const r of pr) {
+      tTot.rb += r.rb; tTot.rg += r.rg; tTot.ab += r.ab; tTot.ag += r.ag; tTot.sb += r.sb; tTot.sg += r.sg; tTot.pb += r.pb; tTot.pg += r.pg;
+    }
+    const regTot = tTot.rb + tTot.rg;
+    const presTot = regTot - (tTot.ab + tTot.ag);
+    const pct = regTot > 0 ? Math.round((1000 * presTot) / regTot) / 10 : 0;
+
+    const numCell = (v: number) => `<td style="border:1px solid #000;text-align:center;padding:3px 2px;font-weight:700;">${v}</td>`;
+    const attRows = pr
+      .map((r) => {
+        const regB = r.rb, regG = r.rg, presB = regB - r.ab, presG = regG - r.ag;
+        return `<tr><td style="border:1px solid #000;padding:4px 4px;font-weight:900;font-style:italic;">${esc(r.className)}</td>${numCell(regB)}${numCell(regG)}${numCell(regB + regG)}${numCell(presB)}${numCell(presG)}${numCell(presB + presG)}${numCell(r.ab)}${numCell(r.ag)}${numCell(r.ab + r.ag)}${numCell(r.sb)}${numCell(r.sg)}${numCell(r.sb + r.sg)}${numCell(r.pb)}${numCell(r.pg)}${numCell(r.pb + r.pg)}${numCell(regB + regG)}</tr>`;
+      })
+      .join("");
+    const totRow = `<tr style="font-weight:900;"><td style="border:1px solid #000;padding:4px;">TOTAL</td>${numCell(tTot.rb)}${numCell(tTot.rg)}${numCell(tTot.rb + tTot.rg)}${numCell(tTot.rb - tTot.ab)}${numCell(tTot.rg - tTot.ag)}${numCell(presTot)}${numCell(tTot.ab)}${numCell(tTot.ag)}${numCell(tTot.ab + tTot.ag)}${numCell(tTot.sb)}${numCell(tTot.sg)}${numCell(tTot.sb + tTot.sg)}${numCell(tTot.pb)}${numCell(tTot.pg)}${numCell(tTot.pb + tTot.pg)}${numCell(regTot)}</tr>`;
+
+    const sectionLines = SECTIONS.map(
+      (sec) => `<p style="margin:7px 0;font-size:11.5px;"><b>${sec.key}. ${sec.label}</b><span style="float:right;">${esc(finalAns[sec.key] ?? "")}</span><br/><span style="display:block;border-bottom:1px dotted #000;height:8px;"></span></p>`,
+    ).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Duty Report ${mine.date} - ${esc(mine.teacherName)}</title><style>
+      @page { size: A4; margin: 12mm; } body { font-family: 'Times New Roman', Times, serif; color: #000; margin: 0; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      .u { display:inline-block;border-bottom:1px dotted #000;min-width:120px;text-align:center;font-style:italic;padding:0 4px;}
+      table { border-collapse: collapse; width: 100%; font-size: 10px; }
+      th { border:1px solid #000; text-align:center; padding:3px 2px; font-size:9px; }
+      .toolbar{position:sticky;top:0;background:#fff;text-align:center;padding:8px;}
+      .toolbar button{background:#6d28d9;color:#fff;font-size:13px;font-weight:800;border:none;border-radius:10px;padding:8px 22px;cursor:pointer;}
+      @media print{.toolbar{display:none;}}
+      .sig { font-family: 'Brush Script MT','Edwardian Script ITC','Segoe Script',cursive; font-size: 18px; font-style: italic; }
+    </style></head><body>
+      <div class="toolbar"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+      <div style="text-align:center;margin-bottom:2px;">${s.logoData ? `<img src="${s.logoData}" style="height:56px;object-fit:contain;" alt="School logo"/>` : ""}</div>
+      <div style="text-align:center;line-height:1.2;">
+        <div style="font-size:14px;font-weight:900;letter-spacing:1px;">${esc(s.councilName)}</div>
+        <div style="font-size:16px;font-weight:900;letter-spacing:1px;">${esc(s.schoolName)}</div>
+        <div style="font-size:11px;font-weight:900;text-decoration:underline;margin-top:2px;">TEACHER'S DUTY REPORT</div>
+      </div>
+      <div style="margin-top:6px;border-top:2px solid #000;border-bottom:2px solid #000;padding:3px 0;display:flex;justify-content:space-between;font-size:11.5px;">
+        <span>TEACHER ON DUTY: <b class="u" style="min-width:180px;">${esc(mine.teacherName)}</b></span>
+        <span>DATE: <b class="u" style="min-width:90px;">${mine.date}</b></span>
+      </div>
+      ${sectionLines}
+      <p style="text-align:center;font-weight:900;font-size:11px;margin:8px 0 4px;">STUDENTS ATTENDANCE ON ${mine.date}</p>
+      <table>
+        <thead>
+          <tr>
+            <th rowspan="2">CLASS</th><th colspan="3">REGISTERED</th><th colspan="3">PRESENTS</th><th colspan="3">ABSENTS</th><th colspan="3">SICK</th><th colspan="3">PERMITTED</th><th rowspan="2" style="width:34px;">TOTAL</th>
+          </tr>
+          <tr><th>B</th><th>G</th><th>T</th><th>B</th><th>G</th><th>T</th><th>B</th><th>G</th><th>T</th><th>B</th><th>G</th><th>T</th><th>B</th><th>G</th><th>T</th></tr>
+        </thead>
+        <tbody>${attRows}${totRow}</tbody>
+      </table>
+      <p style="border:2px solid #000;font-weight:900;font-size:12px;padding:4px 8px;margin:8px 0;">PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL × 100 = <b>${pct}%</b></p>
+      <p style="font-size:11.5px;margin:6px 0 2px;"><b>T.O.D.'S COMMENT(S):</b> ${esc(mine.todComment)}</p>
+      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(mine.teacherName)}</b></span><span>SIGNATURE: <span class="sig" style="border:none;">${esc(initials(mine.teacherName))}</span> <b class="u" style="min-width:120px;"></b></span></p>
+      <div style="border-top:2px solid #000;margin:10px 0;"></div>
+      <p style="font-size:11.5px;margin:6px 0 2px;"><b>HEADMASTER'S COMMENT(S):</b> ${esc(mine.headComment)}</p>
+      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(s.headOfSchoolName)}</b></span><span>SIGNATURE: <span class="sig">${esc(initials(s.headOfSchoolName))}</span> <b class="u" style="min-width:120px;"></b></span></p>
+      <p style="text-align:center;font-style:italic;font-size:10.5px;margin-top:12px;">${esc(s.motto)}</p>
+      <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>
+    </body></html>`;
+    const w = window.open("", "_blank", "width=900,height=1100");
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+  }
+
+  const mineRow = dataFetch.data?.mine ?? null;
+  const classes_empty_suggestion = dataFetch.data && dataFetch.data.roster.length === 0;
+
   return (
     <AppShell permission="tod.view">
-      <PageHeader icon="🔰" title="Teacher On Duty" subtitle="Record and view teacher on duty reports" />
-
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
-        <div className="text-5xl">🔰</div>
-        <h2 className="mt-4 text-xl font-bold text-slate-800">Teacher On Duty</h2>
-        <p className="mt-2 max-w-md mx-auto text-sm text-slate-500">
-          Record and view teacher on duty reports. This module is coming soon — it will be built in the next update.
-        </p>
-        <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-4 py-2 text-sm font-semibold text-indigo-700">
-          🚧 Under Development
+      <PageHeader icon="🔰" title="Teacher On Duty" subtitle="Daily duty report — selections, attendance auto-calc, and the official printable report">
+        <div className="flex items-center gap-2">
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cls(inputCls, "w-40")} />
+          <button
+            onClick={async () => {
+              const saved = mineRow ?? (await save());
+              openPrint(saved);
+            }}
+            disabled={!mineRow && !rows.length}
+            className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-sky-700"
+          >
+            🖨️ Print / Save PDF
+          </button>
         </div>
-      </div>
+      </PageHeader>
+
+      {msg && <p className="mb-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">{msg}</p>}
+
+      {dataFetch.loading ? (
+        <Loader label="Loading duty report..." />
+      ) : dataFetch.error ? (
+        <EmptyState icon="⚠️" title="Could not load" message={dataFetch.error} />
+      ) : (
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+          {/* LEFT — 10 selection sections */}
+          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+            <div className="bg-slate-900 px-5 py-3">
+              <p className="text-sm font-bold text-white">📝 Daily Sections 1-10 (Selections)</p>
+            </div>
+            <ul className="divide-y divide-slate-100">
+              {SECTIONS.map((sec) => {
+                const v = answers[sec.key] ?? "";
+                return (
+                  <li key={sec.key} className="px-5 py-3">
+                    <p className="mb-1.5 text-xs font-extrabold uppercase tracking-wide text-slate-600">
+                      {sec.key}. {sec.label}
+                    </p>
+                    <select
+                      value={v || sec.options[0]}
+                      onChange={(e) => setAnswers({ ...answers, [sec.key]: e.target.value })}
+                      className={inputCls}
+                    >
+                      {sec.options.map((o) => (
+                        <option key={o} value={o}>{o}</option>
+                      ))}
+                    </select>
+                    {v === "Other (type below)" && (
+                      <input
+                        value={custom[sec.key] ?? ""}
+                        onChange={(e) => setCustom({ ...custom, [sec.key]: e.target.value })}
+                        placeholder="Type your answer…"
+                        className={cls(inputCls, "mt-2")}
+                      />
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="border-t border-slate-100 p-5">
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">T.O.D.'s Comment(s)</label>
+              <textarea
+                rows={3}
+                value={todComment}
+                onChange={(e) => setTodComment(e.target.value)}
+                placeholder="Summarize the day…"
+                className={inputCls}
+              />
+              <button onClick={save} disabled={saving} className={cls(btnPrimary, "mt-3 w-full")}>
+                {saving ? "Saving..." : "💾 Save Duty Report"}
+              </button>
+            </div>
+          </section>
+
+          {/* RIGHT — Attendance + head comment + recent */}
+          <div className="space-y-5">
+            <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="bg-slate-900 px-5 py-3">
+                <p className="text-sm font-bold text-white">📊 Students Attendance on {date}</p>
+              </div>
+              <div className="overflow-x-auto p-4">
+                <table className="w-full min-w-[720px] border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-900 text-white">
+                      <th className="border border-slate-700 px-1.5 py-1.5 text-left" rowSpan={2}>CLASS</th>
+                      <th className="border border-slate-700 px-1 py-1.5" colSpan={3}>REGISTERED (auto)</th>
+                      <th className="border border-slate-700 bg-emerald-700 px-1 py-1.5" colSpan={3}>PRESENT (auto)</th>
+                      <th className="border border-slate-700 px-1 py-1.5" colSpan={3}>ABSENTS (input)</th>
+                      <th className="border border-slate-700 px-1 py-1.5" colSpan={2}>SICK</th>
+                      <th className="border border-slate-700 px-1 py-1.5" colSpan={2}>PERMITTED</th>
+                    </tr>
+                    <tr className="bg-slate-800 text-white text-[9px]">
+                      <th className="border border-slate-700 px-1 py-1">B</th><th className="border border-slate-700 px-1 py-1">G</th><th className="border border-slate-700 px-1 py-1">T</th>
+                      <th className="border border-slate-700 bg-emerald-800 px-1 py-1">B</th><th className="border border-slate-700 bg-emerald-800 px-1 py-1">G</th><th className="border border-slate-700 bg-emerald-800 px-1 py-1">T</th>
+                      <th className="border border-slate-700 px-1 py-1">B</th><th className="border border-slate-700 px-1 py-1">G</th><th className="border border-slate-700 px-1 py-1">T</th>
+                      <th className="border border-slate-700 px-1 py-1">B</th><th className="border border-slate-700 px-1 py-1">G</th>
+                      <th className="border border-slate-700 px-1 py-1">B</th><th className="border border-slate-700 px-1 py-1">G</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const regT = r.rb + r.rg;
+                      const presB = Math.max(0, r.rb - r.ab);
+                      const presG = Math.max(0, r.rg - r.ag);
+                      return (
+                        <tr key={r.classId} className="odd:bg-white even:bg-slate-50/60 text-center">
+                          <td className="border border-slate-200 px-1.5 py-1 text-left font-bold italic">{r.className}</td>
+                          <td className="border border-slate-200 font-bold text-slate-500">{r.rb}</td>
+                          <td className="border border-slate-200 font-bold text-slate-500">{r.rg}</td>
+                          <td className="border border-slate-200 font-black">{regT}</td>
+                          <td className="border border-slate-200 bg-emerald-50 font-black text-emerald-700">{presB}</td>
+                          <td className="border border-slate-200 bg-emerald-50 font-black text-emerald-700">{presG}</td>
+                          <td className="border border-slate-200 bg-emerald-50 font-black text-emerald-700">{presB + presG}</td>
+                          <td className="border border-slate-200 bg-rose-50/60 p-0.5"><input type="number" min={0} value={r.ab} onChange={(e) => setCell(r.classId, "ab", e.target.value)} className="w-11 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                          <td className="border border-slate-200 bg-rose-50/60 p-0.5"><input type="number" min={0} value={r.ag} onChange={(e) => setCell(r.classId, "ag", e.target.value)} className="w-11 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                          <td className="border border-slate-200 font-black text-rose-600">{r.ab + r.ag}</td>
+                          <td className="border border-slate-200 p-0.5"><input type="number" min={0} value={r.sb} onChange={(e) => setCell(r.classId, "sb", e.target.value)} className="w-10 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                          <td className="border border-slate-200 p-0.5"><input type="number" min={0} value={r.sg} onChange={(e) => setCell(r.classId, "sg", e.target.value)} className="w-10 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                          <td className="border border-slate-200 p-0.5"><input type="number" min={0} value={r.pb} onChange={(e) => setCell(r.classId, "pb", e.target.value)} className="w-10 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                          <td className="border border-slate-200 p-0.5"><input type="number" min={0} value={r.pg} onChange={(e) => setCell(r.classId, "pg", e.target.value)} className="w-10 rounded border border-slate-200 bg-white px-1 py-0.5 text-center text-[11px] font-bold" /></td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="bg-slate-900 text-center font-black text-white">
+                      <td className="border border-slate-700 px-1.5 py-1.5 text-left">TOTAL</td>
+                      <td className="border border-slate-700">{totals.rb}</td>
+                      <td className="border border-slate-700">{totals.rg}</td>
+                      <td className="border border-slate-700">{totals.registered}</td>
+                      <td className="border border-slate-700 bg-emerald-600">{totals.presentB}</td>
+                      <td className="border border-slate-700 bg-emerald-600">{totals.presentG}</td>
+                      <td className="border border-slate-700 bg-emerald-600">{totals.presentB + totals.presentG}</td>
+                      <td className="border border-slate-700 text-rose-300">{totals.ab}</td>
+                      <td className="border border-slate-700 text-rose-300">{totals.ag}</td>
+                      <td className="border border-slate-700 text-rose-300">{totals.absent}</td>
+                      <td className="border border-slate-700">{totals.sb}</td>
+                      <td className="border border-slate-700">{totals.sg}</td>
+                      <td className="border border-slate-700">{totals.pb}</td>
+                      <td className="border border-slate-700">{totals.pg}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <p className="mt-3 rounded-xl border-2 border-slate-900 bg-slate-50 px-4 py-2.5 text-center text-sm font-black text-slate-900">
+                  PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL × 100 = {percentage}%
+                </p>
+              </div>
+            </section>
+
+            {/* Head comment */}
+            <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="bg-slate-900 px-5 py-3">
+                <p className="text-sm font-bold text-white">🛡️ Headmaster's Comment(s){mineRow?.headAcknowledged ? " — ✓ Acknowledged" : ""}</p>
+              </div>
+              <div className="p-5">
+                {isHead ? (
+                  <>
+                    <textarea
+                      rows={3}
+                      value={headDraft}
+                      onChange={(e) => setHeadDraft(e.target.value)}
+                      placeholder="Head of School comments…"
+                      className={inputCls}
+                    />
+                    <button
+                      onClick={saveHead}
+                      disabled={saving || !mineRow}
+                      className="mt-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-indigo-700 disabled:opacity-40"
+                    >
+                      💾 Save Head Comment &amp; Acknowledge
+                    </button>
+                    {!mineRow && <p className="mt-2 text-xs text-slate-400">The duty report must be saved first.</p>}
+                  </>
+                ) : mineRow?.headComment ? (
+                  <p className="text-sm bg-slate-50 rounded-xl px-4 py-3 font-semibold text-slate-700">💬 {mineRow.headComment}</p>
+                ) : (
+                  <p className="text-xs italic text-slate-400">Awaiting Head of School comment.</p>
+                )}
+              </div>
+            </section>
+
+            {/* Recent reports */}
+            <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+              <div className="bg-slate-900 px-5 py-3">
+                <p className="text-sm font-bold text-white">🗂️ Recent Duty Reports</p>
+              </div>
+              {(listFetch.data ?? []).length === 0 ? (
+                <p className="px-5 py-6 text-center text-xs italic text-slate-400">No reports filed yet.</p>
+              ) : (
+                <ul className="divide-y divide-slate-100">
+                  {(listFetch.data ?? []).slice(0, 8).map((r) => (
+                    <li key={r.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
+                      <span>
+                        <b className="text-slate-900">{r.date}</b>
+                        <span className="ml-2 text-xs text-slate-500">{r.teacherName}</span>
+                        {r.headAcknowledged && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">✓ acknowledged</span>}
+                      </span>
+                      <button onClick={() => openPrint(r)} className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-bold text-white hover:bg-sky-700">🖨️</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
     </AppShell>
   );
 }

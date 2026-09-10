@@ -101,6 +101,8 @@ export const subjects = pgTable("subjects", {
   teacherId: integer("teacher_id").references(() => teachers.id, {
     onDelete: "set null",
   }),
+  // Optional/elective subjects (e.g. Civics F3-4, Computer Application F1...) —
+  // only students mapped to them appear when submitting scores.
   isOptional: boolean("is_optional").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -429,12 +431,21 @@ export const appSettings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
   allAccountsLocked: boolean("all_accounts_locked").notNull().default(false),
   lockMessage: varchar("lock_message", { length: 200 }).notNull().default(""),
+  // School identity used by printed documents (TOD Duty Report, future reports)
+  schoolName: varchar("school_name", { length: 150 }).notNull().default("ShuleHub School"),
+  councilName: varchar("council_name", { length: 150 }).notNull().default(""),
+  motto: varchar("motto", { length: 160 }).notNull().default(""),
+  headOfSchoolName: varchar("head_of_school_name", { length: 120 }).notNull().default(""),
+  // Uploaded logo stored as a data URL (client-resized ~240px PNG, self-contained)
+  logoData: text("logo_data").notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ---------- Student–Subject Mapping (Optional Subjects) ----------
-// Enrolls specific students into optional/elective subjects in their class.
-// Used by Academic Master (Map Students) and respected by Submit Scores.
+
+// ---------- Student-Subject Mapping (optional / elective subjects) ----------
+// Academic Master assigns which students enrol in each optional subject.
+// A mapped student may have scores submitted for that subject; unmapped ones
+// never appear in the Submit Scores roster for it.
 export const studentSubjectMap = pgTable(
   "student_subject_map",
   {
@@ -450,7 +461,7 @@ export const studentSubjectMap = pgTable(
   (t) => [uniqueIndex("student_subject_map_idx").on(t.studentId, t.subjectId)],
 );
 
-// ---------- Academic Year & Promotion ----------
+// ---------- Academic Years & Alumni (Year Progression) ----------
 export const academicYears = pgTable("academic_years", {
   id: serial("id").primaryKey(),
   year: varchar("year", { length: 10 }).notNull().unique(),
@@ -459,7 +470,8 @@ export const academicYears = pgTable("academic_years", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Permanent archive of graduated students (Form 4 -> Alumni)
+// Graduated students (Form 4 completers). Full snapshot so the row stays
+// readable even if the live student record changes later.
 export const alumni = pgTable("alumni", {
   id: serial("id").primaryKey(),
   studentId: integer("student_id").notNull(),
@@ -471,6 +483,32 @@ export const alumni = pgTable("alumni", {
   graduatedYear: varchar("graduated_year", { length: 10 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+
+// ---------- Teacher On Duty (Daily Duty Report) ----------
+// One report per (teacher, date) — sections 1-10 are SELECTION-based answers,
+// attendance is per-class registered/present/absent/sick/permitted tables, and
+// the printed report mirrors the official duty report layout.
+export const todReports = pgTable(
+  "tod_reports",
+  {
+    id: serial("id").primaryKey(),
+    date: date("date", { mode: "string" }).notNull(),
+    teacherId: integer("teacher_id")
+      .references(() => teachers.id, { onDelete: "set null" }),
+    teacherName: varchar("teacher_name", { length: 120 }).notNull(),
+    // JSON: {"1": "All students arrived on time", …, "10": "No sports activities today"}
+    answers: text("answers").notNull().default("{}"),
+    // JSON rows: [{"classId":1,"className":"Form 1","rb":0,"rg":0,"ab":0,"ag":0,"sb":0,"sg":0,"pb":0,"pg":0}]
+    attendanceRows: text("attendance_rows").notNull().default("[]"),
+    todComment: varchar("tod_comment", { length: 600 }).notNull().default(""),
+    headComment: varchar("head_comment", { length: 600 }).notNull().default(""),
+    headAcknowledged: boolean("head_acknowledged").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("tod_teacher_date_idx").on(t.date, t.teacherName)],
+);
 
 // ---------- Types ----------
 export type UserRow = typeof users.$inferSelect;
@@ -495,3 +533,4 @@ export type AppSettingsRow = typeof appSettings.$inferSelect;
 export type StudentSubjectMapRow = typeof studentSubjectMap.$inferSelect;
 export type AcademicYearRow = typeof academicYears.$inferSelect;
 export type AlumniRow = typeof alumni.$inferSelect;
+export type TodReportRow = typeof todReports.$inferSelect;

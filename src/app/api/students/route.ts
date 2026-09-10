@@ -29,12 +29,13 @@ export async function GET(req: Request) {
     const scope = await getTeacherScope(user, strict ? { strictForAcademicMaster: true } : undefined);
 
     const classIdRaw = url.searchParams.get("classId");
+    const subjectIdRaw = url.searchParams.get("subjectId");
     const q = url.searchParams.get("q")?.trim() ?? "";
 
     const requestedClassId =
       classIdRaw && classIdRaw !== "" && Number.isFinite(Number(classIdRaw)) ? Number(classIdRaw) : null;
-    const subjectIdRaw = url.searchParams.get("subjectId");
-    const subjectIdFilter = subjectIdRaw && Number.isFinite(Number(subjectIdRaw)) ? Number(subjectIdRaw) : null;
+    const requestedSubjectId =
+      subjectIdRaw && subjectIdRaw !== "" && Number.isFinite(Number(subjectIdRaw)) ? Number(subjectIdRaw) : null;
 
     // A scoped teacher asking for a class outside their assignment gets nothing.
     if (requestedClassId !== null && !classAllowed(scope, requestedClassId)) {
@@ -50,6 +51,27 @@ export async function GET(req: Request) {
       conditions.push(eq(students.classId, requestedClassId));
     } else if (scope.scoped) {
       conditions.push(inArray(students.classId, scope.classIds));
+    }
+
+    // If an optional subject is specified, only return mapped students
+    if (requestedSubjectId !== null) {
+      const [subj] = await db
+        .select({ isOptional: subjects.isOptional })
+        .from(subjects)
+        .where(eq(subjects.id, requestedSubjectId))
+        .limit(1);
+
+      if (subj?.isOptional) {
+        const mapped = await db
+          .select({ studentId: studentSubjectMap.studentId })
+          .from(studentSubjectMap)
+          .where(eq(studentSubjectMap.subjectId, requestedSubjectId));
+        const mappedIds = mapped.map((m) => m.studentId);
+        if (mappedIds.length === 0) {
+          return Response.json([]);
+        }
+        conditions.push(inArray(students.id, mappedIds));
+      }
     }
     if (q) {
       conditions.push(
@@ -81,18 +103,6 @@ export async function GET(req: Request) {
       .leftJoin(classes, eq(students.classId, classes.id))
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(students.createdAt));
-
-    // Map Students: for OPTIONAL subjects the Submit Scores roster shows
-    // ONLY students mapped to that subject for this class.
-    if (subjectIdFilter !== null && requestedClassId !== null) {
-      const [subj] = await db.select({ isOptional: subjects.isOptional }).from(subjects).where(eq(subjects.id, subjectIdFilter)).limit(1);
-      if (subj?.isOptional) {
-        const mappedIds = (
-          await db.select({ studentId: studentSubjectMap.studentId }).from(studentSubjectMap).where(eq(studentSubjectMap.subjectId, subjectIdFilter))
-        ).map((m) => m.studentId);
-        return Response.json(rows.filter((r) => mappedIds.includes(r.id)));
-      }
-    }
 
     // Pending admissions are visible only to the admin or staff trusted to admit students.
     if (user!.role !== "admin" && !user!.permissions.includes("students.create")) {

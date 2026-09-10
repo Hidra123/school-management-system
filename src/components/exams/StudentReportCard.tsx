@@ -28,6 +28,7 @@ type Remarks = {
   principalComment: string;
   academicMasterName: string;
   headmasterName: string;
+  isApproved?: boolean;
 };
 
 const GRADE_COLOR: Record<string, string> = {
@@ -131,7 +132,18 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
 
       {/* Behaviour & Personality Assessment */}
       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-        <p className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">BEHAVIOUR &amp; PERSONALITY ASSESSMENT</p>
+        <div className="flex items-center justify-between bg-slate-100 px-3 py-1.5">
+          <p className="text-xs font-bold text-slate-600">BEHAVIOUR &amp; PERSONALITY ASSESSMENT</p>
+          {remarksFetch.data?.isApproved ? (
+            <span className="rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 border border-emerald-300">
+              ✅ Approved by Administration
+            </span>
+          ) : (
+            <span className="rounded-full bg-amber-50 text-amber-800 text-[10px] font-bold px-2 py-0.5 border border-amber-300">
+              ⏳ Pending Admin Approval
+            </span>
+          )}
+        </div>
         <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
           {DEFAULT_BEHAVIOR_CRITERIA.map((crit) => (
             <div key={crit} className="flex items-center justify-between gap-2 bg-white px-3 py-2">

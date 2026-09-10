@@ -3,7 +3,6 @@
 import { Fragment, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
-  Badge,
   EmptyState,
   Field,
   Loader,
@@ -104,9 +103,35 @@ function getExtraForDay(settings: TimetableSettings, dayOfWeek: number) {
   }
 }
 
-/** Subject badge styling for timetable grids */
+/** Converts any raw subject code / name to the standard short code seen in official timetables */
+function getSubjectShortCode(slot: TimetableSlot | undefined): string {
+  if (!slot) return "";
+  if (slot.customLabel) return slot.customLabel;
+  const rawCode = (slot.subjectCode || "").trim().toUpperCase();
+  const rawName = (slot.subjectName || "").trim().toLowerCase();
+
+  if (rawCode.startsWith("KISW") || rawCode === "021" || rawName.includes("kiswahili")) return "KISW";
+  if (rawCode.startsWith("MATH") || rawCode === "041" || rawName.includes("mathem")) return "MATH";
+  if (rawCode.startsWith("ENG") || rawCode === "022" || rawName.includes("eng")) return "ENG";
+  if (rawCode.startsWith("PHY") || rawCode === "031" || rawName.includes("phys")) return "PHY";
+  if (rawCode.startsWith("CHEM") || rawCode === "032" || rawName.includes("chem")) return "CHEM";
+  if (rawCode.startsWith("BIO") || rawCode === "033" || rawName.includes("bio")) return "BIO";
+  if (rawCode.startsWith("GEO") || rawCode === "013" || rawName.includes("geo")) return "GEO";
+  if (rawCode.startsWith("CIV") || rawCode === "011" || rawName.includes("civic")) return "CIV";
+  if (rawCode.startsWith("CSC") || rawCode === "037" || rawName.includes("computer science")) return "CSC";
+  if (rawCode.startsWith("CAPP") || rawCode === "398" || rawName.includes("computer app")) return "CSC";
+  if (rawCode.startsWith("H/TZM") || rawCode.startsWith("HIS/TZ") || rawName.includes("tanzania")) return "HIS/TZ";
+  if (rawCode.startsWith("B/STD") || rawCode === "065" || rawName.includes("business")) return "B/STD";
+  if (rawCode.startsWith("HIS") || rawCode === "021" || rawCode === "012" || rawName.includes("history")) return "HIS";
+
+  if (rawCode) return rawCode.split("-")[0];
+  if (slot.subjectName) return slot.subjectName.slice(0, 4).toUpperCase();
+  return "";
+}
+
+/** Subject display with fallback logic that NEVER outputs raw "SUBJ" */
 function getSlotDisplay(slot: TimetableSlot | undefined) {
-  if (!slot) return { label: "—", sub: "", tone: "empty", isSpecial: false };
+  if (!slot) return { label: "—", sub: "", isSpecial: false };
   if (slot.customLabel) {
     const isSpecial = ["RELIGIO", "MEWAKA", "PS", "SPORTS", "DEBATE"].includes(
       slot.customLabel.toUpperCase(),
@@ -114,22 +139,35 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
     return {
       label: slot.customLabel,
       sub: slot.customLabel === "PS" ? "Private Studies" : "",
-      tone: isSpecial ? "special" : "normal",
       isSpecial,
     };
   }
-  // Prefer the real subject code (e.g. "GEO-013", "MATH-041"); fall back to a
-  // name-derived short code; never invent a fake "SUBJ" label — when a slot
-  // truly has no subject yet, leave it blank and just show the teacher.
-  const code = slot.subjectCode
-    ? slot.subjectCode.toUpperCase()
-    : (slot.subjectName?.slice(0, 6).toUpperCase() ?? "");
+  const code = getSubjectShortCode(slot);
   return {
-    label: code || "·",
+    label: code || "—",
     sub: slot.teacherName || slot.subjectName || "",
-    tone: code ? "subject" : "empty",
     isSpecial: false,
   };
+}
+
+/** Format Roman numeral or class name for print display (e.g. "I", "II", "III", "IV") */
+function formatClassPrint(name: string, section?: string | null) {
+  let roman = name
+    .replace(/^Form\s*1\b/i, "I")
+    .replace(/^Form\s*2\b/i, "II")
+    .replace(/^Form\s*3\b/i, "III")
+    .replace(/^Form\s*4\b/i, "IV")
+    .replace(/^Form\s*5\b/i, "V")
+    .replace(/^Form\s*6\b/i, "VI");
+
+  const cleanSec =
+    section && section.trim() && section !== "—" && section !== "A & B"
+      ? section.trim()
+      : "";
+  if (cleanSec) {
+    return `${roman} ${cleanSec}`;
+  }
+  return roman;
 }
 
 // -------------------------------------------------------------
@@ -171,9 +209,9 @@ export default function TimetablePage() {
     user?.staffRole === "academic_master" ||
     data?.isManager === true;
 
-  // Tabs
-  // For Manager (Academic Master / Admin): General Timetable | Class Timetable | Teacher Timetable
-  // For Teacher / Class Teacher: My Timetable | Class Timetable
+  // Tabs:
+  // For Manager: general | class | teacher
+  // For Teacher: my | class
   const [activeTab, setActiveTab] = useState<string>("auto");
 
   const effectiveTab = useMemo(() => {
@@ -186,7 +224,7 @@ export default function TimetablePage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [dayFilter, setDayFilter] = useState<string>("all");
 
-  // Modals
+  // Slot edit modal
   const [editSlot, setEditSlot] = useState<{
     dayOfWeek: number;
     period: number;
@@ -200,6 +238,7 @@ export default function TimetablePage() {
   const [savingSlot, setSavingSlot] = useState(false);
   const [slotMsg, setSlotMsg] = useState<string | null>(null);
 
+  // Settings modal
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<TimetableSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -237,31 +276,25 @@ export default function TimetablePage() {
     return map;
   }, [data?.slots]);
 
-  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot[]
-  const mySlotsMap = useMemo(() => {
-    const targetId = isManager && effectiveTab === "teacher"
-      ? Number(currentTeacherId)
-      : data?.teacherId;
-    const map = new Map<string, TimetableSlot>();
-    if (!targetId) return map;
-    for (const slot of data?.slots ?? []) {
-      if (slot.teacherId === targetId) {
-        map.set(`${slot.dayOfWeek}-${slot.period}`, slot);
-      }
-    }
-    return map;
-  }, [data?.slots, data?.teacherId, isManager, effectiveTab, currentTeacherId]);
-
-  // Workload statistics for the teacher
+  // Workload statistics for the selected teacher
   const teacherStats = useMemo(() => {
     let periodsCount = 0;
     const classSet = new Set<number>();
     const subjectSet = new Set<number>();
-    mySlotsMap.forEach((slot) => {
-      periodsCount++;
-      if (slot.classId) classSet.add(slot.classId);
-      if (slot.subjectId) subjectSet.add(slot.subjectId);
-    });
+    const targetId =
+      isManager && effectiveTab === "teacher"
+        ? Number(currentTeacherId)
+        : data?.teacherId;
+
+    if (targetId && data?.slots) {
+      for (const slot of data.slots) {
+        if (slot.teacherId === targetId) {
+          periodsCount++;
+          if (slot.classId) classSet.add(slot.classId);
+          if (slot.subjectId) subjectSet.add(slot.subjectId);
+        }
+      }
+    }
     const totalPossibleSlots = 5 * 9; // 45
     return {
       periodsCount,
@@ -269,7 +302,7 @@ export default function TimetablePage() {
       subjectsCount: subjectSet.size,
       freePeriods: Math.max(0, totalPossibleSlots - periodsCount),
     };
-  }, [mySlotsMap]);
+  }, [data?.slots, data?.teacherId, isManager, effectiveTab, currentTeacherId]);
 
   // Open Edit Slot Modal
   function handleSlotClick(dayOfWeek: number, period: number, classId: number) {
@@ -367,12 +400,12 @@ export default function TimetablePage() {
       ...editSlot,
       subjectId: idNum,
       teacherId: matchedSubject?.teacherId ?? editSlot.teacherId,
-      customLabel: idNum ? "" : editSlot.customLabel, // clear custom label if subject picked
+      customLabel: idNum ? "" : editSlot.customLabel,
     });
   }
 
   // -------------------------------------------------------------
-  // PRINT: Master General Teaching Timetable (Exact match to image 2)
+  // PRINT 1: Master General Teaching Timetable
   // -------------------------------------------------------------
   function handlePrintGeneral() {
     if (!data) return;
@@ -386,9 +419,10 @@ export default function TimetablePage() {
           .map((p) => {
             const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
             const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
             </td>`;
           })
           .join("");
@@ -398,14 +432,15 @@ export default function TimetablePage() {
           .map((p) => {
             const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
             const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "";
+            return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
             </td>`;
           })
           .join("");
 
-        // Periods 8 & 9 (Special handling for Wed: RELIGIO and Fri: MEWAKA)
+        // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
         let p8_9 = "";
         if (day.id === 3 && cIdx === 0) {
           p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
@@ -420,14 +455,14 @@ export default function TimetablePage() {
             .map((p) => {
               const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
               const disp = getSlotDisplay(slot);
-              return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;">
-                ${disp.label}
+              return `<td style="border:1px solid #000;text-align:center;padding:2px 1px;vertical-align:middle;">
+                <div style="font-weight:900;font-size:8.5px;line-height:1.1;color:#000;">${disp.label}</div>
+                ${disp.sub ? `<div style="font-size:7px;color:#334155;line-height:1;margin-top:2px;font-family:Arial,sans-serif;">${disp.sub}</div>` : ""}
               </td>`;
             })
             .join("");
         }
 
-        // Spanning cells for Break, Lunch, Assembly, Extra Curriculum on first class row
         const breakCell =
           cIdx === 0
             ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
@@ -448,24 +483,23 @@ export default function TimetablePage() {
             : "";
         const extraCell =
           cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9.5px;font-weight:800;padding:4px 4px;background:#fff;">
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9px;font-weight:800;padding:4px 2px;background:#fff;">
                 ${getExtraForDay(s, day.id)}
               </td>`
             : "";
 
         const dayCell =
           cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9.5px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
+            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
                 ${day.name.toUpperCase()}
               </td>`
             : "";
 
-        // Roman numeral style class label or standard name
-        const classLabel = c.name.replace("Form ", "").replace(" 1", "I").replace(" 2", "II").replace(" 3", "III").replace(" 4", "IV");
+        const classLabel = formatClassPrint(c.name, c.section);
 
         return `<tr>
           ${dayCell}
-          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:800;">${classLabel}</td>
+          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:900;background:#f8fafc;">${classLabel}</td>
           ${p1_4}
           ${breakCell}
           ${p5_7}
@@ -481,17 +515,17 @@ export default function TimetablePage() {
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>${s.title}</title>
       <style>
-        @page { size: A4 landscape; margin: 8mm 6mm; }
-        * { box-sizing: border-box; }
+        @page { size: A4 landscape; margin: 6mm 5mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
-        .hdr { text-align: center; margin-bottom: 8px; }
-        .hdr h2 { margin: 0; font-size: 14px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
-        .hdr h1 { margin: 3px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr { text-align: center; margin-bottom: 6px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
         table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
         table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
-        table.tt td { border: 1px solid #000; height: 18px; }
-        .notes { margin-top: 8px; font-size: 8.5px; line-height: 1.35; font-weight: 700; }
+        table.tt td { border: 1px solid #000; }
+        .notes { margin-top: 6px; font-size: 8px; line-height: 1.35; font-weight: 700; }
       </style>
     </head><body>
       <div class="hdr">
@@ -502,15 +536,15 @@ export default function TimetablePage() {
       <table class="tt">
         <thead>
           <tr style="background:#fff;">
-            <th rowspan="2" style="width:24px;">DAYS</th>
-            <th rowspan="2" style="width:26px;">CLASS</th>
+            <th rowspan="2" style="width:22px;">DAYS</th>
+            <th rowspan="2" style="width:32px;">CLASS</th>
             <th>1</th><th>2</th><th>3</th><th>4</th>
             <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
             <th>5</th><th>6</th><th>7</th>
             <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
             <th>8</th><th>9</th>
-            <th rowspan="2" style="width:26px;font-size:7.5px;">${s.assemblyTime}</th>
-            <th rowspan="2" style="width:78px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
+            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
           </tr>
           <tr style="background:#fff;font-size:7px;">
             <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
@@ -531,7 +565,7 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT: Single Class Timetable (Sorted from main timetable)
+  // PRINT 2: Single Class Timetable (Complete with all features)
   // -------------------------------------------------------------
   function handlePrintClass(targetClassId: number) {
     if (!data) return;
@@ -540,38 +574,81 @@ export default function TimetablePage() {
     if (!targetClass) return;
 
     const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
-        const disp = getSlotDisplay(slot);
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 3px;">
-          <div style="font-weight:900;font-size:11px;color:#0f172a;">${disp.label}</div>
-          <div style="font-size:8.5px;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
-          ${slot?.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+            <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+            <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
         </td>`;
-      }).join("");
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+            const disp = getSlotDisplay(slot);
+            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+              <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+              <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+            </td>`;
+          })
+          .join("");
+      }
 
       return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
-        <td style="border:1px solid #334155;text-align:center;padding:6px;font-size:9.5px;font-weight:700;background:#f8fafc;">${getExtraForDay(s, day.id)}</td>
+        <td style="border:1px solid #000;font-weight:900;font-size:9px;background:#f8fafc;padding:5px 6px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">BREAK TIME</td>
+        ${p5_7}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">LUNCH TIME</td>
+        ${p8_9}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 4px;font-size:8.5px;font-weight:800;background:#fff;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Class Timetable - ${targetClass.name}</title>
       <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 12px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 28%; padding-top: 6px; }
+        @page { size: A4 landscape; margin: 6mm 5mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
+        .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
+        table.tt td { border: 1px solid #000; }
+        .notes { margin-top: 6px; font-size: 8px; font-weight: 700; line-height: 1.35; }
+        .sig { display: flex; justify-content: space-between; margin-top: 20px; font-size: 9px; font-weight: bold; }
+        .sig div { border-top: 1.5px solid #000; width: 28%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -579,23 +656,33 @@ export default function TimetablePage() {
         <h1>${s.schoolName}</h1>
         <h3>CLASS TIMETABLE — ${targetClass.name.toUpperCase()}${targetClass.section ? " (" + targetClass.section + ")" : ""} · ${s.academicYear}</h3>
       </div>
-      <table>
+      <table class="tt">
         <thead>
-          <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
-            <th style="width:110px;">EXTRA<br/><span style="font-size:7.5px;font-weight:400;">15:00 - 16:30</span></th>
+          <tr style="background:#fff;">
+            <th rowspan="2" style="width:75px;">DAYS</th>
+            <th>1</th><th>2</th><th>3</th><th>4</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
+            <th>5</th><th>6</th><th>7</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
+            <th>8</th><th>9</th>
+            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
+            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#fff;font-size:7px;">
+            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
+            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
+            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      <div style="margin-top:10px;font-size:9px;color:#475569;font-weight:600;">
-        Break Time: ${s.breakTime} · Lunch Time: ${s.lunchTime} · Assembly: ${s.assemblyTime}
+      <div class="notes">
+        ${s.notes}
       </div>
       <div class="sig">
-        <div><strong>Academic Master:</strong> ___________________</div>
-        <div><strong>Class Teacher:</strong> ___________________</div>
-        <div><strong>Head of School:</strong> ___________________</div>
+        <div>Academic Master: ___________________</div>
+        <div>Class Teacher: ___________________</div>
+        <div>Head of School: ___________________</div>
       </div>
     </body></html>`;
 
@@ -603,49 +690,103 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT: Teacher Timetable (Personalized)
+  // PRINT 3: Teacher Timetable (Complete with all features)
   // -------------------------------------------------------------
   function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
     if (!data) return;
     const s = data.settings;
 
     const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        // Find if this teacher teaches in this period
-        const slot = data.slots.find(
-          (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p.num,
-        );
-        if (!slot) {
-          return `<td style="border:1px solid #cbd5e1;text-align:center;padding:6px;color:#94a3b8;font-size:9px;background:#f8fafc;">—</td>`;
-        }
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 4px;background:#eef2ff;">
-          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className || "Class"}</div>
-          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectName || slot.subjectCode || "Subject"}</div>
-          ${slot.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+          }
+          const code = getSubjectShortCode(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
+            <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+          }
+          const code = getSubjectShortCode(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
+            <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
         </td>`;
-      }).join("");
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = data.slots.find(
+              (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+            );
+            if (!slot) {
+              return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+            }
+            const code = getSubjectShortCode(slot);
+            return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
+              <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
+              <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+            </td>`;
+          })
+          .join("");
+      }
 
       return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
+        <td style="border:1px solid #000;font-weight:900;font-size:9px;background:#f8fafc;padding:5px 6px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">BREAK TIME</td>
+        ${p5_7}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">LUNCH TIME</td>
+        ${p8_9}
+        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 4px;font-size:8.5px;font-weight:800;background:#fff;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Teacher Timetable - ${targetTeacherName}</title>
       <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 14px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 30%; padding-top: 6px; }
+        @page { size: A4 landscape; margin: 6mm 5mm; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
+        .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
+        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
+        table.tt td { border: 1px solid #000; }
+        .notes { margin-top: 6px; font-size: 8px; font-weight: 700; line-height: 1.35; }
+        .sig { display: flex; justify-content: space-between; margin-top: 20px; font-size: 9px; font-weight: bold; }
+        .sig div { border-top: 1.5px solid #000; width: 30%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -653,25 +794,33 @@ export default function TimetablePage() {
         <h1>${s.schoolName}</h1>
         <h3>TEACHER TIMETABLE — ${targetTeacherName.toUpperCase()} · ${s.academicYear}</h3>
       </div>
-      <table>
+      <table class="tt">
         <thead>
-          <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
+          <tr style="background:#fff;">
+            <th rowspan="2" style="width:75px;">DAYS</th>
+            <th>1</th><th>2</th><th>3</th><th>4</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
+            <th>5</th><th>6</th><th>7</th>
+            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
+            <th>8</th><th>9</th>
+            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
+            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#fff;font-size:7px;">
+            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
+            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
+            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
           </tr>
         </thead>
-        <tbody>${rowsHtml}<tr className="bg-emerald-50/70">
-                                  <td className="border border-slate-200 bg-slate-50 px-3 py-2 font-extrabold uppercase text-slate-700 text-[10px]">Extra Curriculum</td>
-                                  <td colSpan={PERIODS.length + 4} className="border border-slate-200 px-3 py-2 text-center font-bold text-emerald-800 text-[10px]">
-                                    ⚽ {data.settings.extraCurriculumTime} · ☕ {data.settings.breakTime} · 🍱 {data.settings.lunchTime} · 🔔 {data.settings.assemblyTime}
-                                  </td>
-                                </tr>
-                              </tbody>
+        <tbody>${rowsHtml}</tbody>
       </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
       <div class="sig">
-        <div><strong>Teacher:</strong> ${targetTeacherName}</div>
-        <div><strong>Academic Master:</strong> ___________________</div>
-        <div><strong>Head of School:</strong> ___________________</div>
+        <div>Teacher: ${targetTeacherName}</div>
+        <div>Academic Master: ___________________</div>
+        <div>Head of School: ___________________</div>
       </div>
     </body></html>`;
 
@@ -834,7 +983,7 @@ export default function TimetablePage() {
                   </div>
                 </div>
 
-                {/* Day filter */}
+                {/* Day filter & tools */}
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold text-slate-600">Filter Day:</span>
@@ -929,7 +1078,12 @@ export default function TimetablePage() {
                                   </td>
                                 )}
                                 <td className="border border-slate-200 px-2.5 py-2 font-extrabold text-slate-800 text-center bg-slate-50">
-                                  {c.name}
+                                  <div>{c.name}</div>
+                                  {c.section && (
+                                    <span className="inline-block mt-0.5 rounded bg-violet-100 px-1.5 py-0.2 text-[9px] font-extrabold text-violet-700">
+                                      {c.section}
+                                    </span>
+                                  )}
                                 </td>
 
                                 {/* Periods 1 to 4 */}
@@ -946,13 +1100,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* BREAK TIME (spans all classes of day) */}
+                                {/* BREAK TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -976,13 +1130,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* LUNCH TIME (spans all classes of day) */}
+                                {/* LUNCH TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1027,14 +1181,14 @@ export default function TimetablePage() {
                                         )}
                                         title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                       >
-                                        <div className="font-bold">{disp.label}</div>
-                                        {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                        <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                        {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                       </td>
                                     );
                                   })
                                 )}
 
-                                {/* ASSEMBLY (spans all classes) */}
+                                {/* ASSEMBLY */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1044,7 +1198,7 @@ export default function TimetablePage() {
                                   </td>
                                 )}
 
-                                {/* EXTRA CURRICULUM (spans all classes) */}
+                                {/* EXTRA CURRICULUM */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -1122,82 +1276,161 @@ export default function TimetablePage() {
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[800px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
                               {PERIODS.slice(0, 4).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-amber-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-amber-800" style={{ writingMode: "vertical-rl" }}>BREAK</span><span className="text-[8px] font-normal text-amber-600">{data.settings.breakTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
                               {PERIODS.slice(4, 7).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-rose-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-rose-800" style={{ writingMode: "vertical-rl" }}>LUNCH</span><span className="text-[8px] font-normal text-rose-600">{data.settings.lunchTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
                               {PERIODS.slice(7, 9).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-violet-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-violet-800" style={{ writingMode: "vertical-rl" }}>ASSEMBLY</span><span className="text-[8px] font-normal text-violet-600">{data.settings.assemblyTime}</span></th>
-                              <th className="border border-slate-200 px-3 py-2 text-center font-extrabold text-[11px] text-slate-700 w-36">
-                                Extra Curriculum
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-                                {([1, 2, 3, 4] as const).map((n) => {
-                                  const p = PERIODS[n - 1];
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
                                   const disp = getSlotDisplay(slot);
+
                                   return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
+                                    <td
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
                                     </td>
                                   );
                                 })}
-                                <td className="border border-slate-200 bg-amber-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-amber-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Break</span></td>
-                                {([5, 6, 7] as const).map((n) => {
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
                                   const disp = getSlotDisplay(slot);
+
                                   return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
+                                    <td
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
                                     </td>
                                   );
                                 })}
-                                <td className="border border-slate-200 bg-rose-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-rose-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Lunch</span></td>
-                                {([8, 9] as const).map((n) => {
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
-                                  const disp = getSlotDisplay(slot);
-                                  return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
-                                    </td>
-                                  );
-                                })}
-                                <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-violet-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-2 text-center font-bold text-xs text-emerald-800">
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+                                    const disp = getSlotDisplay(slot);
+                                    return (
+                                      <td
+                                        key={p}
+                                        onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                        className={cls(
+                                          "border border-slate-200 px-2 py-2 text-center transition",
+                                          isManager && "cursor-pointer hover:bg-violet-50",
+                                          disp.isSpecial ? "bg-slate-100" : "",
+                                        )}
+                                        title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                      >
+                                        <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                        {slot?.teacherName && (
+                                          <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                            {slot.teacherName}
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
                                   {getExtraForDay(data.settings, day.id)}
                                 </td>
                               </tr>
@@ -1206,9 +1439,9 @@ export default function TimetablePage() {
                         </table>
                       </div>
 
-                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 flex flex-wrap gap-4 justify-between">
-                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b></span>
-                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any cell to re-assign.</span>}
+                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex flex-wrap gap-4 justify-between">
+                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b> · 🔔 Assembly: <b>{data.settings.assemblyTime}</b></span>
+                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any period cell to re-assign.</span>}
                       </div>
                     </div>
                   );
@@ -1296,130 +1529,202 @@ export default function TimetablePage() {
                           onClick={() => handlePrintTeacher(Number(currentTeacherId), targetTeacher.name)}
                           className={cls(btnPrimary, "text-xs font-bold")}
                         >
-                          🖨️ Print My Schedule
+                          🖨️ Print Teacher Schedule
                         </button>
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[760px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
                               {PERIODS.slice(0, 4).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-amber-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-amber-800" style={{ writingMode: "vertical-rl" }}>BREAK</span><span className="text-[8px] font-normal text-amber-600">{data.settings.breakTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
                               {PERIODS.slice(4, 7).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-rose-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-rose-800" style={{ writingMode: "vertical-rl" }}>LUNCH</span><span className="text-[8px] font-normal text-rose-600">{data.settings.lunchTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
                               {PERIODS.slice(7, 9).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-violet-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-violet-800" style={{ writingMode: "vertical-rl" }}>ASSEMBLY</span><span className="text-[8px] font-normal text-violet-600">{data.settings.assemblyTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-{PERIODS.map((p) => {
-                                  // Look up this teacher's assignment in this slot
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
                                   const slot = data.slots.find(
                                     (sl) =>
                                       sl.teacherId === Number(currentTeacherId) &&
                                       sl.dayOfWeek === day.id &&
-                                      sl.period === p.num,
+                                      sl.period === p,
                                   );
 
-                                  // Institutional shared blocks (RELIGIO, MEWAKA, PS…) — they are seeded
-                                  // per class with a custom label and no teacher, so show them when one
-                                  // of the teacher's classes has such a slot at this day/period.
-                                  const special = !slot
-                                    ? data.slots.find(
-                                        (sl) => sl.dayOfWeek === day.id && sl.period === p.num && (sl.customLabel !== null && sl.customLabel !== ""),
-                                      )
-                                    : undefined;
-
-                                  const body = (
-                                    <>
-                                      {p.num === 5 && (
-                                        <td className="border border-slate-200 bg-amber-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-amber-800" style={{ writingMode: "vertical-rl" }}>Break</span></td>
-                                      )}
-                                      {p.num === 8 && (
-                                        <td className="border border-slate-200 bg-rose-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-rose-800" style={{ writingMode: "vertical-rl" }}>Lunch</span></td>
-                                      )}
-                                    </>
-                                  );
-                                  void body;
-
-                                  if (!slot && !special) {
+                                  if (!slot) {
                                     return (
-                                      <Fragment key={p.num}>
-                                        {(p.num === 5 || p.num === 8) && (
-                                          <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                            <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                          </td>
-                                        )}
-                                        <td className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400">
-                                          <span className="text-[10px] italic">Free</span>
-                                        </td>
-                                        {p.num === 9 && (
-                                          <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                        )}
-                                      </Fragment>
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
+                                      </td>
                                     );
                                   }
-                                  if (!slot && special) {
-                                    return (
-                                      <Fragment key={p.num}>
-                                        {(p.num === 5 || p.num === 8) && (
-                                          <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                            <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                          </td>
-                                        )}
-                                        <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center">
-                                          <div className="font-black text-slate-700 text-sm">{special.customLabel}</div>
-                                          <div className="text-[9px] text-slate-400">{special.customLabel === "PS" ? "Private Studies" : "Shared block"}</div>
-                                        </td>
-                                        {p.num === 9 && (
-                                          <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                        )}
-                                      </Fragment>
-                                    );
-                                  }
+
+                                  const code = getSubjectShortCode(slot);
 
                                   return (
-                                    <Fragment key={p.num}>
-                                      {(p.num === 5 || p.num === 8) && (
-                                        <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                          <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                        </td>
-                                      )}
-                                      <td className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/60">
-                                        <div className="font-black text-indigo-950 text-sm">{slot!.className}</div>
-                                        <div className="font-bold text-indigo-700 text-[10px] mt-0.5">{slot!.subjectName || slot!.subjectCode || "Subject"}</div>
-                                        {slot!.room && <div className="text-[9px] text-slate-500">{slot!.room}</div>}
-                                      </td>
-                                      {p.num === 9 && (
-                                        <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                      )}
-                                    </Fragment>
+                                    <td
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                    >
+                                      <div className="font-extrabold text-indigo-950 text-xs">
+                                        {code}
+                                      </div>
+                                      <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
+                                        {slot.className}
+                                      </div>
+                                    </td>
                                   );
                                 })}
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = data.slots.find(
+                                    (sl) =>
+                                      sl.teacherId === Number(currentTeacherId) &&
+                                      sl.dayOfWeek === day.id &&
+                                      sl.period === p,
+                                  );
+
+                                  if (!slot) {
+                                    return (
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  const code = getSubjectShortCode(slot);
+
+                                  return (
+                                    <td
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                    >
+                                      <div className="font-extrabold text-indigo-950 text-xs">
+                                        {code}
+                                      </div>
+                                      <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
+                                        {slot.className}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = data.slots.find(
+                                      (sl) =>
+                                        sl.teacherId === Number(currentTeacherId) &&
+                                        sl.dayOfWeek === day.id &&
+                                        sl.period === p,
+                                    );
+
+                                    if (!slot) {
+                                      return (
+                                        <td
+                                          key={p}
+                                          className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                        >
+                                          <span className="text-[10px] italic">Free</span>
+                                        </td>
+                                      );
+                                    }
+
+                                    const code = getSubjectShortCode(slot);
+
+                                    return (
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                      >
+                                        <div className="font-extrabold text-indigo-950 text-xs">
+                                          {code}
+                                        </div>
+                                        <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
+                                          {slot.className}
+                                        </div>
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
+                                  {getExtraForDay(data.settings, day.id)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

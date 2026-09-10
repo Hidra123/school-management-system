@@ -78,18 +78,54 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
   const { user, hasPerm, logout } = useAuth();
 
   const isAdmin = user?.role === "admin";
+  const isAcademicMaster = user?.staffRole === "academic_master";
 
   // Admin sees admin sidebar, members see filtered member sidebar.
+  // Academic Master gets students.map and year.manage automatically.
   // When locked (first login, default password) only the Change Password link is shown.
   const links: SidebarLink[] = locked
     ? [{ href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT", badge: "REQUIRED" }]
     : isAdmin
       ? ADMIN_SIDEBAR.map((l) => ({ ...l, badge: "badge" in l ? l.badge : undefined }))
-      : MEMBER_SIDEBAR
-          .filter((l) => hasPerm(l.perm) || l.perm === "profile.edit")
-          .map((l) => ({ href: l.href, label: l.label, icon: l.icon, group: l.group }));
+      : (() => {
+          const raw = MEMBER_SIDEBAR.filter(
+            (l) =>
+              hasPerm(l.perm) ||
+              l.perm === "profile.edit" ||
+              (isAcademicMaster && (l.perm === "students.map" || l.perm === "year.manage")),
+          );
 
-  const roleLabel = isAdmin ? "Administrator Panel" : "Member Panel";
+          if (!isAcademicMaster) {
+            return raw.map((l) => ({ href: l.href, label: l.label, icon: l.icon, group: l.group }));
+          }
+
+          // Customized Academic Panel layout matching the master specifications
+          const academicLinks: SidebarLink[] = [
+            { href: "/", label: "Dashboard", icon: "🏠", group: "MAIN" },
+            { href: "/profile", label: "Academic Profile", icon: "👤", group: "MAIN" },
+            { href: "/students", label: "Student Admissions", icon: "👨‍🎓", group: "STUDENT MANAGEMENT" },
+            { href: "/classes", label: "Manage Classes", icon: "🏫", group: "STUDENT MANAGEMENT" },
+            { href: "/map-students", label: "Map Students", icon: "👥", group: "STUDENT MANAGEMENT" },
+            { href: "/year-progression", label: "Year Progression", icon: "➔", group: "YEAR MANAGEMENT" },
+            { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "MONITORING" },
+            { href: "/subjects", label: "Manage Subjects", icon: "📚", group: "ACADEMIC" },
+            { href: "/exams", label: "Manage Examinations", icon: "📋", group: "ACADEMIC" },
+            { href: "/grades", label: "Submit Scores", icon: "📝", group: "ACADEMIC" },
+            { href: "/grades/tracking", label: "Tracking Scores", icon: "📊", group: "ACADEMIC" },
+            { href: "/timetable", label: "Manage Timetable", icon: "📅", group: "ACADEMIC" },
+            { href: "/tod", label: "TOD Report", icon: "🔰", group: "ACADEMIC" },
+            { href: "/messages", label: "Messages", icon: "💬", group: "COMMUNICATION" },
+            { href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT" },
+          ];
+
+          return academicLinks;
+        })();
+
+  const roleLabel = isAdmin
+    ? "Administrator Panel"
+    : isAcademicMaster
+      ? "Academic Panel"
+      : "Member Panel";
   const statusDot = isAdmin;
 
   return (
@@ -97,7 +133,19 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
       {/* Mobile */}
       <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
-          <Brand />
+          <div className="flex items-center gap-3 px-1">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
+              🎓
+            </div>
+            <div className="leading-tight">
+              <p className="text-base font-extrabold text-white">
+                {isAcademicMaster ? "Academic Panel" : "ShuleHub"}
+              </p>
+              <p className="text-[11px] font-medium text-indigo-300">
+                {isAcademicMaster ? "School SMS" : roleLabel}
+              </p>
+            </div>
+          </div>
           <button onClick={logout} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-white/20">
             Logout
           </button>
@@ -131,8 +179,12 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
               🎓
             </div>
             <div className="leading-tight">
-              <p className="text-base font-extrabold text-white">ShuleHub</p>
-              <p className="text-[11px] font-medium text-indigo-300">{roleLabel}</p>
+              <p className="text-base font-extrabold text-white">
+                {isAcademicMaster ? "Academic Panel" : "ShuleHub"}
+              </p>
+              <p className="text-[11px] font-medium text-indigo-300">
+                {isAcademicMaster ? "School SMS" : roleLabel}
+              </p>
             </div>
           </div>
           {statusDot && (
@@ -158,7 +210,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-bold text-white">{user.name}</p>
                 <p className="truncate text-[11px] text-indigo-300/70">
-                  {isAdmin ? "🛡️ Admin" : "👤 Member"}
+                  {isAdmin ? "🛡️ Admin" : isAcademicMaster ? "Academic Panel" : "👤 Member"}
                 </p>
               </div>
               <button

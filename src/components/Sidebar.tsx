@@ -1,151 +1,214 @@
 "use client";
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/components/AuthProvider";
 import { ADMIN_SIDEBAR, MEMBER_SIDEBAR } from "@/lib/permissions";
 import { cls } from "@/lib/utils";
 
-type SidebarLink = { href: string; label: string; icon: string; group: string; badge?: string };
-
-const GROUP_ICONS: Record<string, string> = {
-  MAIN: "🏠",
-  "STUDENT MANAGEMENT": "👨‍🎓",
-  "STAFF MANAGEMENT": "👔",
-  PARENTS: "👪",
-  "USER CONTROL": "🔐",
-  ADMINISTRATION: "⚙️",
-  ACADEMIC: "📚",
-  MONITORING: "🗓️",
-  REPORTS: "📈",
-  FINANCE: "💰",
-  COMMUNICATION: "💬",
-  "MY CLASS": "🏫",
-  ACCOUNT: "🔑",
+type SidebarLink = {
+  href: string;
+  label: string;
+  icon: string;
+  group: string;
+  badge?: string;
+  tag?: string;
 };
 
-function Brand({ role }: { role: string }) {
+// Chevron SVG icon with smooth rotation transition
+function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <div className="flex items-center gap-3 px-1">
-      <div className="grid h-10 w-10 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 text-lg text-white shadow-lg shadow-violet-900/40 ring-1 ring-white/20">
-        🎓
-      </div>
-      <div className="leading-tight">
-        <p className="bg-gradient-to-r from-white to-indigo-200 bg-clip-text text-base font-extrabold text-transparent">
-          ShuleHub
-        </p>
-        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-indigo-400/80">{role}</p>
-      </div>
-    </div>
-  );
-}
-
-function isActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true;
-  if (href !== "/" && href !== "/admin" && pathname.startsWith(href)) return true;
-  return false;
-}
-
-function NavItem({ link, pathname, onNavigate }: { link: SidebarLink; pathname: string; onNavigate?: () => void }) {
-  const active = isActive(pathname, link.href);
-  return (
-    <Link
-      href={link.href}
-      onClick={onNavigate}
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       className={cls(
-        "group relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-[13px] font-semibold transition-all duration-150",
-        active
-          ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-950/40 ring-1 ring-white/20"
-          : "text-slate-300 hover:bg-white/[0.06] hover:text-white",
+        "transition-transform duration-200 text-slate-400 group-hover:text-white",
+        open ? "rotate-90 text-indigo-400" : "rotate-0",
       )}
     >
-      <span className={cls("text-[15px] transition-transform group-hover:scale-110", active ? "opacity-100" : "opacity-80")}>
-        {link.icon}
-      </span>
-      <span className="flex-1 whitespace-nowrap">{link.label}</span>
-      {link.badge && (
-        <span
-          className={cls(
-            "rounded-full px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider",
-            link.badge === "NEW" ? "bg-emerald-400/90 text-emerald-950" : "bg-rose-500/90 text-white",
-          )}
-        >
-          {link.badge}
-        </span>
-      )}
-      {active && !link.badge && <span className="h-1.5 w-1.5 rounded-full bg-white/90" />}
-    </Link>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
   );
 }
 
-function GroupSection({
-  group,
-  items,
-  pathname,
-  open,
-  onToggle,
-  onNavigate,
-}: {
-  group: string;
-  items: SidebarLink[];
-  pathname: string;
-  open: boolean;
-  onToggle: () => void;
-  onNavigate?: () => void;
-}) {
-  const hasActive = items.some((l) => isActive(pathname, l.href));
+// Group definitions with clean icons and colors
+const GROUP_CONFIG: Record<
+  string,
+  { icon: string; defaultOpen?: boolean; accentBg?: string; dotColor?: string }
+> = {
+  MAIN: { icon: "⚡", defaultOpen: true, accentBg: "from-blue-500/20 to-indigo-500/10", dotColor: "bg-blue-400" },
+  "STUDENT MANAGEMENT": { icon: "👨‍🎓", defaultOpen: true, accentBg: "from-indigo-500/20 to-violet-500/10", dotColor: "bg-indigo-400" },
+  "YEAR MANAGEMENT": { icon: "➔", defaultOpen: false, accentBg: "from-violet-500/20 to-purple-500/10", dotColor: "bg-violet-400" },
+  "STAFF MANAGEMENT": { icon: "👥", defaultOpen: true, accentBg: "from-purple-500/20 to-pink-500/10", dotColor: "bg-purple-400" },
+  ACADEMIC: { icon: "📚", defaultOpen: true, accentBg: "from-sky-500/20 to-blue-500/10", dotColor: "bg-sky-400" },
+  MONITORING: { icon: "📈", defaultOpen: false, accentBg: "from-emerald-500/20 to-teal-500/10", dotColor: "bg-emerald-400" },
+  "MY CLASS": { icon: "🏫", defaultOpen: false, accentBg: "from-amber-500/20 to-orange-500/10", dotColor: "bg-amber-400" },
+  REPORTS: { icon: "📊", defaultOpen: false, accentBg: "from-teal-500/20 to-emerald-500/10", dotColor: "bg-teal-400" },
+  FINANCE: { icon: "💰", defaultOpen: false, accentBg: "from-emerald-500/20 to-green-500/10", dotColor: "bg-emerald-400" },
+  PARENTS: { icon: "👪", defaultOpen: false, accentBg: "from-rose-500/20 to-red-500/10", dotColor: "bg-rose-400" },
+  "USER CONTROL": { icon: "🛡️", defaultOpen: false, accentBg: "from-rose-500/20 to-pink-500/10", dotColor: "bg-rose-400" },
+  COMMUNICATION: { icon: "💬", defaultOpen: false, accentBg: "from-cyan-500/20 to-blue-500/10", dotColor: "bg-cyan-400" },
+  ADMINISTRATION: { icon: "⚙️", defaultOpen: false, accentBg: "from-slate-500/20 to-zinc-500/10", dotColor: "bg-slate-400" },
+  ACCOUNT: { icon: "🔑", defaultOpen: false, accentBg: "from-amber-500/20 to-yellow-500/10", dotColor: "bg-amber-400" },
+};
+
+function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: string }) {
+  // Group links by their group name
+  const grouped = useMemo(() => {
+    const map: Record<string, SidebarLink[]> = {};
+    for (const l of links) {
+      if (!map[l.group]) map[l.group] = [];
+      map[l.group].push(l);
+    }
+    return map;
+  }, [links]);
+
+  // Track accordion open/collapsed state per group
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    const initial: Record<string, boolean> = {};
+    for (const [group, items] of Object.entries(grouped)) {
+      // Always open if current active page is inside this group, or if group defaults to open
+      const hasActive = items.some(
+        (l) => pathname === l.href || (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href)),
+      );
+      const conf = GROUP_CONFIG[group];
+      initial[group] = hasActive || (conf?.defaultOpen ?? true);
+    }
+    return initial;
+  });
+
+  // Automatically expand group when navigating to a child page
+  useEffect(() => {
+    for (const [group, items] of Object.entries(grouped)) {
+      const hasActive = items.some(
+        (l) => pathname === l.href || (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href)),
+      );
+      if (hasActive) {
+        setOpenGroups((prev) => ({ ...prev, [group]: true }));
+      }
+    }
+  }, [pathname, grouped]);
+
+  function toggleGroup(group: string) {
+    setOpenGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  }
+
   return (
-    <div className="mt-1.5">
-      <button
-        onClick={onToggle}
-        className={cls(
-          "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.04]",
-          hasActive && !open && "text-indigo-300",
-        )}
-      >
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.06] text-[13px] ring-1 ring-white/10">
-          {GROUP_ICONS[group] ?? "📁"}
-        </span>
-        <span
-          className={cls(
-            "flex-1 text-[10.5px] font-extrabold uppercase tracking-[0.16em]",
-            hasActive ? "text-indigo-200" : "text-slate-400",
-          )}
-        >
-          {group}
-        </span>
-        <span className="rounded-full bg-white/[0.06] px-1.5 py-0.5 text-[9px] font-black text-slate-400 ring-1 ring-white/10">
-          {items.length}
-        </span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className={cls("shrink-0 text-slate-500 transition-transform duration-200", open && "rotate-90")}
-        >
-          <path d="M9 5l7 7-7 7" />
-        </svg>
-      </button>
-      <div
-        className={cls(
-          "grid transition-all duration-200 ease-out",
-          open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-        )}
-      >
-        <div className="overflow-hidden">
-          <div className="ml-[22px] mt-0.5 space-y-0.5 border-l border-white/[0.07] pl-2.5">
-            {items.map((l) => (
-              <NavItem key={l.href} link={l} pathname={pathname} onNavigate={onNavigate} />
-            ))}
+    <div className="space-y-2">
+      {Object.entries(grouped).map(([group, items]) => {
+        const isOpen = openGroups[group] ?? false;
+        const conf = GROUP_CONFIG[group];
+        const hasActiveChild = items.some(
+          (l) => pathname === l.href || (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href)),
+        );
+
+        return (
+          <div
+            key={group}
+            className={cls(
+              "rounded-2xl transition-all duration-200 border",
+              hasActiveChild
+                ? "border-indigo-500/30 bg-slate-900/60 shadow-sm"
+                : "border-transparent hover:border-slate-800/80 bg-slate-950/40",
+            )}
+          >
+            {/* Accordion header button */}
+            <button
+              type="button"
+              onClick={() => toggleGroup(group)}
+              className={cls(
+                "group flex w-full items-center justify-between gap-2.5 px-3.5 py-2.5 text-left text-xs font-bold transition rounded-xl select-none",
+                hasActiveChild
+                  ? "text-white"
+                  : "text-slate-400 hover:text-slate-200",
+              )}
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="text-sm opacity-90">{conf?.icon || "📁"}</span>
+                <span className="truncate uppercase tracking-wider text-[11px] font-extrabold">
+                  {group}
+                </span>
+                <span
+                  className={cls(
+                    "rounded-full px-1.5 py-0.2 text-[9.5px] font-extrabold",
+                    hasActiveChild
+                      ? "bg-indigo-500/30 text-indigo-300"
+                      : "bg-slate-800/80 text-slate-500 group-hover:text-slate-400",
+                  )}
+                >
+                  {items.length}
+                </span>
+              </div>
+              <ChevronIcon open={isOpen} />
+            </button>
+
+            {/* Collapsible submenu items with smooth layout */}
+            {isOpen && (
+              <div className="pb-2 pt-0.5 px-2 space-y-1">
+                {items.map((l) => {
+                  const active =
+                    pathname === l.href ||
+                    (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href));
+
+                  return (
+                    <Link
+                      key={l.href}
+                      href={l.href}
+                      className={cls(
+                        "group flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold transition relative pl-3.5",
+                        active
+                          ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold shadow-md shadow-indigo-500/20"
+                          : "text-slate-300 hover:bg-white/5 hover:text-white",
+                      )}
+                    >
+                      <span
+                        className={cls(
+                          "text-sm transition-transform duration-150",
+                          active ? "scale-110" : "opacity-80 group-hover:opacity-100 group-hover:scale-105",
+                        )}
+                      >
+                        {l.icon}
+                      </span>
+                      <span className="flex-1 truncate">{l.label}</span>
+
+                      {/* Tag for TIE upcoming modules */}
+                      {l.tag && (
+                        <span className="rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 text-[9px] font-black uppercase">
+                          {l.tag}
+                        </span>
+                      )}
+
+                      {l.badge && (
+                        <span
+                          className={cls(
+                            "rounded-full px-1.5 py-0.2 text-[9.5px] font-black uppercase",
+                            l.badge === "NEW"
+                              ? "bg-emerald-500 text-white"
+                              : "bg-rose-500 text-white",
+                          )}
+                        >
+                          {l.badge}
+                        </span>
+                      )}
+
+                      {active && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white shadow-sm" />
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      </div>
+        );
+      })}
     </div>
   );
 }
@@ -155,126 +218,196 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
   const { user, hasPerm, logout } = useAuth();
 
   const isAdmin = user?.role === "admin";
+  const isAcademicMaster = user?.staffRole === "academic_master";
 
-  const grouped = useMemo(() => {
-    const links: SidebarLink[] = locked
-      ? [{ href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT", badge: "REQUIRED" }]
-      : isAdmin
-        ? ADMIN_SIDEBAR.map((l) => ({ ...l, badge: "badge" in l ? l.badge : undefined }))
-        : MEMBER_SIDEBAR.filter((l) => hasPerm(l.perm) || l.perm === "profile.edit").map((l) => ({
-            href: l.href,
-            label: l.label,
-            icon: l.icon,
-            group: l.group,
-          }));
+  // Build navigation items
+  const links: SidebarLink[] = locked
+    ? [
+        {
+          href: "/profile",
+          label: "Change Password",
+          icon: "🔑",
+          group: "ACCOUNT",
+          badge: "REQUIRED",
+        },
+      ]
+    : isAdmin
+      ? ADMIN_SIDEBAR.map((l) => ({
+          ...l,
+          badge: "badge" in l ? l.badge : undefined,
+        }))
+      : (() => {
+          if (!isAcademicMaster) {
+            // Regular Teacher & Class Teacher: show their allowed permissions
+            // plus Lesson Plans and Subject Log Book (marked with TIE badge for upcoming development)
+            return MEMBER_SIDEBAR.filter(
+              (l) =>
+                hasPerm(l.perm) ||
+                l.perm === "profile.edit" ||
+                l.href === "/lesson-plans" ||
+                l.href === "/logbook",
+            ).map((l) => ({
+              href: l.href,
+              label: l.label,
+              icon: l.icon,
+              group: l.group,
+              tag: l.href === "/lesson-plans" || l.href === "/logbook" ? "TIE" : undefined,
+            }));
+          }
 
-    const groups: { group: string; items: SidebarLink[] }[] = [];
-    for (const l of links) {
-      const g = groups.find((x) => x.group === l.group);
-      if (g) g.items.push(l);
-      else groups.push({ group: l.group, items: [l] });
-    }
-    return groups;
-  }, [locked, isAdmin, hasPerm]);
+          // Customized Academic Panel layout for Academic Master
+          // Includes Lesson Plans and Subject Log Book marked with TIE badge
+          const academicLinks: SidebarLink[] = [
+            { href: "/", label: "Dashboard", icon: "🏠", group: "MAIN" },
+            { href: "/profile", label: "Academic Profile", icon: "👤", group: "MAIN" },
+            { href: "/students", label: "Student Admissions", icon: "👨‍🎓", group: "STUDENT MANAGEMENT" },
+            { href: "/classes", label: "Manage Classes", icon: "🏫", group: "STUDENT MANAGEMENT" },
+            { href: "/map-students", label: "Map Students", icon: "👥", group: "STUDENT MANAGEMENT" },
+            { href: "/year-progression", label: "Year Progression", icon: "➔", group: "YEAR MANAGEMENT" },
+            { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "MONITORING" },
+            { href: "/subjects", label: "Manage Subjects", icon: "📚", group: "ACADEMIC" },
+            { href: "/exams", label: "Manage Examinations", icon: "📋", group: "ACADEMIC" },
+            { href: "/grades", label: "Submit Scores", icon: "📝", group: "ACADEMIC" },
+            { href: "/grades/tracking", label: "Tracking Scores", icon: "📊", group: "ACADEMIC" },
+            { href: "/timetable", label: "Manage Timetable", icon: "📅", group: "ACADEMIC" },
+            { href: "/lesson-plans", label: "Lesson Plans", icon: "📖", group: "ACADEMIC", tag: "TIE" },
+            { href: "/logbook", label: "Subject Log Book", icon: "📓", group: "ACADEMIC", tag: "TIE" },
+            { href: "/tod", label: "TOD Report", icon: "🔰", group: "ACADEMIC" },
+            { href: "/messages", label: "Messages", icon: "💬", group: "COMMUNICATION" },
+            { href: "/profile", label: "Change Password", icon: "🔑", group: "ACCOUNT" },
+          ];
 
-  // Open only the group(s) containing the current page — keeps long menus short.
-  const containsActive = useMemo(
-    () => grouped.filter((g) => g.items.some((l) => isActive(pathname, l.href))).map((g) => g.group),
-    [grouped, pathname],
-  );
-  const [openKeys, setOpenKeys] = useState<string[] | null>(null);
-  const open = new Set(openKeys ?? containsActive);
+          return academicLinks;
+        })();
 
-  const roleLabel = isAdmin ? "Administrator Panel" : "Member Panel";
+  const roleLabel = isAdmin
+    ? "Administrator Panel"
+    : isAcademicMaster
+      ? "Academic Panel"
+      : "Teacher Panel";
 
   return (
     <>
-      {/* ---------- Mobile ---------- */}
-      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur print:hidden lg:hidden">
+      {/* Mobile Header */}
+      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
-          <Brand role={roleLabel} />
-          <button onClick={logout} className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-white/20">
+          <div className="flex items-center gap-3 px-1">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
+              🎓
+            </div>
+            <div className="leading-tight">
+              <p className="text-base font-extrabold text-white">
+                {isAcademicMaster ? "Academic Panel" : "ShuleHub"}
+              </p>
+              <p className="text-[11px] font-medium text-indigo-300">
+                {isAcademicMaster ? "School SMS" : roleLabel}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={logout}
+            className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-bold text-white hover:bg-white/20 transition"
+          >
             Logout
           </button>
         </div>
-        <nav className="flex gap-1 overflow-x-auto px-3 pb-2">
-          {grouped.flatMap((g) =>
-            g.items.map((l) => {
-              const active = isActive(pathname, l.href);
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  className={cls(
-                    "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
-                    active ? "bg-gradient-to-r from-indigo-500 to-violet-600 text-white shadow" : "bg-white/5 text-indigo-200 hover:bg-white/10 hover:text-white",
-                  )}
-                >
-                  <span>{l.icon}</span>
-                  {l.label}
-                </Link>
-              );
-            }),
-          )}
+        <nav className="flex gap-1 overflow-x-auto px-3 pb-2.5 scrollbar-none">
+          {links.map((l) => {
+            const active =
+              pathname === l.href ||
+              (l.href !== "/" && l.href !== "/admin" && pathname.startsWith(l.href));
+            return (
+              <Link
+                key={l.href}
+                href={l.href}
+                className={cls(
+                  "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                  active
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-white/5 text-indigo-200 hover:bg-white/10 hover:text-white",
+                )}
+              >
+                <span>{l.icon}</span>
+                <span>{l.label}</span>
+                {l.tag && (
+                  <span className="rounded bg-amber-500/20 text-amber-300 text-[9px] px-1 font-extrabold">
+                    {l.tag}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
         </nav>
       </header>
 
-      {/* ---------- Desktop ---------- */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-slate-950 print:hidden lg:flex">
-        {/* top glow */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-indigo-600/20 via-violet-600/5 to-transparent" />
+      {/* Desktop Sidebar with Glassmorphism & Accordion Submenus */}
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-r border-slate-800/80 lg:flex shadow-2xl">
+        {/* Brand Header */}
+        <div className="px-5 pt-6 pb-4 border-b border-slate-800/60">
+          <div className="flex items-center gap-3">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-600 to-purple-600 text-xl text-white shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+              🎓
+            </div>
+            <div className="leading-tight min-w-0">
+              <p className="text-base font-black text-white tracking-tight flex items-center gap-1.5 truncate">
+                <span>{isAcademicMaster ? "Academic Panel" : "ShuleHub"}</span>
+              </p>
+              <p className="text-[11px] font-bold text-indigo-300/80 truncate">
+                {isAcademicMaster ? "School SMS · Mangi Wingia" : roleLabel}
+              </p>
+            </div>
+          </div>
 
-        {/* Header */}
-        <div className="relative px-5 pb-2 pt-6">
-          <Brand role={roleLabel} />
-          {isAdmin && (
-            <p className="mt-3 flex items-center gap-2 px-1 text-[11px] font-bold text-emerald-400">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-              </span>
+          <div className="mt-3 flex items-center justify-between px-1">
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
+              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
               System Online
-            </p>
-          )}
+            </span>
+            <span className="text-[10px] font-mono text-slate-500 font-bold uppercase">
+              v2.0
+            </span>
+          </div>
         </div>
 
-        {/* Nav */}
-        <nav className="relative mt-2 flex-1 overflow-y-auto px-3 pb-4">
-          {!locked && openKeys === null && containsActive.length === 0 && grouped.length > 0 ? null : null}
-          {grouped.map((g) => (
-            <GroupSection
-              key={g.group}
-              group={g.group}
-              items={g.items}
-              pathname={pathname}
-              open={open.has(g.group)}
-              onToggle={() => {
-                const next = new Set(open);
-                if (next.has(g.group)) next.delete(g.group);
-                else next.add(g.group);
-                setOpenKeys(Array.from(next));
-              }}
-            />
-          ))}
+        {/* Collapsible Accordion Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-thumb-slate-800">
+          <AccordionNav links={links} pathname={pathname} />
         </nav>
 
-        {/* User info + logout */}
-        <div className="relative border-t border-white/10 px-5 py-4">
+        {/* User Card & Logout Footer */}
+        <div className="border-t border-slate-800/80 bg-slate-950/80 px-4 py-3.5 backdrop-blur-sm">
           {user && (
             <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-sm font-bold text-white ring-2 ring-white/10">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white shadow-sm ring-1 ring-white/20">
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-white">{user.name}</p>
-                <p className="truncate text-[11px] text-indigo-300/70">{isAdmin ? "🛡️ Admin" : "👤 Member"}</p>
+                <p className="truncate text-xs font-black text-white tracking-tight">
+                  {user.name}
+                </p>
+                <p className="truncate text-[10px] font-bold text-indigo-300/80">
+                  {isAdmin
+                    ? "🛡️ Administrator"
+                    : isAcademicMaster
+                      ? "📘 Academic Master"
+                      : "👨‍🏫 Subject Teacher"}
+                </p>
               </div>
               <button
                 onClick={logout}
-                title="Logout"
-                className="rounded-xl p-2 text-slate-400 transition hover:bg-white/10 hover:text-white"
+                title="Logout of ShuleHub"
+                className="rounded-xl p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
               >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <svg
+                  width="17"
+                  height="17"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
                   <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
                 </svg>
               </button>

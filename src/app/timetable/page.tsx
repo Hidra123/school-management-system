@@ -133,6 +133,52 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
 }
 
 // -------------------------------------------------------------
+// MODERN PRINTER: clones the on-screen grid + every Tailwind stylesheet so
+// the PDF matches the UI exactly (dark header, band colors, visible lines).
+// -------------------------------------------------------------
+function printSectionAsUi(sectionId: string, title: string, subtitle: string) {
+  const node = document.getElementById(sectionId);
+  const w = window.open("", "_blank", "width=1250,height=850");
+  if (!w || !node) {
+    window.print();
+    return;
+  }
+  let css = "";
+  for (const sh of Array.from(document.styleSheets)) {
+    try {
+      css += Array.from(sh.cssRules).map((r) => r.cssText).join("\n");
+    } catch {
+      /* cross-origin sheet skipped */
+    }
+  }
+  const body = node.parentElement && sectionId === "tt-print-general"
+    ? node.parentElement.outerHTML
+    : node.outerHTML;
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>
+    <style>${css}
+      @page { size: A4 landscape; margin: 8mm; }
+      html, body { background: #fff !important; }
+      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 10px 12px; }
+      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+      #tt-print-meta { text-align: center; margin: 2px 0 10px; font-family: ui-sans-serif, system-ui; }
+      #tt-print-meta h1 { font-size: 19px; margin: 0; letter-spacing: 1px; }
+      #tt-print-meta p { font-size: 9.5px; margin: 2px 0 0; letter-spacing: 2px; color: #334155; }
+      #tt-print-meta .rule { height: 3px; background: #1e1b4b; border-radius: 99px; margin: 6px 0 0; }
+      #tt-toolbar { position: sticky; top: 0; z-index: 50; background: #fff; text-align: center; padding: 8px 0 10px; }
+      #tt-toolbar button { background: #6d28d9; color: #fff; font-size: 13px; font-weight: 800; border: none; border-radius: 10px; padding: 8px 22px; cursor: pointer; }
+      table { width: 100% !important; }
+      @media print { #tt-toolbar { display: none; } body { padding: 0; } }
+    </style></head><body>
+    <div id="tt-toolbar"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
+    <div id="tt-print-meta"><h1>MANGI WINGIA SECONDARY SCHOOL</h1><p>${subtitle}</p><div class="rule"></div></div>
+    ${body}
+    <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
+    </body></html>`);
+  w.document.close();
+  w.focus();
+}
+
+// -------------------------------------------------------------
 // PRINT HELPERS: Dedicated Iframe Printing (100% reliable)
 // -------------------------------------------------------------
 function printViaIframe(htmlContent: string) {
@@ -375,309 +421,26 @@ export default function TimetablePage() {
   // PRINT: Master General Teaching Timetable (Exact match to image 2)
   // -------------------------------------------------------------
   function handlePrintGeneral() {
-    if (!data) return;
-    const s = data.settings;
-    const clList = data.classes;
-
-    const daysRowsHtml = DAYS.map((day) => {
-      const dayClasses = clList.map((c, cIdx) => {
-        // Periods 1 to 4
-        const p1_4 = [1, 2, 3, 4]
-          .map((p) => {
-            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
-            const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
-            </td>`;
-          })
-          .join("");
-
-        // Periods 5 to 7
-        const p5_7 = [5, 6, 7]
-          .map((p) => {
-            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
-            const disp = getSlotDisplay(slot);
-            const bg = disp.isSpecial ? "background:#f1f5f9;font-weight:800;" : "";
-            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;${bg}">
-              ${disp.label}
-            </td>`;
-          })
-          .join("");
-
-        // Periods 8 & 9 (Special handling for Wed: RELIGIO and Fri: MEWAKA)
-        let p8_9 = "";
-        if (day.id === 3 && cIdx === 0) {
-          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
-            RELIGIO
-          </td>`;
-        } else if (day.id === 5 && cIdx === 0) {
-          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
-            MEWAKA
-          </td>`;
-        } else if (day.id !== 3 && day.id !== 5) {
-          p8_9 = [8, 9]
-            .map((p) => {
-              const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
-              const disp = getSlotDisplay(slot);
-              return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:700;">
-                ${disp.label}
-              </td>`;
-            })
-            .join("");
-        }
-
-        // Spanning cells for Break, Lunch, Assembly, Extra Curriculum on first class row
-        const breakCell =
-          cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
-                BREAK TIME
-              </td>`
-            : "";
-        const lunchCell =
-          cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
-                LUNCH TIME
-              </td>`
-            : "";
-        const assemblyCell =
-          cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1px;padding:4px 2px;">
-                ASSEMBLY
-              </td>`
-            : "";
-        const extraCell =
-          cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-size:9.5px;font-weight:800;padding:4px 4px;background:#fff;">
-                ${getExtraForDay(s, day.id)}
-              </td>`
-            : "";
-
-        const dayCell =
-          cIdx === 0
-            ? `<td rowspan="${clList.length}" style="border:1px solid #000;text-align:center;vertical-align:middle;font-weight:900;font-size:9.5px;writing-mode:vertical-rl;transform:rotate(180deg);background:#fff;letter-spacing:1.5px;padding:6px 2px;">
-                ${day.name.toUpperCase()}
-              </td>`
-            : "";
-
-        // Roman numeral style class label or standard name
-        const classLabel = c.name.replace("Form ", "").replace(" 1", "I").replace(" 2", "II").replace(" 3", "III").replace(" 4", "IV");
-
-        return `<tr>
-          ${dayCell}
-          <td style="border:1px solid #000;text-align:center;padding:4px 2px;font-size:9px;font-weight:800;">${classLabel}</td>
-          ${p1_4}
-          ${breakCell}
-          ${p5_7}
-          ${lunchCell}
-          ${p8_9}
-          ${assemblyCell}
-          ${extraCell}
-        </tr>`;
-      }).join("");
-      return dayClasses;
-    }).join("");
-
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <title>${s.title}</title>
-      <style>
-        @page { size: A4 landscape; margin: 8mm 6mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
-        .hdr { text-align: center; margin-bottom: 8px; }
-        .hdr h2 { margin: 0; font-size: 14px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
-        .hdr h1 { margin: 3px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
-        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
-        table.tt td { border: 1px solid #000; height: 18px; }
-        .notes { margin-top: 8px; font-size: 8.5px; line-height: 1.35; font-weight: 700; }
-      </style>
-    </head><body>
-      <div class="hdr">
-        <h2>${s.councilName}</h2>
-        <h1>${s.schoolName}</h1>
-        <h3>${s.title}</h3>
-      </div>
-      <table class="tt">
-        <thead>
-          <tr style="background:#fff;">
-            <th rowspan="2" style="width:24px;">DAYS</th>
-            <th rowspan="2" style="width:26px;">CLASS</th>
-            <th>1</th><th>2</th><th>3</th><th>4</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
-            <th>5</th><th>6</th><th>7</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
-            <th>8</th><th>9</th>
-            <th rowspan="2" style="width:26px;font-size:7.5px;">${s.assemblyTime}</th>
-            <th rowspan="2" style="width:78px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
-          </tr>
-          <tr style="background:#fff;font-size:7px;">
-            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
-            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
-            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${daysRowsHtml}
-        </tbody>
-      </table>
-      <div class="notes">
-        ${s.notes}
-      </div>
-    </body></html>`;
-
-    printViaIframe(fullHtml);
+  if (!data?.settings) return;
+  printSectionAsUi("tt-print-general", "GENERAL TEACHING TIMETABLE", `GENERAL SCHOOL TEACHING TIME TABLE · ${data.settings.academicYear}`);
   }
 
   // -------------------------------------------------------------
   // PRINT: Single Class Timetable (Sorted from main timetable)
   // -------------------------------------------------------------
   function handlePrintClass(targetClassId: number) {
-    if (!data) return;
-    const s = data.settings;
-    const targetClass = data.classes.find((c) => c.id === targetClassId);
-    if (!targetClass) return;
-
-    const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
-        const disp = getSlotDisplay(slot);
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 3px;">
-          <div style="font-weight:900;font-size:11px;color:#0f172a;">${disp.label}</div>
-          <div style="font-size:8.5px;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
-          ${slot?.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
-        </td>`;
-      }).join("");
-
-      return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
-        <td style="border:1px solid #334155;text-align:center;padding:6px;font-size:9.5px;font-weight:700;background:#f8fafc;">${getExtraForDay(s, day.id)}</td>
-      </tr>`;
-    }).join("");
-
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <title>Class Timetable - ${targetClass.name}</title>
-      <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 12px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 28%; padding-top: 6px; }
-      </style>
-    </head><body>
-      <div class="hdr">
-        <h2>${s.councilName}</h2>
-        <h1>${s.schoolName}</h1>
-        <h3>CLASS TIMETABLE — ${targetClass.name.toUpperCase()}${targetClass.section ? " (" + targetClass.section + ")" : ""} · ${s.academicYear}</h3>
-      </div>
-      <p style="font-size:8px;margin:4px 0;line-height:1.5;">☕ <b>Break:</b> ${s.breakTime} &nbsp;·&nbsp; 🍱 <b>Lunch:</b> ${s.lunchTime} &nbsp;·&nbsp; 🔔 <b>Assembly:</b> ${s.assemblyTime} &nbsp;·&nbsp; ⚽ <b>Extra Curriculum:</b> ${s.extraCurriculumTime}</p>
-      <table>
-        <thead>
-          <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
-            <th style="width:110px;">EXTRA<br/><span style="font-size:7.5px;font-weight:400;">15:00 - 16:30</span></th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-      <div style="margin-top:10px;font-size:9px;color:#475569;font-weight:600;">
-        Break Time: ${s.breakTime} · Lunch Time: ${s.lunchTime} · Assembly: ${s.assemblyTime}
-      </div>
-      <div class="sig">
-        <div><strong>Academic Master:</strong> ___________________</div>
-        <div><strong>Class Teacher:</strong> ___________________</div>
-        <div><strong>Head of School:</strong> ___________________</div>
-      </div>
-    </body></html>`;
-
-    printViaIframe(fullHtml);
+  if (!data?.settings) return;
+  void targetClassId;
+  printSectionAsUi("tt-print-class", "CLASS TIMETABLE", `CLASS WEEKLY TEACHING TIMETABLE · ${data.settings.academicYear}`);
   }
 
   // -------------------------------------------------------------
   // PRINT: Teacher Timetable (Personalized)
   // -------------------------------------------------------------
   function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
-    if (!data) return;
-    const s = data.settings;
-
-    const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        // Find if this teacher teaches in this period
-        const slot = data.slots.find(
-          (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p.num,
-        );
-        if (!slot) {
-          return `<td style="border:1px solid #cbd5e1;text-align:center;padding:6px;color:#94a3b8;font-size:9px;background:#f8fafc;">—</td>`;
-        }
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 4px;background:#eef2ff;">
-          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className || "Class"}</div>
-          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
-          ${slot.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
-        </td>`;
-      }).join("");
-
-      return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
-      </tr>`;
-    }).join("");
-
-    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <title>Teacher Timetable - ${targetTeacherName}</title>
-      <style>
-        @page { size: A4 landscape; margin: 10mm; }
-        * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 14px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 30%; padding-top: 6px; }
-      </style>
-    </head><body>
-      <div class="hdr">
-        <h2>${s.councilName}</h2>
-        <h1>${s.schoolName}</h1>
-        <h3>TEACHER TIMETABLE — ${targetTeacherName.toUpperCase()} · ${s.academicYear}</h3>
-      </div>
-      <p style="font-size:8px;margin:4px 0;line-height:1.5;">☕ <b>Break:</b> ${s.breakTime} &nbsp;·&nbsp; 🍱 <b>Lunch:</b> ${s.lunchTime} &nbsp;·&nbsp; 🔔 <b>Assembly:</b> ${s.assemblyTime} &nbsp;·&nbsp; ⚽ <b>Extra Curriculum:</b> ${s.extraCurriculumTime}</p>
-      <table>
-        <thead>
-          <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}<tr className="bg-emerald-50/70">
-                                  <td className="border border-slate-200 bg-slate-50 px-3 py-2 font-extrabold uppercase text-slate-700 text-[10px]">Extra Curriculum</td>
-                                  <td colSpan={PERIODS.length + 4} className="border border-slate-200 px-3 py-2 text-center font-bold text-emerald-800 text-[10px]">
-                                    ⚽ {data.settings.extraCurriculumTime} · ☕ {data.settings.breakTime} · 🍱 {data.settings.lunchTime} · 🔔 {data.settings.assemblyTime}
-                                  </td>
-                                </tr>
-                              </tbody>
-      </table>
-      <div class="sig">
-        <div><strong>Teacher:</strong> ${targetTeacherName}</div>
-        <div><strong>Academic Master:</strong> ___________________</div>
-        <div><strong>Head of School:</strong> ___________________</div>
-      </div>
-    </body></html>`;
-
-    printViaIframe(fullHtml);
+  if (!data?.settings) return;
+  void targetTeacherId;
+  printSectionAsUi("tt-print-teacher", `TEACHER TIMETABLE — ${targetTeacherName}`, `WEEKLY TEACHING SCHEDULE · ${targetTeacherName}`);
   }
 
   const roleBadge = user?.role === "member" ? staffRoleLabel(user.staffRole) : "🛡️ Admin";
@@ -872,7 +635,7 @@ export default function TimetablePage() {
 
                 {/* Full Grid Table */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-autooverflow-x-auto" id="tt-print-general">
                     <table className="w-full min-w-[980px] border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-900 text-white">
@@ -1105,7 +868,7 @@ export default function TimetablePage() {
                   }
 
                   return (
-                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    <div id="tt-print-class" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
                         <div>
                           <p className="text-sm font-bold uppercase tracking-wider">
@@ -1284,7 +1047,7 @@ export default function TimetablePage() {
                   ) || { name: data.teacherName || user?.name || "Teacher", id: Number(currentTeacherId) };
 
                   return (
-                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    <div id="tt-print-teacher" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
                         <div>
                           <p className="text-sm font-bold uppercase tracking-wider">

@@ -189,7 +189,7 @@ shulehub-sms/
     │   ├── fees/page.tsx                 # ✅ ⚠️ Ada (bado haijawekewa scoping ya walimu)
     │   ├── lesson-plans/page.tsx         # 🚧 STUB: Maazimio ya kazi / Masomo
     │   ├── logbook/page.tsx              # 🚧 STUB: Kitabu cha kumbukumbu ya masomo
-    │   ├── tod/page.tsx                  # 🚧 STUB: Mwalimu wa zamu (Teacher On Duty)
+    │   ├── tod/page.tsx                  # ✅ Teacher On Duty (T.O.D.) Report — 10 criteria presets, auto-calculating attendance (Boys/Girls/Presents), initials signature, settings & exact official A4 print
     │   ├── messages/page.tsx             # 🚧 STUB: Ujumbe wa ndani wa shule
     │   ├── assignments/page.tsx          # 🚧 STUB: Kazi za darasani kwa wanafunzi
     │   │
@@ -256,6 +256,9 @@ shulehub-sms/
     │       │   ├── slot/route.ts         # 🔧 PUT, DELETE kipindi cha ratiba
     │       │   ├── settings/route.ts     # 🔧 PUT mipangilio ya nyakati na barua ya shule
     │       │   └── class/route.ts        # 🔧 POST, PUT, DELETE mikondo na madarasa ya ratiba
+    │       │
+    │       ├── tod/
+    │       │   └── route.ts              # ✅ GET, POST, DELETE: Teacher On Duty reports
     │       │
     │       └── fees/
     │           ├── route.ts              # ✅ GET, POST ⚠️ haijascope

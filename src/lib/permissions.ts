@@ -111,6 +111,7 @@ export const ROLE_PRESETS = {
       "dashboard", "students.view", "classes.view", "subjects.view",
       "attendance.view", "attendance.manage",
       "grades.view", "grades.submit", "grades.track", "grades.report",
+      "timetable.view",
       "assignments.view", "assignments.manage",
       "tod.view", "tod.manage",
       "messages.view", "messages.send",
@@ -123,6 +124,7 @@ export const ROLE_PRESETS = {
     permissions: [
       "dashboard", "students.view", "classes.view", "subjects.view",
       "grades.view", "grades.submit", "grades.track",
+      "timetable.view",
       "assignments.view", "assignments.manage",
       "tod.view", "tod.manage",
       "messages.view", "messages.send",
@@ -155,7 +157,6 @@ export const ADMIN_SIDEBAR = [
   { href: "/admin/subjects", label: "Manage Subjects", icon: "📚", group: "STAFF MANAGEMENT" },
   { href: "/admin/teachers", label: "Manage Teachers", icon: "👨‍🏫", group: "STAFF MANAGEMENT" },
   { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "STAFF MANAGEMENT" },
-  { href: "/timetable", label: "Timetable", icon: "📅", group: "STAFF MANAGEMENT" },
   { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "STAFF MANAGEMENT" },
   { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "STAFF MANAGEMENT" },
   { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },

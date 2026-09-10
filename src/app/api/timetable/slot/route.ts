@@ -61,12 +61,12 @@ export async function PUT(req: Request) {
     typeof body.customLabel === "string" ? body.customLabel.trim() : null;
   const room = typeof body.room === "string" ? body.room.trim() : null;
 
-  // When the client did not pick a teacher but did pick a subject, resolve
-  // the teacher from the subject×class assignment matrix (two teachers may
-  // share one subject across different classes); legacy single-owner is the
-  // fallback.
+  // The subject×class assignment matrix (Manage Teachers → Assign) is the
+  // AUTHORITATIVE source of who teaches what in this class — it always wins
+  // over whatever the client sent, so the timetable can never show the wrong
+  // teacher for a shared subject. Legacy single-owner is the last fallback.
   let resolvedTeacherId = teacherId;
-  if (resolvedTeacherId === null && subjectId !== null) {
+  if (subjectId !== null) {
     const [matrixOwner] = await db
       .select({ teacherId: teacherSubjectClasses.teacherId })
       .from(teacherSubjectClasses)
@@ -76,7 +76,9 @@ export async function PUT(req: Request) {
       resolvedTeacherId = matrixOwner.teacherId;
     } else {
       const [subj] = await db.select({ teacherId: subjects.teacherId }).from(subjects).where(eq(subjects.id, subjectId)).limit(1);
-      resolvedTeacherId = subj?.teacherId ?? null;
+      // Legacy fallback only fills a still-empty teacher — never overrides a
+      // teacher the client explicitly chose when the matrix says nothing.
+      resolvedTeacherId = resolvedTeacherId ?? subj?.teacherId ?? null;
     }
   }
 

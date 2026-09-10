@@ -1,6 +1,6 @@
-import { asc, eq, inArray } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { subjects, teachers } from "@/db/schema";
+import { classes, subjects, teacherSubjectClasses, teachers } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requireAuth, requirePermission } from "@/lib/auth";
 import { getTeacherScope } from "@/lib/teachers";
@@ -22,6 +22,26 @@ export async function GET(req: Request) {
     const strict = new URL(req.url).searchParams.get("strict") === "1";
     const scope = await getTeacherScope(user, { strictForAcademicMaster: strict });
 
+    // Also fetch all distinct teachers teaching each subject via teacher_subject_classes
+    const tscRows = await db
+      .select({
+        subjectId: teacherSubjectClasses.subjectId,
+        teacherId: teacherSubjectClasses.teacherId,
+        teacherName: teachers.name,
+        className: classes.name,
+      })
+      .from(teacherSubjectClasses)
+      .innerJoin(teachers, eq(teacherSubjectClasses.teacherId, teachers.id))
+      .innerJoin(classes, eq(teacherSubjectClasses.classId, classes.id));
+
+    const subjectTeachersMap = new Map<number, string[]>();
+    for (const r of tscRows) {
+      if (!subjectTeachersMap.has(r.subjectId)) subjectTeachersMap.set(r.subjectId, []);
+      const label = `${r.teacherName} (${r.className})`;
+      const arr = subjectTeachersMap.get(r.subjectId)!;
+      if (!arr.includes(label)) arr.push(label);
+    }
+
     const query = db
       .select({
         id: subjects.id,
@@ -39,16 +59,22 @@ export async function GET(req: Request) {
     // never "all" (defense in depth for strict mode).
     if (scope.scoped && scope.teacherId === null) return Response.json([]);
 
-    const rows = scope.scoped
-      ? await query.where(
-          // Subjects the teacher teaches per the matrix (incl. shared
-          // subject names like "Kiswahili" split across classes between two
-          // teachers), plus legacy single-owner assignments.
-          scope.subjectIds.length > 0 ? inArray(subjects.id, scope.subjectIds) : eq(subjects.id, -1),
-        )
-      : await query;
+    let rows = await query;
+    if (scope.scoped) {
+      const allowedSubjectIds = scope.subjectIds;
+      rows = rows.filter((r) => allowedSubjectIds.includes(r.id));
+    }
 
-    return Response.json(rows);
+    return Response.json(
+      rows.map((r) => {
+        const tList = subjectTeachersMap.get(r.id) ?? [];
+        return {
+          ...r,
+          assignedTeachers: tList,
+          teacherDisplay: tList.length > 0 ? tList.join(", ") : (r.teacherName ?? null),
+        };
+      }),
+    );
   } catch (e) {
     return dbErrorResponse(e, "load subjects");
   }

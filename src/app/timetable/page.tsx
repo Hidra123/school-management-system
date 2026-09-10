@@ -3,7 +3,6 @@
 import { Fragment, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
-  Badge,
   EmptyState,
   Field,
   Loader,
@@ -17,9 +16,9 @@ import {
 } from "@/components/ui";
 import { useAuth } from "@/components/AuthProvider";
 import { staffRoleLabel } from "@/lib/permissions";
-import { cls, delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
+import { cls, delJSON, putJSON, useFetch } from "@/lib/utils";
 
-type ClassItem = { id: number; name: string; section: string; capacity: number; studentCount?: number };
+type ClassItem = { id: number; name: string; section: string; capacity: number };
 type SubjectItem = { id: number; name: string; code: string; teacherId: number | null };
 type TeacherItem = { id: number; name: string; subject: string; phone: string; email: string };
 type TimetableSlot = {
@@ -118,7 +117,6 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
       isSpecial,
     };
   }
-  // Prefer exact subject code (e.g. KISW-021, MATH-041, GEO-013), or subjectName, or teacher default
   const code =
     slot.subjectCode ||
     (slot.subjectName ? slot.subjectName.slice(0, 8).toUpperCase() : "");
@@ -130,7 +128,7 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
   };
 }
 
-/** Format Roman numeral or class name for print display (e.g. "I", "II", "IVA", "IV B") */
+/** Format Roman numeral or class name for print display (e.g. "I", "II", "III", "IV") */
 function formatClassPrint(name: string, section?: string | null) {
   let roman = name
     .replace(/^Form\s*1\b/i, "I")
@@ -140,7 +138,10 @@ function formatClassPrint(name: string, section?: string | null) {
     .replace(/^Form\s*5\b/i, "V")
     .replace(/^Form\s*6\b/i, "VI");
 
-  const cleanSec = section && section.trim() && section !== "—" && section !== "A & B" ? section.trim() : "";
+  const cleanSec =
+    section && section.trim() && section !== "—" && section !== "A & B"
+      ? section.trim()
+      : "";
   if (cleanSec) {
     return `${roman} ${cleanSec}`;
   }
@@ -218,16 +219,6 @@ export default function TimetablePage() {
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<TimetableSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
-
-  // Class Row modal (Add stream e.g. Form 4 B, Form 1 A)
-  const [addClassModalOpen, setAddClassModalOpen] = useState(false);
-  const [classForm, setClassForm] = useState({ name: "Form 4", section: "B", capacity: 40 });
-  const [savingClass, setSavingClass] = useState(false);
-  const [classMsg, setClassMsg] = useState<string | null>(null);
-
-  // Manage Classes Modal
-  const [manageClassesOpen, setManageClassesOpen] = useState(false);
-  const [editingClass, setEditingClass] = useState<{ id: number; name: string; section: string } | null>(null);
 
   // Auto-init class filter when classes load
   const availableClasses = useMemo(() => {
@@ -361,51 +352,6 @@ export default function TimetablePage() {
     }
   }
 
-  // Add Class/Stream Row (e.g. Form 4 B)
-  async function handleAddClassRow(e: React.FormEvent) {
-    e.preventDefault();
-    setSavingClass(true);
-    setClassMsg(null);
-    try {
-      await postJSON("/api/timetable/class", {
-        name: classForm.name,
-        section: classForm.section,
-        capacity: classForm.capacity,
-        academicYear: data?.settings.academicYear || "2026",
-      });
-      setAddClassModalOpen(false);
-      timetableFetch.refresh();
-    } catch (err) {
-      setClassMsg(err instanceof Error ? err.message : "Failed to add class stream.");
-    } finally {
-      setSavingClass(false);
-    }
-  }
-
-  // Update Class Section/Stream
-  async function handleUpdateClass(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editingClass) return;
-    try {
-      await putJSON("/api/timetable/class", editingClass);
-      setEditingClass(null);
-      timetableFetch.refresh();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to update class.");
-    }
-  }
-
-  // Remove Class from Timetable
-  async function handleDeleteClass(classId: number, className: string) {
-    if (!window.confirm(`Clear timetable for ${className}? If this class has no enrolled students, it will be removed.`)) return;
-    try {
-      await delJSON(`/api/timetable/class?id=${classId}`);
-      timetableFetch.refresh();
-    } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove class.");
-    }
-  }
-
   // Open Settings Modal
   function openSettings() {
     if (!data?.settings) return;
@@ -443,7 +389,7 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT: Master General Teaching Timetable (Shows code & teacher name)
+  // PRINT 1: Master General Teaching Timetable
   // -------------------------------------------------------------
   function handlePrintGeneral() {
     if (!data) return;
@@ -478,7 +424,7 @@ export default function TimetablePage() {
           })
           .join("");
 
-        // Periods 8 & 9 (Special handling for Wed: RELIGIO and Fri: MEWAKA)
+        // Periods 8 & 9 (Wed RELIGIO, Fri MEWAKA)
         let p8_9 = "";
         if (day.id === 3 && cIdx === 0) {
           p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
@@ -603,7 +549,7 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT: Single Class Timetable (Sorted from main timetable)
+  // PRINT 2: Single Class Timetable (Complete with Break, Lunch, Assembly, Extra, RELIGIO, MEWAKA)
   // -------------------------------------------------------------
   function handlePrintClass(targetClassId: number) {
     if (!data) return;
@@ -612,38 +558,81 @@ export default function TimetablePage() {
     if (!targetClass) return;
 
     const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
-        const disp = getSlotDisplay(slot);
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 3px;">
-          <div style="font-weight:900;font-size:11px;color:#0f172a;">${disp.label}</div>
-          <div style="font-size:8.5px;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
-          ${slot?.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+            <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+            <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
         </td>`;
-      }).join("");
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+            const disp = getSlotDisplay(slot);
+            return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
+              <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
+              <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+            </td>`;
+          })
+          .join("");
+      }
 
       return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
-        <td style="border:1px solid #334155;text-align:center;padding:6px;font-size:9.5px;font-weight:700;background:#f8fafc;">${getExtraForDay(s, day.id)}</td>
+        <td style="border:1px solid #000;font-weight:900;font-size:9.5px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
+        ${p5_7}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
+        ${p8_9}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 6px;font-size:8.5px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Class Timetable - ${targetClass.name}</title>
       <style>
-        @page { size: A4 landscape; margin: 10mm; }
+        @page { size: A4 landscape; margin: 8mm 6mm; }
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 12px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 28%; padding-top: 6px; }
+        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
+        .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #000; font-size: 8.5px; }
+        th { border: 1px solid #000; background: #fff; color: #000; padding: 4px 2px; font-size: 8px; font-weight: 900; text-align: center; }
+        td { border: 1px solid #000; }
+        .notes { margin-top: 8px; font-size: 8px; font-weight: 600; line-height: 1.3; }
+        .sig { display: flex; justify-content: space-between; margin-top: 24px; font-size: 9px; }
+        .sig div { border-top: 1px solid #000; width: 28%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -654,15 +643,25 @@ export default function TimetablePage() {
       <table>
         <thead>
           <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
-            <th style="width:110px;">EXTRA<br/><span style="font-size:7.5px;font-weight:400;">15:00 - 16:30</span></th>
+            <th rowspan="2" style="width:75px;">DAY</th>
+            <th>1</th><th>2</th><th>3</th><th>4</th>
+            <th rowspan="2" style="width:30px;">BREAK<br/><span style="font-size:7px;">${s.breakTime}</span></th>
+            <th>5</th><th>6</th><th>7</th>
+            <th rowspan="2" style="width:30px;">LUNCH<br/><span style="font-size:7px;">${s.lunchTime}</span></th>
+            <th>8</th><th>9</th>
+            <th rowspan="2" style="width:30px;">ASSEMBLY<br/><span style="font-size:7px;">${s.assemblyTime}</span></th>
+            <th rowspan="2" style="width:85px;">EXTRA<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="font-size:7px;">
+            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
+            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
+            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      <div style="margin-top:10px;font-size:9px;color:#475569;font-weight:600;">
-        Break Time: ${s.breakTime} · Lunch Time: ${s.lunchTime} · Assembly: ${s.assemblyTime}
+      <div class="notes">
+        ${s.notes}
       </div>
       <div class="sig">
         <div><strong>Academic Master:</strong> ___________________</div>
@@ -675,48 +674,100 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT: Teacher Timetable (Personalized)
+  // PRINT 3: Teacher Timetable (Complete with Break, Lunch, Assembly, Extra, RELIGIO, MEWAKA)
   // -------------------------------------------------------------
   function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
     if (!data) return;
     const s = data.settings;
 
     const rowsHtml = DAYS.map((day) => {
-      const pCells = PERIODS.map((p) => {
-        const slot = data.slots.find(
-          (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p.num,
-        );
-        if (!slot) {
-          return `<td style="border:1px solid #cbd5e1;text-align:center;padding:6px;color:#94a3b8;font-size:9px;background:#f8fafc;">—</td>`;
-        }
-        return `<td style="border:1px solid #334155;text-align:center;padding:6px 4px;background:#eef2ff;">
-          <div style="font-weight:900;font-size:11px;color:#1e1b4b;">${slot.className} ${slot.classSection ? `(${slot.classSection})` : ""}</div>
-          <div style="font-size:9px;font-weight:700;color:#4338ca;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
-          ${slot.room ? `<div style="font-size:7.5px;color:#64748b;">${slot.room}</div>` : ""}
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+          }
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+          }
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
         </td>`;
-      }).join("");
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = data.slots.find(
+              (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+            );
+            if (!slot) {
+              return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
+            }
+            return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+              <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+              <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.subjectCode || slot.subjectName || "Subject"}</div>
+            </td>`;
+          })
+          .join("");
+      }
 
       return `<tr>
-        <td style="border:1px solid #334155;font-weight:900;font-size:11px;background:#f8fafc;padding:6px 8px;">${day.name}</td>
-        ${pCells}
+        <td style="border:1px solid #000;font-weight:900;font-size:9.5px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
+        ${p5_7}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
+        ${p8_9}
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 6px;font-size:8.5px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Teacher Timetable - ${targetTeacherName}</title>
       <style>
-        @page { size: A4 landscape; margin: 10mm; }
+        @page { size: A4 landscape; margin: 8mm 6mm; }
         * { box-sizing: border-box; }
-        body { font-family: 'Segoe UI', Arial, sans-serif; color: #0f172a; margin: 0; }
-        .hdr { text-align: center; border-bottom: 3px solid #4f46e5; padding-bottom: 10px; margin-bottom: 14px; }
-        .hdr h2 { margin: 0; font-size: 13px; font-weight: 800; color: #475569; letter-spacing: 1px; }
-        .hdr h1 { margin: 2px 0; font-size: 20px; font-weight: 900; color: #0f172a; }
-        .hdr h3 { margin: 2px 0; font-size: 14px; font-weight: 800; color: #4f46e5; }
-        table { width: 100%; border-collapse: collapse; border: 2px solid #334155; font-size: 10px; }
-        th { border: 1px solid #334155; background: #1e293b; color: #fff; padding: 6px 4px; font-size: 9px; font-weight: 800; }
-        td { border: 1px solid #334155; }
-        .sig { display: flex; justify-content: space-between; margin-top: 30px; font-size: 10px; }
-        .sig div { border-top: 2px solid #94a3b8; width: 30%; padding-top: 6px; }
+        body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
+        .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
+        .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
+        .hdr h1 { margin: 2px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #000; font-size: 8.5px; }
+        th { border: 1px solid #000; background: #fff; color: #000; padding: 4px 2px; font-size: 8px; font-weight: 900; text-align: center; }
+        td { border: 1px solid #000; }
+        .notes { margin-top: 8px; font-size: 8px; font-weight: 600; line-height: 1.3; }
+        .sig { display: flex; justify-content: space-between; margin-top: 24px; font-size: 9px; }
+        .sig div { border-top: 1px solid #000; width: 30%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -727,12 +778,26 @@ export default function TimetablePage() {
       <table>
         <thead>
           <tr>
-            <th style="width:90px;">DAY</th>
-            ${PERIODS.map((p) => `<th>Period ${p.num}<br/><span style="font-size:7.5px;font-weight:400;">${p.time}</span></th>`).join("")}
+            <th rowspan="2" style="width:75px;">DAY</th>
+            <th>1</th><th>2</th><th>3</th><th>4</th>
+            <th rowspan="2" style="width:30px;">BREAK<br/><span style="font-size:7px;">${s.breakTime}</span></th>
+            <th>5</th><th>6</th><th>7</th>
+            <th rowspan="2" style="width:30px;">LUNCH<br/><span style="font-size:7px;">${s.lunchTime}</span></th>
+            <th>8</th><th>9</th>
+            <th rowspan="2" style="width:30px;">ASSEMBLY<br/><span style="font-size:7px;">${s.assemblyTime}</span></th>
+            <th rowspan="2" style="width:85px;">EXTRA<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="font-size:7px;">
+            <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
+            <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
+            <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
           </tr>
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
       <div class="sig">
         <div><strong>Teacher:</strong> ${targetTeacherName}</div>
         <div><strong>Academic Master:</strong> ___________________</div>
@@ -748,32 +813,18 @@ export default function TimetablePage() {
   return (
     <AppShell permission="timetable.view">
       <div className="space-y-5">
-        <PageHeader icon="📅" title="Timetable" subtitle="General teaching schedule, class streams, and teacher workloads">
+        <PageHeader icon="📅" title="Timetable" subtitle="General teaching schedule, class timetables, and teacher workloads">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-3.5 py-1.5 text-xs font-bold text-violet-700 ring-1 ring-inset ring-violet-200">
               {roleBadge}
             </span>
             {isManager && (
-              <>
-                <button
-                  onClick={() => setAddClassModalOpen(true)}
-                  className={cls(btnPrimary, "text-xs font-bold")}
-                >
-                  ➕ Add Class / Stream Row
-                </button>
-                <button
-                  onClick={() => setManageClassesOpen(true)}
-                  className={cls(btnGhost, "text-xs font-bold text-slate-700")}
-                >
-                  🏫 Manage Class Rows
-                </button>
-                <button
-                  onClick={openSettings}
-                  className={cls(btnGhost, "text-xs font-bold text-slate-700")}
-                >
-                  ⚙️ Settings
-                </button>
-              </>
+              <button
+                onClick={openSettings}
+                className={cls(btnGhost, "text-xs font-bold text-slate-700")}
+              >
+                ⚙️ Timetable Settings
+              </button>
             )}
           </div>
         </PageHeader>
@@ -1206,37 +1257,60 @@ export default function TimetablePage() {
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[800px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
-                              {PERIODS.map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                              {PERIODS.slice(0, 4).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 px-3 py-2 text-center font-extrabold text-[11px] text-slate-700 w-36">
-                                Extra Curriculum
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
+                              {PERIODS.slice(4, 7).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                                </th>
+                              ))}
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
+                              {PERIODS.slice(7, 9).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                                </th>
+                              ))}
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-                                {PERIODS.map((p) => {
-                                  const slot = slotMap.get(`${day.id}-${p.num}-${targetClass.id}`);
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
                                   const disp = getSlotDisplay(slot);
 
                                   return (
                                     <td
-                                      key={p.num}
-                                      onClick={() => isManager && handleSlotClick(day.id, p.num, targetClass.id)}
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
                                       className={cls(
                                         "border border-slate-200 px-2 py-2 text-center transition",
                                         isManager && "cursor-pointer hover:bg-violet-50",
@@ -1244,19 +1318,100 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
                                     >
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
                                       {slot?.teacherName && (
-                                        <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
                                           {slot.teacherName}
                                         </div>
-                                      )}
-                                      {slot?.room && (
-                                        <div className="text-[9px] text-slate-400">{slot.room}</div>
                                       )}
                                     </td>
                                   );
                                 })}
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-2 text-center font-bold text-xs text-emerald-800">
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+                                  const disp = getSlotDisplay(slot);
+
+                                  return (
+                                    <td
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })}
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+                                    const disp = getSlotDisplay(slot);
+                                    return (
+                                      <td
+                                        key={p}
+                                        onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                        className={cls(
+                                          "border border-slate-200 px-2 py-2 text-center transition",
+                                          isManager && "cursor-pointer hover:bg-violet-50",
+                                          disp.isSpecial ? "bg-slate-100" : "",
+                                        )}
+                                        title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                      >
+                                        <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                        {slot?.teacherName && (
+                                          <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                            {slot.teacherName}
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
                                   {getExtraForDay(data.settings, day.id)}
                                 </td>
                               </tr>
@@ -1265,9 +1420,9 @@ export default function TimetablePage() {
                         </table>
                       </div>
 
-                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 flex flex-wrap gap-4 justify-between">
-                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b></span>
-                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any cell to re-assign.</span>}
+                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex flex-wrap gap-4 justify-between">
+                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b> · 🔔 Assembly: <b>{data.settings.assemblyTime}</b></span>
+                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any period cell to re-assign.</span>}
                       </div>
                     </div>
                   );
@@ -1355,43 +1510,69 @@ export default function TimetablePage() {
                           onClick={() => handlePrintTeacher(Number(currentTeacherId), targetTeacher.name)}
                           className={cls(btnPrimary, "text-xs font-bold")}
                         >
-                          🖨️ Print My Schedule
+                          🖨️ Print Teacher Schedule
                         </button>
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[760px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
-                              {PERIODS.map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                              {PERIODS.slice(0, 4).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
+                              {PERIODS.slice(4, 7).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                                </th>
+                              ))}
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
+                              {PERIODS.slice(7, 9).map((p) => (
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
+                                </th>
+                              ))}
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-                                {PERIODS.map((p) => {
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
                                   const slot = data.slots.find(
                                     (sl) =>
                                       sl.teacherId === Number(currentTeacherId) &&
                                       sl.dayOfWeek === day.id &&
-                                      sl.period === p.num,
+                                      sl.period === p,
                                   );
 
                                   if (!slot) {
                                     return (
                                       <td
-                                        key={p.num}
+                                        key={p}
                                         className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
                                       >
                                         <span className="text-[10px] italic">Free</span>
@@ -1401,21 +1582,124 @@ export default function TimetablePage() {
 
                                   return (
                                     <td
-                                      key={p.num}
-                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/60"
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
                                     >
-                                      <div className="font-black text-indigo-950 text-sm">
-                                        {slot.className} {slot.classSection ? `(${slot.classSection})` : ""}
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {slot.className}
                                       </div>
                                       <div className="font-bold text-indigo-700 text-[10px] mt-0.5">
                                         {slot.subjectCode || slot.subjectName || "Subject"}
                                       </div>
-                                      {slot.room && (
-                                        <div className="text-[9px] text-slate-500">{slot.room}</div>
-                                      )}
                                     </td>
                                   );
                                 })}
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = data.slots.find(
+                                    (sl) =>
+                                      sl.teacherId === Number(currentTeacherId) &&
+                                      sl.dayOfWeek === day.id &&
+                                      sl.period === p,
+                                  );
+
+                                  if (!slot) {
+                                    return (
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  return (
+                                    <td
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                    >
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {slot.className}
+                                      </div>
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5">
+                                        {slot.subjectCode || slot.subjectName || "Subject"}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = data.slots.find(
+                                      (sl) =>
+                                        sl.teacherId === Number(currentTeacherId) &&
+                                        sl.dayOfWeek === day.id &&
+                                        sl.period === p,
+                                    );
+
+                                    if (!slot) {
+                                      return (
+                                        <td
+                                          key={p}
+                                          className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                        >
+                                          <span className="text-[10px] italic">Free</span>
+                                        </td>
+                                      );
+                                    }
+
+                                    return (
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                      >
+                                        <div className="font-black text-indigo-950 text-xs">
+                                          {slot.className}
+                                        </div>
+                                        <div className="font-bold text-indigo-700 text-[10px] mt-0.5">
+                                          {slot.subjectCode || slot.subjectName || "Subject"}
+                                        </div>
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
+                                  {getExtraForDay(data.settings, day.id)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>
@@ -1545,225 +1829,6 @@ export default function TimetablePage() {
                 </div>
               </div>
             </form>
-          </Modal>
-        )}
-
-        {/* ========================================================= */}
-        {/* MODAL: ADD CLASS / STREAM ROW TO TIMETABLE (Academic)     */}
-        {/* ========================================================= */}
-        {addClassModalOpen && (
-          <Modal
-            open={addClassModalOpen}
-            onClose={() => setAddClassModalOpen(false)}
-            title="➕ Add Class or Stream Row (e.g. Form 4 A, Form 4 B)"
-          >
-            <form onSubmit={handleAddClassRow} className="space-y-4">
-              <div className="rounded-xl border border-indigo-100 bg-indigo-50/70 p-3 text-xs text-indigo-900 leading-relaxed">
-                💡 Unaweza kuongeza mkondo/stream kwa darasa lolote (k.m. <b>Form 4 A</b> au <b>Form 4 B</b>, <b>Form 1 A</b> au <b>Form 1 B</b>).
-                Mfumo utatengeneza kiotomatiki safu ya darasa hilo kwenye ratiba kuu kwa vipindi 1 hadi 9 kwa wiki nzima!
-              </div>
-
-              {classMsg && (
-                <div className="p-3 text-xs font-semibold rounded-xl bg-rose-50 text-rose-700 border border-rose-200">
-                  {classMsg}
-                </div>
-              )}
-
-              <Field label="Class Name (Darasa)" required>
-                <input
-                  type="text"
-                  value={classForm.name}
-                  onChange={(e) => setClassForm({ ...classForm, name: e.target.value })}
-                  placeholder="e.g. Form 1, Form 2, Form 3, Form 4"
-                  className={inputCls}
-                  required
-                />
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {["Form 1", "Form 2", "Form 3", "Form 4"].map((cn) => (
-                    <button
-                      key={cn}
-                      type="button"
-                      onClick={() => setClassForm({ ...classForm, name: cn })}
-                      className="rounded-lg bg-slate-100 hover:bg-slate-200 px-2.5 py-1 text-xs font-bold text-slate-700"
-                    >
-                      {cn}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-
-              <Field label="Stream / Section (Mkondo)" required>
-                <input
-                  type="text"
-                  value={classForm.section}
-                  onChange={(e) => setClassForm({ ...classForm, section: e.target.value })}
-                  placeholder="e.g. A, B, C, Science, Arts"
-                  className={inputCls}
-                  required
-                />
-                <div className="flex flex-wrap gap-1.5 mt-1.5">
-                  {["A", "B", "C", "A & B", "Science", "Arts"].map((sec) => (
-                    <button
-                      key={sec}
-                      type="button"
-                      onClick={() => setClassForm({ ...classForm, section: sec })}
-                      className="rounded-lg bg-violet-50 hover:bg-violet-100 px-2.5 py-1 text-xs font-bold text-violet-700 border border-violet-200"
-                    >
-                      {sec}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-
-              <Field label="Student Capacity (Optional)">
-                <input
-                  type="number"
-                  min={1}
-                  value={classForm.capacity}
-                  onChange={(e) => setClassForm({ ...classForm, capacity: Number(e.target.value) || 40 })}
-                  className={inputCls}
-                />
-              </Field>
-
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setAddClassModalOpen(false)}
-                  className={btnGhost}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingClass}
-                  className={btnPrimary}
-                >
-                  {savingClass ? "Adding..." : "➕ Create & Add to Timetable"}
-                </button>
-              </div>
-            </form>
-          </Modal>
-        )}
-
-        {/* ========================================================= */}
-        {/* MODAL: MANAGE TIMETABLE CLASSES / STREAMS                 */}
-        {/* ========================================================= */}
-        {manageClassesOpen && (
-          <Modal
-            open={manageClassesOpen}
-            onClose={() => { setManageClassesOpen(false); setEditingClass(null); }}
-            title="🏫 Manage Timetable Classes & Stream Rows"
-            wide
-          >
-            <div className="space-y-4">
-              <p className="text-xs text-slate-500">
-                Orodha ya madarasa na mikondo yote iliyopo kwenye ratiba. Unaweza kubadilisha mkondo (k.m. kuweka A au B) au kufuta safu ya darasa kwenye ratiba.
-              </p>
-
-              {editingClass ? (
-                <form onSubmit={handleUpdateClass} className="rounded-xl border border-violet-200 bg-violet-50/50 p-4 space-y-3">
-                  <p className="font-extrabold text-xs text-violet-900 uppercase">
-                    ✏️ Edit Class Row: {editingClass.name}
-                  </p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Class Name" required>
-                      <input
-                        type="text"
-                        value={editingClass.name}
-                        onChange={(e) => setEditingClass({ ...editingClass, name: e.target.value })}
-                        className={inputCls}
-                        required
-                      />
-                    </Field>
-                    <Field label="Stream / Section" required>
-                      <input
-                        type="text"
-                        value={editingClass.section}
-                        onChange={(e) => setEditingClass({ ...editingClass, section: e.target.value })}
-                        placeholder="e.g. A, B"
-                        className={inputCls}
-                        required
-                      />
-                    </Field>
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <button type="button" onClick={() => setEditingClass(null)} className={btnGhost}>
-                      Cancel
-                    </button>
-                    <button type="submit" className={btnPrimary}>
-                      Save Changes
-                    </button>
-                  </div>
-                </form>
-              ) : null}
-
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-100 text-slate-700">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-bold">Class Name</th>
-                      <th className="px-3 py-2 text-left font-bold">Stream / Section</th>
-                      <th className="px-3 py-2 text-center font-bold">Print Format</th>
-                      <th className="px-3 py-2 text-right font-bold">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {data?.classes.map((c) => (
-                      <tr key={c.id} className="hover:bg-slate-50">
-                        <td className="px-3 py-2.5 font-bold text-slate-800">{c.name}</td>
-                        <td className="px-3 py-2.5">
-                          {c.section ? (
-                            <span className="rounded bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">
-                              {c.section}
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 italic">No section</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-2.5 text-center font-mono font-bold text-slate-700">
-                          {formatClassPrint(c.name, c.section)}
-                        </td>
-                        <td className="px-3 py-2.5 text-right">
-                          <div className="flex justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setEditingClass({ id: c.id, name: c.name, section: c.section })}
-                              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                            >
-                              ✏️ Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteClass(c.id, c.name)}
-                              className="rounded-lg bg-rose-50 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-100"
-                            >
-                              🗑️ Remove
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex justify-between items-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setManageClassesOpen(false); setAddClassModalOpen(true); }}
-                  className={cls(btnPrimary, "text-xs font-bold")}
-                >
-                  ➕ Add New Class / Stream Row
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setManageClassesOpen(false)}
-                  className={btnGhost}
-                >
-                  Close
-                </button>
-              </div>
-            </div>
           </Modal>
         )}
 

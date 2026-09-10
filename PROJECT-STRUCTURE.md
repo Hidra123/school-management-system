@@ -168,6 +168,7 @@ shulehub-sms/
     │   │   ──────── 👨‍🏫 MEMBER (Walimu na Watumishi) ────────
     │   │
     │   ├── students/page.tsx             # 🔧 Wanafunzi (CRUD, Excel Import, Academic Master anaona wote)
+│   ├── map-students/page.tsx         # ✅ Map Students to Subjects (Optional subjects, student enrollment matrix, Submit Scores integration)
     │   ├── teachers/page.tsx             # ✅ Teachers view kwa wanachama
     │   ├── classes/page.tsx              # ✅ Classes view kwa wanachama
     │   ├── subjects/page.tsx             # ✅ Subjects view kwa wanachama
@@ -183,6 +184,7 @@ shulehub-sms/
     │   │   └── report/page.tsx           # 🚧 STUB: Ripoti ya uwasilishaji alama
     │   │
     │   ├── timetable/page.tsx            # 🔧 Timetable (General, Class, Teacher, Print 3, Edit, Settings)
+│   ├── year-progression/page.tsx     # ✅ Academic Year Progression (Active Year Switcher, Class Promotion Engine Form 1-4, Alumni Archive)
     │   │
     │   ├── fees/page.tsx                 # ✅ ⚠️ Ada (bado haijawekewa scoping ya walimu)
     │   ├── lesson-plans/page.tsx         # 🚧 STUB: Maazimio ya kazi / Masomo

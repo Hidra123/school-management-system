@@ -270,11 +270,39 @@ export const fees = pgTable("fees", {
     .notNull()
     .references(() => students.id, { onDelete: "cascade" }),
   description: varchar("description", { length: 160 }).notNull().default("School fee"),
-  amount: doublePrecision("amount").notNull().default(0),
+    amount: doublePrecision("amount").notNull().default(0),
   paidAmount: doublePrecision("paid_amount").notNull().default(0),
   dueDate: date("due_date", { mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------- Timetable ----------
+// One lesson slot per (class, day, period). The Academic Master builds the
+// general school timetable by filling these cells; teachers only ever READ
+// the entries that involve their assigned classes/subjects.
+export const timetableEntries = pgTable(
+  "timetable_entries",
+  {
+    id: serial("id").primaryKey(),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    // 1 = Monday .. 5 = Friday (see src/lib/timetableConfig.ts).
+    dayOfWeek: integer("day_of_week").notNull(),
+    // Lesson period number 1..9 (breaks/lunch/assembly are fixed slots in
+    // src/lib/timetableConfig.ts and are NOT stored in the database).
+    period: integer("period").notNull(),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => subjects.id, { onDelete: "cascade" }),
+    // Denormalized from subjects.teacherId at save time so a teacher's own
+    // timetable can be one fast lookup; nullable when the subject is unassigned.
+    teacherId: integer("teacher_id").references(() => teachers.id, { onDelete: "set null" }),
+    academicYear: varchar("academic_year", { length: 10 }).notNull().default(""),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("timetable_class_day_period_idx").on(t.classId, t.dayOfWeek, t.period)],
+);
 
 // ---------- Types ----------
 export type UserRow = typeof users.$inferSelect;
@@ -291,3 +319,4 @@ export type ExamRow = typeof exams.$inferSelect;
 export type ExamClassRow = typeof examClasses.$inferSelect;
 export type ExamSettingsRow = typeof examSettings.$inferSelect;
 export type StudentExamRemarksRow = typeof studentExamRemarks.$inferSelect;
+export type TimetableEntryRow = typeof timetableEntries.$inferSelect;

@@ -111,7 +111,7 @@ shulehub-sms/
     │   │   ├── tracking/page.tsx        # ✅ Score Tracking — stat cards + filters (Class/Exam Type/Category/Year) + 3 tabs (Submission Progress, Detailed Score View, By Teacher) + Print
     │   │   └── report/page.tsx          # 🚧 STUB
     │   ├── fees/page.tsx                # ✅ ⚠️ bado haijascope kwa teachers
-    │   ├── timetable/page.tsx           # 🚧 STUB
+    │   ├── timetable/page.tsx           # ✅ Timetable — Manager (General Timetable grid + print, Class Timetable + print, By Teacher + print, Slot editing, Settings) & Teacher (My Timetable, assigned class view)
     │   ├── lesson-plans/page.tsx        # 🚧 STUB
     │   ├── logbook/page.tsx             # 🚧 STUB
     │   ├── tod/page.tsx                 # 🚧 STUB
@@ -140,7 +140,7 @@ shulehub-sms/
     │   ├── attendance-tracking/ (SchoolOverview · DailySummary · AtRisk)
     │   └── exams/ (ManageExaminations 🔧 · ExamRoutineResults · ClassResultReport · StudentReportCard)
     │
-    ├── db/  index.ts · schema.ts 🔧 · seed.ts
+    ├── db/  index.ts · schema.ts 🔧 (timetable_settings, timetable_slots) · seed.ts
     │
     └── lib/ auth.ts · permissions.ts · teachers.ts 🔧 · examTypes.ts 🔧
         · examGrading.ts · attendanceHelpers.ts · apiError.ts · utils.ts

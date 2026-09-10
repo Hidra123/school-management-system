@@ -103,35 +103,46 @@ function getExtraForDay(settings: TimetableSettings, dayOfWeek: number) {
   }
 }
 
-/** Converts any raw subject code / name to the standard short code seen in official timetables */
-function getSubjectShortCode(slot: TimetableSlot | undefined): string {
-  if (!slot) return "";
-  if (slot.customLabel) return slot.customLabel;
-  const rawCode = (slot.subjectCode || "").trim().toUpperCase();
-  const rawName = (slot.subjectName || "").trim().toLowerCase();
-
-  if (rawCode.startsWith("KISW") || rawCode === "021" || rawName.includes("kiswahili")) return "KISW";
-  if (rawCode.startsWith("MATH") || rawCode === "041" || rawName.includes("mathem")) return "MATH";
-  if (rawCode.startsWith("ENG") || rawCode === "022" || rawName.includes("eng")) return "ENG";
-  if (rawCode.startsWith("PHY") || rawCode === "031" || rawName.includes("phys")) return "PHY";
-  if (rawCode.startsWith("CHEM") || rawCode === "032" || rawName.includes("chem")) return "CHEM";
-  if (rawCode.startsWith("BIO") || rawCode === "033" || rawName.includes("bio")) return "BIO";
-  if (rawCode.startsWith("GEO") || rawCode === "013" || rawName.includes("geo")) return "GEO";
-  if (rawCode.startsWith("CIV") || rawCode === "011" || rawName.includes("civic")) return "CIV";
-  if (rawCode.startsWith("CSC") || rawCode === "037" || rawName.includes("computer science")) return "CSC";
-  if (rawCode.startsWith("CAPP") || rawCode === "398" || rawName.includes("computer app")) return "CSC";
-  if (rawCode.startsWith("H/TZM") || rawCode.startsWith("HIS/TZ") || rawName.includes("tanzania")) return "HIS/TZ";
-  if (rawCode.startsWith("B/STD") || rawCode === "065" || rawName.includes("business")) return "B/STD";
-  if (rawCode.startsWith("HIS") || rawCode === "021" || rawCode === "012" || rawName.includes("history")) return "HIS";
-
-  if (rawCode) return rawCode.split("-")[0];
-  if (slot.subjectName) return slot.subjectName.slice(0, 4).toUpperCase();
-  return "";
+/** Standard timetable code map matching Tanzania curriculum & Mangi Wingia format */
+function getStandardSubjectCode(name: string | null | undefined, code: string | null | undefined): string {
+  if (code && code.trim()) {
+    const c = code.trim().toUpperCase();
+    // Normalize codes like MATH-041 -> MATH, KISW-021 -> KISW, ENG-022 -> ENG
+    if (c.startsWith("KISW")) return "KISW";
+    if (c.startsWith("MATH")) return "MATH";
+    if (c.startsWith("ENG")) return "ENG";
+    if (c.startsWith("PHY")) return "PHY";
+    if (c.startsWith("CHEM")) return "CHEM";
+    if (c.startsWith("BIO")) return "BIO";
+    if (c.startsWith("GEO")) return "GEO";
+    if (c.startsWith("CIV")) return "CIV";
+    if (c.startsWith("CSC")) return "CSC";
+    if (c.startsWith("B/STD") || c.startsWith("BST")) return "B/STD";
+    if (c.startsWith("H/TZM") || c.startsWith("HIST/TZ") || c.startsWith("HIS/TZ")) return "HIS/TZ";
+    if (c.startsWith("HIS")) return "HIS";
+    if (c.startsWith("CAPP")) return "CSC";
+    return c;
+  }
+  if (!name) return "";
+  const n = name.trim().toLowerCase();
+  if (n.includes("math")) return "MATH";
+  if (n.includes("kisw")) return "KISW";
+  if (n.includes("eng")) return "ENG";
+  if (n.includes("phys")) return "PHY";
+  if (n.includes("chem")) return "CHEM";
+  if (n.includes("bio")) return "BIO";
+  if (n.includes("geog")) return "GEO";
+  if (n.includes("civ")) return "CIV";
+  if (n.includes("historia ya tanzania")) return "HIS/TZ";
+  if (n.includes("hist")) return "HIS";
+  if (n.includes("business")) return "B/STD";
+  if (n.includes("computer")) return "CSC";
+  return name.slice(0, 5).toUpperCase();
 }
 
-/** Subject display with fallback logic that NEVER outputs raw "SUBJ" */
+/** Subject display logic ensuring clean standard codes on both UI and Print */
 function getSlotDisplay(slot: TimetableSlot | undefined) {
-  if (!slot) return { label: "—", sub: "", isSpecial: false };
+  if (!slot) return { label: "—", sub: "", tone: "empty", isSpecial: false };
   if (slot.customLabel) {
     const isSpecial = ["RELIGIO", "MEWAKA", "PS", "SPORTS", "DEBATE"].includes(
       slot.customLabel.toUpperCase(),
@@ -139,13 +150,15 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
     return {
       label: slot.customLabel,
       sub: slot.customLabel === "PS" ? "Private Studies" : "",
+      tone: isSpecial ? "special" : "normal",
       isSpecial,
     };
   }
-  const code = getSubjectShortCode(slot);
+  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
   return {
-    label: code || "—",
+    label: code || (slot.teacherName ? "CLASS" : "—"),
     sub: slot.teacherName || slot.subjectName || "",
+    tone: "subject",
     isSpecial: false,
   };
 }
@@ -178,11 +191,12 @@ function printViaIframe(htmlContent: string) {
   iframe.style.position = "fixed";
   iframe.style.right = "0";
   iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.width = "10px";
+  iframe.style.height = "10px";
+  iframe.style.opacity = "0.01";
   iframe.style.border = "0";
   document.body.appendChild(iframe);
-  const doc = iframe.contentDocument;
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) {
     document.body.removeChild(iframe);
     window.print();
@@ -191,12 +205,23 @@ function printViaIframe(htmlContent: string) {
   doc.open();
   doc.write(htmlContent);
   doc.close();
-  const win = iframe.contentWindow;
-  if (win) {
-    win.focus();
-    win.print();
-  }
-  setTimeout(() => document.body.removeChild(iframe), 3000);
+
+  // Give browser a short tick to parse images/fonts before calling print()
+  setTimeout(() => {
+    try {
+      const win = iframe.contentWindow;
+      if (win) {
+        win.focus();
+        win.print();
+      }
+    } catch {
+      window.print();
+    } finally {
+      setTimeout(() => {
+        try { document.body.removeChild(iframe); } catch {}
+      }, 5000);
+    }
+  }, 350);
 }
 
 export default function TimetablePage() {
@@ -224,7 +249,7 @@ export default function TimetablePage() {
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [dayFilter, setDayFilter] = useState<string>("all");
 
-  // Slot edit modal
+  // Modals
   const [editSlot, setEditSlot] = useState<{
     dayOfWeek: number;
     period: number;
@@ -238,7 +263,6 @@ export default function TimetablePage() {
   const [savingSlot, setSavingSlot] = useState(false);
   const [slotMsg, setSlotMsg] = useState<string | null>(null);
 
-  // Settings modal
   const [settingsModalOpen, setSettingsModalOpen] = useState(false);
   const [settingsForm, setSettingsForm] = useState<TimetableSettings | null>(null);
   const [savingSettings, setSavingSettings] = useState(false);
@@ -276,25 +300,32 @@ export default function TimetablePage() {
     return map;
   }, [data?.slots]);
 
-  // Workload statistics for the selected teacher
-  const teacherStats = useMemo(() => {
-    let periodsCount = 0;
-    const classSet = new Set<number>();
-    const subjectSet = new Set<number>();
+  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot
+  const mySlotsMap = useMemo(() => {
     const targetId =
       isManager && effectiveTab === "teacher"
         ? Number(currentTeacherId)
         : data?.teacherId;
-
-    if (targetId && data?.slots) {
-      for (const slot of data.slots) {
-        if (slot.teacherId === targetId) {
-          periodsCount++;
-          if (slot.classId) classSet.add(slot.classId);
-          if (slot.subjectId) subjectSet.add(slot.subjectId);
-        }
+    const map = new Map<string, TimetableSlot>();
+    if (!targetId) return map;
+    for (const slot of data?.slots ?? []) {
+      if (slot.teacherId === targetId) {
+        map.set(`${slot.dayOfWeek}-${slot.period}`, slot);
       }
     }
+    return map;
+  }, [data?.slots, data?.teacherId, isManager, effectiveTab, currentTeacherId]);
+
+  // Workload statistics for the teacher
+  const teacherStats = useMemo(() => {
+    let periodsCount = 0;
+    const classSet = new Set<number>();
+    const subjectSet = new Set<number>();
+    mySlotsMap.forEach((slot) => {
+      periodsCount++;
+      if (slot.classId) classSet.add(slot.classId);
+      if (slot.subjectId) subjectSet.add(slot.subjectId);
+    });
     const totalPossibleSlots = 5 * 9; // 45
     return {
       periodsCount,
@@ -302,7 +333,7 @@ export default function TimetablePage() {
       subjectsCount: subjectSet.size,
       freePeriods: Math.max(0, totalPossibleSlots - periodsCount),
     };
-  }, [data?.slots, data?.teacherId, isManager, effectiveTab, currentTeacherId]);
+  }, [mySlotsMap]);
 
   // Open Edit Slot Modal
   function handleSlotClick(dayOfWeek: number, period: number, classId: number) {
@@ -440,7 +471,7 @@ export default function TimetablePage() {
           })
           .join("");
 
-        // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+        // Periods 8 & 9 (Wed RELIGIO, Fri MEWAKA)
         let p8_9 = "";
         if (day.id === 3 && cIdx === 0) {
           p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #000;text-align:center;font-weight:900;font-size:12px;background:#fff;letter-spacing:1px;vertical-align:middle;">
@@ -516,7 +547,7 @@ export default function TimetablePage() {
       <title>${s.title}</title>
       <style>
         @page { size: A4 landscape; margin: 6mm 5mm; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        * { box-sizing: border-box; }
         body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
         .hdr { text-align: center; margin-bottom: 6px; }
         .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
@@ -565,7 +596,7 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT 2: Single Class Timetable (Complete with all features)
+  // PRINT 2: Single Class Timetable (Complete with Break, Lunch, Assembly, Extra, RELIGIO, MEWAKA)
   // -------------------------------------------------------------
   function handlePrintClass(targetClassId: number) {
     if (!data) return;
@@ -581,7 +612,7 @@ export default function TimetablePage() {
           const disp = getSlotDisplay(slot);
           return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
             <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
-            <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+            <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
           </td>`;
         })
         .join("");
@@ -593,7 +624,7 @@ export default function TimetablePage() {
           const disp = getSlotDisplay(slot);
           return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
             <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
-            <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+            <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
           </td>`;
         })
         .join("");
@@ -601,11 +632,11 @@ export default function TimetablePage() {
       // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
       let p8_9 = "";
       if (day.id === 3) {
-        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
           RELIGIO
         </td>`;
       } else if (day.id === 5) {
-        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
           MEWAKA
         </td>`;
       } else {
@@ -615,40 +646,40 @@ export default function TimetablePage() {
             const disp = getSlotDisplay(slot);
             return `<td style="border:1px solid #000;text-align:center;padding:4px 2px;vertical-align:middle;">
               <div style="font-weight:900;font-size:9.5px;color:#000;">${disp.label}</div>
-              <div style="font-size:7px;color:#334155;margin-top:2px;">${slot?.teacherName || ""}</div>
+              <div style="font-size:7.5px;color:#334155;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
             </td>`;
           })
           .join("");
       }
 
       return `<tr>
-        <td style="border:1px solid #000;font-weight:900;font-size:9px;background:#f8fafc;padding:5px 6px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        <td style="border:1px solid #000;font-weight:900;font-size:9.5px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;">${day.name}</td>
         ${p1_4}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">BREAK TIME</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
         ${p5_7}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">LUNCH TIME</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
         ${p8_9}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">ASSEMBLY</td>
-        <td style="border:1px solid #000;text-align:center;padding:4px 4px;font-size:8.5px;font-weight:800;background:#fff;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 6px;font-size:8.5px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Class Timetable - ${targetClass.name}</title>
       <style>
-        @page { size: A4 landscape; margin: 6mm 5mm; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        @page { size: A4 landscape; margin: 8mm 6mm; }
+        * { box-sizing: border-box; }
         body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
         .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
         .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
-        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; color: #000; text-transform: uppercase; }
-        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
-        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
-        table.tt td { border: 1px solid #000; }
-        .notes { margin-top: 6px; font-size: 8px; font-weight: 700; line-height: 1.35; }
-        .sig { display: flex; justify-content: space-between; margin-top: 20px; font-size: 9px; font-weight: bold; }
-        .sig div { border-top: 1.5px solid #000; width: 28%; padding-top: 4px; }
+        .hdr h1 { margin: 2px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #000; font-size: 8.5px; }
+        th { border: 1px solid #000; background: #fff; color: #000; padding: 4px 2px; font-size: 8px; font-weight: 900; text-align: center; }
+        td { border: 1px solid #000; }
+        .notes { margin-top: 8px; font-size: 8px; font-weight: 600; line-height: 1.3; }
+        .sig { display: flex; justify-content: space-between; margin-top: 24px; font-size: 9px; }
+        .sig div { border-top: 1px solid #000; width: 28%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -656,19 +687,19 @@ export default function TimetablePage() {
         <h1>${s.schoolName}</h1>
         <h3>CLASS TIMETABLE — ${targetClass.name.toUpperCase()}${targetClass.section ? " (" + targetClass.section + ")" : ""} · ${s.academicYear}</h3>
       </div>
-      <table class="tt">
+      <table>
         <thead>
-          <tr style="background:#fff;">
-            <th rowspan="2" style="width:75px;">DAYS</th>
+          <tr>
+            <th rowspan="2" style="width:75px;">DAY</th>
             <th>1</th><th>2</th><th>3</th><th>4</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
+            <th rowspan="2" style="width:30px;">BREAK<br/><span style="font-size:7px;">${s.breakTime}</span></th>
             <th>5</th><th>6</th><th>7</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
+            <th rowspan="2" style="width:30px;">LUNCH<br/><span style="font-size:7px;">${s.lunchTime}</span></th>
             <th>8</th><th>9</th>
-            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
-            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+            <th rowspan="2" style="width:30px;">ASSEMBLY<br/><span style="font-size:7px;">${s.assemblyTime}</span></th>
+            <th rowspan="2" style="width:85px;">EXTRA<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
           </tr>
-          <tr style="background:#fff;font-size:7px;">
+          <tr style="font-size:7px;">
             <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
             <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
             <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
@@ -680,9 +711,9 @@ export default function TimetablePage() {
         ${s.notes}
       </div>
       <div class="sig">
-        <div>Academic Master: ___________________</div>
-        <div>Class Teacher: ___________________</div>
-        <div>Head of School: ___________________</div>
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Class Teacher:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
       </div>
     </body></html>`;
 
@@ -690,7 +721,7 @@ export default function TimetablePage() {
   }
 
   // -------------------------------------------------------------
-  // PRINT 3: Teacher Timetable (Complete with all features)
+  // PRINT 3: Teacher Timetable (Complete with Break, Lunch, Assembly, Extra, RELIGIO, MEWAKA)
   // -------------------------------------------------------------
   function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
     if (!data) return;
@@ -706,10 +737,9 @@ export default function TimetablePage() {
           if (!slot) {
             return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
           }
-          const code = getSubjectShortCode(slot);
-          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
-            <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
-            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
           </td>`;
         })
         .join("");
@@ -723,10 +753,9 @@ export default function TimetablePage() {
           if (!slot) {
             return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
           }
-          const code = getSubjectShortCode(slot);
-          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
-            <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
-            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+          return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+            <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
           </td>`;
         })
         .join("");
@@ -734,11 +763,11 @@ export default function TimetablePage() {
       // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
       let p8_9 = "";
       if (day.id === 3) {
-        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
           RELIGIO
         </td>`;
       } else if (day.id === 5) {
-        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#fff;letter-spacing:1px;vertical-align:middle;">
+        p8_9 = `<td colspan="2" style="border:1px solid #000;text-align:center;font-weight:900;font-size:11px;background:#f8fafc;letter-spacing:1px;vertical-align:middle;">
           MEWAKA
         </td>`;
       } else {
@@ -750,43 +779,42 @@ export default function TimetablePage() {
             if (!slot) {
               return `<td style="border:1px solid #000;text-align:center;padding:4px;color:#94a3b8;font-size:8px;background:#f8fafc;">Free</td>`;
             }
-            const code = getSubjectShortCode(slot);
-            return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#fff;">
-              <div style="font-weight:900;font-size:10px;color:#000;">${code}</div>
-              <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${slot.className || ""}</div>
+            return `<td style="border:1px solid #000;text-align:center;padding:3px 2px;background:#f0fdf4;">
+              <div style="font-weight:900;font-size:9.5px;color:#000;">${slot.className || "Class"}</div>
+              <div style="font-size:7.5px;font-weight:700;color:#1e3a8a;margin-top:1px;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
             </td>`;
           })
           .join("");
       }
 
       return `<tr>
-        <td style="border:1px solid #000;font-weight:900;font-size:9px;background:#f8fafc;padding:5px 6px;text-align:center;text-transform:uppercase;">${day.name}</td>
+        <td style="border:1px solid #000;font-weight:900;font-size:9.5px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;">${day.name}</td>
         ${p1_4}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">BREAK TIME</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
         ${p5_7}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">LUNCH TIME</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
         ${p8_9}
-        <td style="border:1px solid #000;text-align:center;font-weight:900;font-size:8px;background:#fff;vertical-align:middle;padding:2px;">ASSEMBLY</td>
-        <td style="border:1px solid #000;text-align:center;padding:4px 4px;font-size:8.5px;font-weight:800;background:#fff;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
+        <td style="border:1px solid #000;text-align:center;font-weight:800;font-size:8px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #000;text-align:center;padding:4px 6px;font-size:8.5px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
       </tr>`;
     }).join("");
 
     const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <title>Teacher Timetable - ${targetTeacherName}</title>
       <style>
-        @page { size: A4 landscape; margin: 6mm 5mm; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        @page { size: A4 landscape; margin: 8mm 6mm; }
+        * { box-sizing: border-box; }
         body { font-family: 'Times New Roman', Times, serif, Arial; color: #000; margin: 0; padding: 0; }
         .hdr { text-align: center; border-bottom: 2px solid #000; padding-bottom: 6px; margin-bottom: 8px; }
         .hdr h2 { margin: 0; font-size: 13px; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
-        .hdr h1 { margin: 2px 0; font-size: 15px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
-        .hdr h3 { margin: 1px 0; font-size: 12px; font-weight: 900; color: #000; text-transform: uppercase; }
-        table.tt { width: 100%; border-collapse: collapse; border: 2px solid #000; }
-        table.tt th { border: 1px solid #000; text-align: center; padding: 3px 1px; font-size: 8px; font-weight: 900; vertical-align: middle; }
-        table.tt td { border: 1px solid #000; }
-        .notes { margin-top: 6px; font-size: 8px; font-weight: 700; line-height: 1.35; }
-        .sig { display: flex; justify-content: space-between; margin-top: 20px; font-size: 9px; font-weight: bold; }
-        .sig div { border-top: 1.5px solid #000; width: 30%; padding-top: 4px; }
+        .hdr h1 { margin: 2px 0; font-size: 16px; font-weight: 900; letter-spacing: 1px; text-transform: uppercase; }
+        .hdr h3 { margin: 2px 0; font-size: 13px; font-weight: 900; color: #000; text-transform: uppercase; }
+        table { width: 100%; border-collapse: collapse; border: 2px solid #000; font-size: 8.5px; }
+        th { border: 1px solid #000; background: #fff; color: #000; padding: 4px 2px; font-size: 8px; font-weight: 900; text-align: center; }
+        td { border: 1px solid #000; }
+        .notes { margin-top: 8px; font-size: 8px; font-weight: 600; line-height: 1.3; }
+        .sig { display: flex; justify-content: space-between; margin-top: 24px; font-size: 9px; }
+        .sig div { border-top: 1px solid #000; width: 30%; padding-top: 4px; }
       </style>
     </head><body>
       <div class="hdr">
@@ -794,19 +822,19 @@ export default function TimetablePage() {
         <h1>${s.schoolName}</h1>
         <h3>TEACHER TIMETABLE — ${targetTeacherName.toUpperCase()} · ${s.academicYear}</h3>
       </div>
-      <table class="tt">
+      <table>
         <thead>
-          <tr style="background:#fff;">
-            <th rowspan="2" style="width:75px;">DAYS</th>
+          <tr>
+            <th rowspan="2" style="width:75px;">DAY</th>
             <th>1</th><th>2</th><th>3</th><th>4</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.breakTime}</th>
+            <th rowspan="2" style="width:30px;">BREAK<br/><span style="font-size:7px;">${s.breakTime}</span></th>
             <th>5</th><th>6</th><th>7</th>
-            <th rowspan="2" style="width:28px;font-size:7.5px;">${s.lunchTime}</th>
+            <th rowspan="2" style="width:30px;">LUNCH<br/><span style="font-size:7px;">${s.lunchTime}</span></th>
             <th>8</th><th>9</th>
-            <th rowspan="2" style="width:24px;font-size:7.5px;">${s.assemblyTime}</th>
-            <th rowspan="2" style="width:80px;font-size:8px;">Extra<br/>Curriculum<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
+            <th rowspan="2" style="width:30px;">ASSEMBLY<br/><span style="font-size:7px;">${s.assemblyTime}</span></th>
+            <th rowspan="2" style="width:85px;">EXTRA<br/><span style="font-size:7px;">${s.extraCurriculumTime}</span></th>
           </tr>
-          <tr style="background:#fff;font-size:7px;">
+          <tr style="font-size:7px;">
             <th>08:00 - 08:40</th><th>08:40 - 09:20</th><th>09:20 - 10:00</th><th>10:00 - 10:40</th>
             <th>11:00 - 11:40</th><th>11:40 - 12:20</th><th>12:20 - 13:00</th>
             <th>13:30 - 14:10</th><th>14:10 - 14:50</th>
@@ -818,9 +846,9 @@ export default function TimetablePage() {
         ${s.notes}
       </div>
       <div class="sig">
-        <div>Teacher: ${targetTeacherName}</div>
-        <div>Academic Master: ___________________</div>
-        <div>Head of School: ___________________</div>
+        <div><strong>Teacher:</strong> ${targetTeacherName}</div>
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
       </div>
     </body></html>`;
 
@@ -1599,17 +1627,16 @@ export default function TimetablePage() {
                                     );
                                   }
 
-                                  const code = getSubjectShortCode(slot);
-
+                                  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
                                   return (
                                     <td
                                       key={p}
                                       className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
                                     >
-                                      <div className="font-extrabold text-indigo-950 text-xs">
-                                        {code}
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {code || "SUBJ"}
                                       </div>
-                                      <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
                                         {slot.className}
                                       </div>
                                     </td>
@@ -1641,17 +1668,16 @@ export default function TimetablePage() {
                                     );
                                   }
 
-                                  const code = getSubjectShortCode(slot);
-
+                                  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
                                   return (
                                     <td
                                       key={p}
                                       className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
                                     >
-                                      <div className="font-extrabold text-indigo-950 text-xs">
-                                        {code}
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {code || "SUBJ"}
                                       </div>
-                                      <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
                                         {slot.className}
                                       </div>
                                     </td>
@@ -1698,21 +1724,20 @@ export default function TimetablePage() {
                                       );
                                     }
 
-                                    const code = getSubjectShortCode(slot);
-
-                                    return (
-                                      <td
-                                        key={p}
-                                        className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
-                                      >
-                                        <div className="font-extrabold text-indigo-950 text-xs">
-                                          {code}
-                                        </div>
-                                        <div className="font-bold text-violet-700 text-[9.5px] mt-0.5">
-                                          {slot.className}
-                                        </div>
-                                      </td>
-                                    );
+                                        const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
+                                        return (
+                                          <td
+                                            key={p}
+                                            className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                          >
+                                            <div className="font-black text-indigo-950 text-xs">
+                                              {code || "SUBJ"}
+                                            </div>
+                                            <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
+                                              {slot.className}
+                                            </div>
+                                          </td>
+                                        );
                                   })
                                 )}
 

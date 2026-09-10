@@ -3,7 +3,6 @@
 import { Fragment, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import {
-  Badge,
   EmptyState,
   Field,
   Loader,
@@ -104,7 +103,44 @@ function getExtraForDay(settings: TimetableSettings, dayOfWeek: number) {
   }
 }
 
-/** Subject badge styling for timetable grids */
+/** Standard timetable code map matching Tanzania curriculum & Mangi Wingia format */
+function getStandardSubjectCode(name: string | null | undefined, code: string | null | undefined): string {
+  if (code && code.trim()) {
+    const c = code.trim().toUpperCase();
+    // Normalize codes like MATH-041 -> MATH, KISW-021 -> KISW, ENG-022 -> ENG
+    if (c.startsWith("KISW")) return "KISW";
+    if (c.startsWith("MATH")) return "MATH";
+    if (c.startsWith("ENG")) return "ENG";
+    if (c.startsWith("PHY")) return "PHY";
+    if (c.startsWith("CHEM")) return "CHEM";
+    if (c.startsWith("BIO")) return "BIO";
+    if (c.startsWith("GEO")) return "GEO";
+    if (c.startsWith("CIV")) return "CIV";
+    if (c.startsWith("CSC")) return "CSC";
+    if (c.startsWith("B/STD") || c.startsWith("BST")) return "B/STD";
+    if (c.startsWith("H/TZM") || c.startsWith("HIST/TZ") || c.startsWith("HIS/TZ")) return "HIS/TZ";
+    if (c.startsWith("HIS")) return "HIS";
+    if (c.startsWith("CAPP")) return "CSC";
+    return c;
+  }
+  if (!name) return "";
+  const n = name.trim().toLowerCase();
+  if (n.includes("math")) return "MATH";
+  if (n.includes("kisw")) return "KISW";
+  if (n.includes("eng")) return "ENG";
+  if (n.includes("phys")) return "PHY";
+  if (n.includes("chem")) return "CHEM";
+  if (n.includes("bio")) return "BIO";
+  if (n.includes("geog")) return "GEO";
+  if (n.includes("civ")) return "CIV";
+  if (n.includes("historia ya tanzania")) return "HIS/TZ";
+  if (n.includes("hist")) return "HIS";
+  if (n.includes("business")) return "B/STD";
+  if (n.includes("computer")) return "CSC";
+  return name.slice(0, 5).toUpperCase();
+}
+
+/** Subject display logic ensuring clean standard codes on both UI and Print */
 function getSlotDisplay(slot: TimetableSlot | undefined) {
   if (!slot) return { label: "—", sub: "", tone: "empty", isSpecial: false };
   if (slot.customLabel) {
@@ -118,64 +154,33 @@ function getSlotDisplay(slot: TimetableSlot | undefined) {
       isSpecial,
     };
   }
-  // Prefer the real subject code (e.g. "GEO-013", "MATH-041"); fall back to a
-  // name-derived short code; never invent a fake "SUBJ" label — when a slot
-  // truly has no subject yet, leave it blank and just show the teacher.
-  const code = slot.subjectCode
-    ? slot.subjectCode.toUpperCase()
-    : (slot.subjectName?.slice(0, 6).toUpperCase() ?? "");
+  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
   return {
-    label: code || "·",
+    label: code || (slot.teacherName ? "CLASS" : "—"),
     sub: slot.teacherName || slot.subjectName || "",
-    tone: code ? "subject" : "empty",
+    tone: "subject",
     isSpecial: false,
   };
 }
 
-// -------------------------------------------------------------
-// MODERN PRINTER: clones the on-screen grid + every Tailwind stylesheet so
-// the PDF matches the UI exactly (dark header, band colors, visible lines).
-// -------------------------------------------------------------
-function printSectionAsUi(sectionId: string, title: string, subtitle: string) {
-  const node = document.getElementById(sectionId);
-  const w = window.open("", "_blank", "width=1250,height=850");
-  if (!w || !node) {
-    window.print();
-    return;
+/** Format Roman numeral or class name for print display (e.g. "I", "II", "III", "IV") */
+function formatClassPrint(name: string, section?: string | null) {
+  let roman = name
+    .replace(/^Form\s*1\b/i, "I")
+    .replace(/^Form\s*2\b/i, "II")
+    .replace(/^Form\s*3\b/i, "III")
+    .replace(/^Form\s*4\b/i, "IV")
+    .replace(/^Form\s*5\b/i, "V")
+    .replace(/^Form\s*6\b/i, "VI");
+
+  const cleanSec =
+    section && section.trim() && section !== "—" && section !== "A & B"
+      ? section.trim()
+      : "";
+  if (cleanSec) {
+    return `${roman} ${cleanSec}`;
   }
-  let css = "";
-  for (const sh of Array.from(document.styleSheets)) {
-    try {
-      css += Array.from(sh.cssRules).map((r) => r.cssText).join("\n");
-    } catch {
-      /* cross-origin sheet skipped */
-    }
-  }
-  const body = node.parentElement && sectionId === "tt-print-general"
-    ? node.parentElement.outerHTML
-    : node.outerHTML;
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>
-    <style>${css}
-      @page { size: A4 landscape; margin: 8mm; }
-      html, body { background: #fff !important; }
-      body { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; margin: 0; padding: 10px 12px; }
-      * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-      #tt-print-meta { text-align: center; margin: 2px 0 10px; font-family: ui-sans-serif, system-ui; }
-      #tt-print-meta h1 { font-size: 19px; margin: 0; letter-spacing: 1px; }
-      #tt-print-meta p { font-size: 9.5px; margin: 2px 0 0; letter-spacing: 2px; color: #334155; }
-      #tt-print-meta .rule { height: 3px; background: #1e1b4b; border-radius: 99px; margin: 6px 0 0; }
-      #tt-toolbar { position: sticky; top: 0; z-index: 50; background: #fff; text-align: center; padding: 8px 0 10px; }
-      #tt-toolbar button { background: #6d28d9; color: #fff; font-size: 13px; font-weight: 800; border: none; border-radius: 10px; padding: 8px 22px; cursor: pointer; }
-      table { width: 100% !important; }
-      @media print { #tt-toolbar { display: none; } body { padding: 0; } }
-    </style></head><body>
-    <div id="tt-toolbar"><button onclick="window.print()">🖨️ Print / Save as PDF</button></div>
-    <div id="tt-print-meta"><h1>MANGI WINGIA SECONDARY SCHOOL</h1><p>${subtitle}</p><div class="rule"></div></div>
-    ${body}
-    <script>window.onload=function(){setTimeout(function(){window.print();},400);};</script>
-    </body></html>`);
-  w.document.close();
-  w.focus();
+  return roman;
 }
 
 // -------------------------------------------------------------
@@ -186,11 +191,12 @@ function printViaIframe(htmlContent: string) {
   iframe.style.position = "fixed";
   iframe.style.right = "0";
   iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.width = "10px";
+  iframe.style.height = "10px";
+  iframe.style.opacity = "0.01";
   iframe.style.border = "0";
   document.body.appendChild(iframe);
-  const doc = iframe.contentDocument;
+  const doc = iframe.contentDocument || iframe.contentWindow?.document;
   if (!doc) {
     document.body.removeChild(iframe);
     window.print();
@@ -199,12 +205,23 @@ function printViaIframe(htmlContent: string) {
   doc.open();
   doc.write(htmlContent);
   doc.close();
-  const win = iframe.contentWindow;
-  if (win) {
-    win.focus();
-    win.print();
-  }
-  setTimeout(() => document.body.removeChild(iframe), 3000);
+
+  // Give browser a short tick to parse images/fonts before calling print()
+  setTimeout(() => {
+    try {
+      const win = iframe.contentWindow;
+      if (win) {
+        win.focus();
+        win.print();
+      }
+    } catch {
+      window.print();
+    } finally {
+      setTimeout(() => {
+        try { document.body.removeChild(iframe); } catch {}
+      }, 5000);
+    }
+  }, 350);
 }
 
 export default function TimetablePage() {
@@ -217,9 +234,9 @@ export default function TimetablePage() {
     user?.staffRole === "academic_master" ||
     data?.isManager === true;
 
-  // Tabs
-  // For Manager (Academic Master / Admin): General Timetable | Class Timetable | Teacher Timetable
-  // For Teacher / Class Teacher: My Timetable | Class Timetable
+  // Tabs:
+  // For Manager: general | class | teacher
+  // For Teacher: my | class
   const [activeTab, setActiveTab] = useState<string>("auto");
 
   const effectiveTab = useMemo(() => {
@@ -283,11 +300,12 @@ export default function TimetablePage() {
     return map;
   }, [data?.slots]);
 
-  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot[]
+  // Map teacher's slots: `${dayOfWeek}-${period}` -> slot
   const mySlotsMap = useMemo(() => {
-    const targetId = isManager && effectiveTab === "teacher"
-      ? Number(currentTeacherId)
-      : data?.teacherId;
+    const targetId =
+      isManager && effectiveTab === "teacher"
+        ? Number(currentTeacherId)
+        : data?.teacherId;
     const map = new Map<string, TimetableSlot>();
     if (!targetId) return map;
     for (const slot of data?.slots ?? []) {
@@ -413,34 +431,480 @@ export default function TimetablePage() {
       ...editSlot,
       subjectId: idNum,
       teacherId: matchedSubject?.teacherId ?? editSlot.teacherId,
-      customLabel: idNum ? "" : editSlot.customLabel, // clear custom label if subject picked
+      customLabel: idNum ? "" : editSlot.customLabel,
     });
   }
 
   // -------------------------------------------------------------
-  // PRINT: Master General Teaching Timetable (Exact match to image 2)
+  // PRINT 1: Master General Teaching Timetable (Exact Match to Modern UI + Crisp Visible Borders)
   // -------------------------------------------------------------
   function handlePrintGeneral() {
-  if (!data?.settings) return;
-  printSectionAsUi("tt-print-general", "GENERAL TEACHING TIMETABLE", `GENERAL SCHOOL TEACHING TIME TABLE · ${data.settings.academicYear}`);
+    if (!data) return;
+    const s = data.settings;
+    const clList = data.classes;
+
+    const daysRowsHtml = DAYS.map((day) => {
+      const dayClasses = clList.map((c, cIdx) => {
+        // Periods 1 to 4
+        const p1_4 = [1, 2, 3, 4]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+            const disp = getSlotDisplay(slot);
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "background:#fff;";
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:9.5px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7.5px;font-weight:600;color:#475569;line-height:1;margin-top:1.5px;">${disp.sub}</div>` : ""}
+            </td>`;
+          })
+          .join("");
+
+        // Periods 5 to 7
+        const p5_7 = [5, 6, 7]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+            const disp = getSlotDisplay(slot);
+            const bg = disp.isSpecial ? "background:#f1f5f9;" : "background:#fff;";
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:2px 1px;vertical-align:middle;${bg}">
+              <div style="font-weight:900;font-size:9.5px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+              ${disp.sub ? `<div style="font-size:7.5px;font-weight:600;color:#475569;line-height:1;margin-top:1.5px;">${disp.sub}</div>` : ""}
+            </td>`;
+          })
+          .join("");
+
+        // Periods 8 & 9 (Special blocks on Wed: RELIGIO, Fri: MEWAKA)
+        let p8_9 = "";
+        if (day.id === 3 && cIdx === 0) {
+          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+            RELIGIO
+          </td>`;
+        } else if (day.id === 5 && cIdx === 0) {
+          p8_9 = `<td colspan="2" rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+            MEWAKA
+          </td>`;
+        } else if (day.id !== 3 && day.id !== 5) {
+          p8_9 = [8, 9]
+            .map((p) => {
+              const slot = slotMap.get(`${day.id}-${p}-${c.id}`);
+              const disp = getSlotDisplay(slot);
+              return `<td style="border:1px solid #94a3b8;text-align:center;padding:2px 1px;vertical-align:middle;background:#fff;">
+                <div style="font-weight:900;font-size:9.5px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+                ${disp.sub ? `<div style="font-size:7.5px;font-weight:600;color:#475569;line-height:1;margin-top:1.5px;">${disp.sub}</div>` : ""}
+              </td>`;
+            })
+            .join("");
+        }
+
+        const breakCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;background:#fef3c7;color:#92400e;letter-spacing:1px;padding:2px;">
+                BREAK
+              </td>`
+            : "";
+        const lunchCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;vertical-align:middle;font-weight:900;font-size:9px;background:#ffe4e6;color:#9f1239;letter-spacing:1px;padding:2px;">
+                LUNCH
+              </td>`
+            : "";
+        const assemblyCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;vertical-align:middle;font-weight:900;font-size:8.5px;background:#e0e7ff;color:#3730a3;letter-spacing:1px;padding:2px;">
+                ASSEMBLY
+              </td>`
+            : "";
+        const extraCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;vertical-align:middle;font-size:9px;font-weight:800;padding:4px 3px;background:#ecfdf5;color:#065f46;">
+                ${getExtraForDay(s, day.id)}
+              </td>`
+            : "";
+
+        const dayCell =
+          cIdx === 0
+            ? `<td rowspan="${clList.length}" style="border:1px solid #94a3b8;text-align:center;vertical-align:middle;font-weight:900;font-size:9.5px;background:#f8fafc;color:#0f172a;letter-spacing:1px;padding:4px 2px;text-transform:uppercase;">
+                ${day.name}
+              </td>`
+            : "";
+
+        const classLabel = formatClassPrint(c.name, c.section);
+
+        return `<tr>
+          ${dayCell}
+          <td style="border:1px solid #94a3b8;text-align:center;padding:4px 2px;font-size:9.5px;font-weight:900;background:#f8fafc;color:#0f172a;">${classLabel}</td>
+          ${p1_4}
+          ${breakCell}
+          ${p5_7}
+          ${lunchCell}
+          ${p8_9}
+          ${assemblyCell}
+          ${extraCell}
+        </tr>`;
+      }).join("");
+      return dayClasses;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>${s.title}</title>
+      <style>
+        @page { size: A4 landscape; margin: 6mm 6mm; }
+        * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; }
+        .hdr { text-align: center; margin-bottom: 6px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; background: #fff; }
+        .hdr h2 { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #64748b; }
+        .hdr h1 { margin: 2px 0; font-size: 18px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #0f172a; }
+        .hdr h3 { margin: 1px 0 4px; font-size: 12.5px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #4338ca; }
+        .chips { display: flex; justify-content: center; gap: 12px; font-size: 9px; font-weight: 600; color: #475569; }
+        .chip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 999px; padding: 2px 8px; }
+        table.tt { width: 100%; border-collapse: collapse; border: 1.5px solid #64748b; font-size: 8px; }
+        table.tt th { border: 1px solid #94a3b8; text-align: center; padding: 2px 1px; vertical-align: middle; }
+        table.tt td { height: 20px; }
+        .notes { margin-top: 5px; font-size: 7.5px; line-height: 1.35; font-weight: 600; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; background: #f8fafc; }
+        .sig { display: flex; justify-content: space-between; margin-top: 10px; font-size: 8.5px; color: #334155; font-weight: 600; }
+        .sig div { border-top: 1.5px solid #64748b; width: 28%; padding-top: 3px; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>${s.title}</h3>
+        <div class="chips">
+          <span class="chip">☕ Break: <b>${s.breakTime}</b></span>
+          <span class="chip">🍱 Lunch: <b>${s.lunchTime}</b></span>
+          <span class="chip">🔔 Assembly: <b>${s.assemblyTime}</b></span>
+          <span class="chip">⚽ Extra Curriculum: <b>${s.extraCurriculumTime}</b></span>
+        </div>
+      </div>
+      <table class="tt">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th rowspan="2" style="width:24px;border:1px solid #94a3b8;font-weight:900;font-size:9px;">DAY</th>
+            <th rowspan="2" style="width:34px;border:1px solid #94a3b8;font-weight:900;font-size:9px;">CLASS</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">1</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">2</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">3</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">4</th>
+            <th rowspan="2" style="width:30px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#451a03;color:#fde68a;">BREAK<br/>${s.breakTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">5</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">6</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">7</th>
+            <th rowspan="2" style="width:30px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#4c0519;color:#fecdd3;">LUNCH<br/>${s.lunchTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">8</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">9</th>
+            <th rowspan="2" style="width:26px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#1e1b4b;color:#c7d2fe;">ASSEMBLY<br/>${s.assemblyTime}</th>
+            <th rowspan="2" style="width:84px;border:1px solid #94a3b8;font-weight:900;font-size:8px;background:#064e3b;color:#a7f3d0;">EXTRA CURRICULUM<br/><span style="font-size:7px;font-weight:500;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#0f172a;color:#cbd5e1;font-size:7px;">
+            <th style="border:1px solid #94a3b8;">08:00 - 08:40</th>
+            <th style="border:1px solid #94a3b8;">08:40 - 09:20</th>
+            <th style="border:1px solid #94a3b8;">09:20 - 10:00</th>
+            <th style="border:1px solid #94a3b8;">10:00 - 10:40</th>
+            <th style="border:1px solid #94a3b8;">11:00 - 11:40</th>
+            <th style="border:1px solid #94a3b8;">11:40 - 12:20</th>
+            <th style="border:1px solid #94a3b8;">12:20 - 13:00</th>
+            <th style="border:1px solid #94a3b8;">13:30 - 14:10</th>
+            <th style="border:1px solid #94a3b8;">14:10 - 14:50</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${daysRowsHtml}
+        </tbody>
+      </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
+      <div class="sig">
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
   }
 
   // -------------------------------------------------------------
-  // PRINT: Single Class Timetable (Sorted from main timetable)
+  // PRINT 2: Single Class Timetable (Exact Match to Modern UI + Crisp Visible Borders)
   // -------------------------------------------------------------
   function handlePrintClass(targetClassId: number) {
-  if (!data?.settings) return;
-  void targetClassId;
-  printSectionAsUi("tt-print-class", "CLASS TIMETABLE", `CLASS WEEKLY TEACHING TIMETABLE · ${data.settings.academicYear}`);
+    if (!data) return;
+    const s = data.settings;
+    const targetClass = data.classes.find((c) => c.id === targetClassId);
+    if (!targetClass) return;
+
+    const rowsHtml = DAYS.map((day) => {
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          const bg = disp.isSpecial ? "background:#f1f5f9;" : "background:#fff;";
+          return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px 2px;vertical-align:middle;${bg}">
+            <div style="font-weight:900;font-size:10px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+            <div style="font-size:7.5px;font-weight:600;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+          const disp = getSlotDisplay(slot);
+          const bg = disp.isSpecial ? "background:#f1f5f9;" : "background:#fff;";
+          return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px 2px;vertical-align:middle;${bg}">
+            <div style="font-weight:900;font-size:10px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+            <div style="font-size:7.5px;font-weight:600;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
+        </td>`;
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+            const disp = getSlotDisplay(slot);
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px 2px;vertical-align:middle;background:#fff;">
+              <div style="font-weight:900;font-size:10px;line-height:1.1;color:#0f172a;">${disp.label}</div>
+              <div style="font-size:7.5px;font-weight:600;color:#475569;margin-top:2px;">${slot?.teacherName || slot?.subjectName || ""}</div>
+            </td>`;
+          })
+          .join("");
+      }
+
+      return `<tr>
+        <td style="border:1px solid #94a3b8;font-weight:900;font-size:10px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;color:#0f172a;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:9px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
+        ${p5_7}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:9px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
+        ${p8_9}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:8.5px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #94a3b8;text-align:center;padding:4px 6px;font-size:9px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
+      </tr>`;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Class Timetable - ${targetClass.name}</title>
+      <style>
+        @page { size: A4 landscape; margin: 8mm 6mm; }
+        * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; }
+        .hdr { text-align: center; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; background: #fff; }
+        .hdr h2 { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #64748b; }
+        .hdr h1 { margin: 2px 0; font-size: 17px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #0f172a; }
+        .hdr h3 { margin: 1px 0; font-size: 12.5px; font-weight: 800; color: #4338ca; text-transform: uppercase; }
+        table.tt { width: 100%; border-collapse: collapse; border: 1.5px solid #64748b; font-size: 8.5px; }
+        table.tt th { border: 1px solid #94a3b8; text-align: center; padding: 3px 2px; vertical-align: middle; }
+        table.tt td { height: 26px; }
+        .notes { margin-top: 6px; font-size: 8px; font-weight: 600; line-height: 1.35; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; background: #f8fafc; }
+        .sig { display: flex; justify-content: space-between; margin-top: 16px; font-size: 8.5px; color: #334155; font-weight: 600; }
+        .sig div { border-top: 1.5px solid #64748b; width: 28%; padding-top: 3px; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>CLASS TIMETABLE — ${targetClass.name.toUpperCase()}${targetClass.section ? " (" + targetClass.section + ")" : ""} · ${s.academicYear}</h3>
+      </div>
+      <table class="tt">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th rowspan="2" style="width:75px;border:1px solid #94a3b8;font-weight:900;">DAY</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">1</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">2</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">3</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">4</th>
+            <th rowspan="2" style="width:34px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#451a03;color:#fde68a;">BREAK<br/>${s.breakTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">5</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">6</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">7</th>
+            <th rowspan="2" style="width:34px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#4c0519;color:#fecdd3;">LUNCH<br/>${s.lunchTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">8</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">9</th>
+            <th rowspan="2" style="width:30px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#1e1b4b;color:#c7d2fe;">ASSEMBLY<br/>${s.assemblyTime}</th>
+            <th rowspan="2" style="width:88px;border:1px solid #94a3b8;font-weight:900;font-size:8px;background:#064e3b;color:#a7f3d0;">EXTRA CURRICULUM<br/><span style="font-size:7px;font-weight:500;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#0f172a;color:#cbd5e1;font-size:7px;">
+            <th style="border:1px solid #94a3b8;">08:00 - 08:40</th>
+            <th style="border:1px solid #94a3b8;">08:40 - 09:20</th>
+            <th style="border:1px solid #94a3b8;">09:20 - 10:00</th>
+            <th style="border:1px solid #94a3b8;">10:00 - 10:40</th>
+            <th style="border:1px solid #94a3b8;">11:00 - 11:40</th>
+            <th style="border:1px solid #94a3b8;">11:40 - 12:20</th>
+            <th style="border:1px solid #94a3b8;">12:20 - 13:00</th>
+            <th style="border:1px solid #94a3b8;">13:30 - 14:10</th>
+            <th style="border:1px solid #94a3b8;">14:10 - 14:50</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
+      <div class="sig">
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Class Teacher:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
   }
 
   // -------------------------------------------------------------
-  // PRINT: Teacher Timetable (Personalized)
+  // PRINT 3: Teacher Timetable (Exact Match to Modern UI + Crisp Visible Borders)
   // -------------------------------------------------------------
   function handlePrintTeacher(targetTeacherId: number, targetTeacherName: string) {
-  if (!data?.settings) return;
-  void targetTeacherId;
-  printSectionAsUi("tt-print-teacher", `TEACHER TIMETABLE — ${targetTeacherName}`, `WEEKLY TEACHING SCHEDULE · ${targetTeacherName}`);
+    if (!data) return;
+    const s = data.settings;
+
+    const rowsHtml = DAYS.map((day) => {
+      // Periods 1-4
+      const p1_4 = [1, 2, 3, 4]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px;color:#94a3b8;font-size:8.5px;background:#f8fafc;font-style:italic;">Free</td>`;
+          }
+          return `<td style="border:1px solid #94a3b8;text-align:center;padding:3px 2px;background:#eef2ff;">
+            <div style="font-weight:900;font-size:10px;color:#0f172a;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#4338ca;margin-top:1px;">${slot.className || "Class"}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 5-7
+      const p5_7 = [5, 6, 7]
+        .map((p) => {
+          const slot = data.slots.find(
+            (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+          );
+          if (!slot) {
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px;color:#94a3b8;font-size:8.5px;background:#f8fafc;font-style:italic;">Free</td>`;
+          }
+          return `<td style="border:1px solid #94a3b8;text-align:center;padding:3px 2px;background:#eef2ff;">
+            <div style="font-weight:900;font-size:10px;color:#0f172a;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
+            <div style="font-size:7.5px;font-weight:700;color:#4338ca;margin-top:1px;">${slot.className || "Class"}</div>
+          </td>`;
+        })
+        .join("");
+
+      // Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA)
+      let p8_9 = "";
+      if (day.id === 3) {
+        p8_9 = `<td colspan="2" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+          RELIGIO
+        </td>`;
+      } else if (day.id === 5) {
+        p8_9 = `<td colspan="2" style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:11px;background:#eef2ff;color:#3730a3;letter-spacing:1px;vertical-align:middle;">
+          MEWAKA
+        </td>`;
+      } else {
+        p8_9 = [8, 9]
+          .map((p) => {
+            const slot = data.slots.find(
+              (sl) => sl.teacherId === targetTeacherId && sl.dayOfWeek === day.id && sl.period === p,
+            );
+            if (!slot) {
+              return `<td style="border:1px solid #94a3b8;text-align:center;padding:4px;color:#94a3b8;font-size:8.5px;background:#f8fafc;font-style:italic;">Free</td>`;
+            }
+            return `<td style="border:1px solid #94a3b8;text-align:center;padding:3px 2px;background:#eef2ff;">
+              <div style="font-weight:900;font-size:10px;color:#0f172a;">${getStandardSubjectCode(slot.subjectName, slot.subjectCode) || "SUBJ"}</div>
+              <div style="font-size:7.5px;font-weight:700;color:#4338ca;margin-top:1px;">${slot.className || "Class"}</div>
+            </td>`;
+          })
+          .join("");
+      }
+
+      return `<tr>
+        <td style="border:1px solid #94a3b8;font-weight:900;font-size:10px;background:#f8fafc;padding:6px 8px;text-align:center;text-transform:uppercase;color:#0f172a;">${day.name}</td>
+        ${p1_4}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:9px;background:#fef3c7;color:#92400e;vertical-align:middle;padding:2px;">BREAK</td>
+        ${p5_7}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:9px;background:#ffe4e6;color:#9f1239;vertical-align:middle;padding:2px;">LUNCH</td>
+        ${p8_9}
+        <td style="border:1px solid #94a3b8;text-align:center;font-weight:900;font-size:8.5px;background:#e0e7ff;color:#3730a3;vertical-align:middle;padding:2px;">ASSEMBLY</td>
+        <td style="border:1px solid #94a3b8;text-align:center;padding:4px 6px;font-size:9px;font-weight:800;background:#ecfdf5;color:#065f46;vertical-align:middle;">${getExtraForDay(s, day.id)}</td>
+      </tr>`;
+    }).join("");
+
+    const fullHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <title>Teacher Timetable - ${targetTeacherName}</title>
+      <style>
+        @page { size: A4 landscape; margin: 8mm 6mm; }
+        * { box-sizing: border-box; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; color: #0f172a; margin: 0; padding: 0; }
+        .hdr { text-align: center; border: 1px solid #cbd5e1; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; background: #fff; }
+        .hdr h2 { margin: 0; font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; color: #64748b; }
+        .hdr h1 { margin: 2px 0; font-size: 17px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; color: #0f172a; }
+        .hdr h3 { margin: 1px 0; font-size: 12.5px; font-weight: 800; color: #4338ca; text-transform: uppercase; }
+        table.tt { width: 100%; border-collapse: collapse; border: 1.5px solid #64748b; font-size: 8.5px; }
+        table.tt th { border: 1px solid #94a3b8; text-align: center; padding: 3px 2px; vertical-align: middle; }
+        table.tt td { height: 26px; }
+        .notes { margin-top: 6px; font-size: 8px; font-weight: 600; line-height: 1.35; color: #334155; border: 1px solid #cbd5e1; border-radius: 6px; padding: 4px 8px; background: #f8fafc; }
+        .sig { display: flex; justify-content: space-between; margin-top: 16px; font-size: 8.5px; color: #334155; font-weight: 600; }
+        .sig div { border-top: 1.5px solid #64748b; width: 30%; padding-top: 3px; }
+      </style>
+    </head><body>
+      <div class="hdr">
+        <h2>${s.councilName}</h2>
+        <h1>${s.schoolName}</h1>
+        <h3>TEACHER TIMETABLE — ${targetTeacherName.toUpperCase()} · ${s.academicYear}</h3>
+      </div>
+      <table class="tt">
+        <thead>
+          <tr style="background:#0f172a;color:#fff;">
+            <th rowspan="2" style="width:75px;border:1px solid #94a3b8;font-weight:900;">DAY</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">1</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">2</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">3</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">4</th>
+            <th rowspan="2" style="width:34px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#451a03;color:#fde68a;">BREAK<br/>${s.breakTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">5</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">6</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">7</th>
+            <th rowspan="2" style="width:34px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#4c0519;color:#fecdd3;">LUNCH<br/>${s.lunchTime}</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">8</th>
+            <th style="border:1px solid #94a3b8;font-weight:900;">9</th>
+            <th rowspan="2" style="width:30px;border:1px solid #94a3b8;font-weight:900;font-size:7.5px;background:#1e1b4b;color:#c7d2fe;">ASSEMBLY<br/>${s.assemblyTime}</th>
+            <th rowspan="2" style="width:88px;border:1px solid #94a3b8;font-weight:900;font-size:8px;background:#064e3b;color:#a7f3d0;">EXTRA CURRICULUM<br/><span style="font-size:7px;font-weight:500;">${s.extraCurriculumTime}</span></th>
+          </tr>
+          <tr style="background:#0f172a;color:#cbd5e1;font-size:7px;">
+            <th style="border:1px solid #94a3b8;">08:00 - 08:40</th>
+            <th style="border:1px solid #94a3b8;">08:40 - 09:20</th>
+            <th style="border:1px solid #94a3b8;">09:20 - 10:00</th>
+            <th style="border:1px solid #94a3b8;">10:00 - 10:40</th>
+            <th style="border:1px solid #94a3b8;">11:00 - 11:40</th>
+            <th style="border:1px solid #94a3b8;">11:40 - 12:20</th>
+            <th style="border:1px solid #94a3b8;">12:20 - 13:00</th>
+            <th style="border:1px solid #94a3b8;">13:30 - 14:10</th>
+            <th style="border:1px solid #94a3b8;">14:10 - 14:50</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+      <div class="notes">
+        ${s.notes}
+      </div>
+      <div class="sig">
+        <div><strong>Teacher:</strong> ${targetTeacherName}</div>
+        <div><strong>Academic Master:</strong> ___________________</div>
+        <div><strong>Head of School:</strong> ___________________</div>
+      </div>
+    </body></html>`;
+
+    printViaIframe(fullHtml);
   }
 
   const roleBadge = user?.role === "member" ? staffRoleLabel(user.staffRole) : "🛡️ Admin";
@@ -599,7 +1063,7 @@ export default function TimetablePage() {
                   </div>
                 </div>
 
-                {/* Day filter */}
+                {/* Day filter & tools */}
                 <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-bold text-slate-600">Filter Day:</span>
@@ -635,7 +1099,7 @@ export default function TimetablePage() {
 
                 {/* Full Grid Table */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-                  <div className="overflow-x-autooverflow-x-auto" id="tt-print-general">
+                  <div className="overflow-x-auto">
                     <table className="w-full min-w-[980px] border-collapse text-xs">
                       <thead>
                         <tr className="bg-slate-900 text-white">
@@ -694,7 +1158,12 @@ export default function TimetablePage() {
                                   </td>
                                 )}
                                 <td className="border border-slate-200 px-2.5 py-2 font-extrabold text-slate-800 text-center bg-slate-50">
-                                  {c.name}
+                                  <div>{c.name}</div>
+                                  {c.section && (
+                                    <span className="inline-block mt-0.5 rounded bg-violet-100 px-1.5 py-0.2 text-[9px] font-extrabold text-violet-700">
+                                      {c.section}
+                                    </span>
+                                  )}
                                 </td>
 
                                 {/* Periods 1 to 4 */}
@@ -711,13 +1180,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* BREAK TIME (spans all classes of day) */}
+                                {/* BREAK TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -741,13 +1210,13 @@ export default function TimetablePage() {
                                       )}
                                       title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                     >
-                                      <div className="font-bold">{disp.label}</div>
-                                      {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                      <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                      {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                     </td>
                                   );
                                 })}
 
-                                {/* LUNCH TIME (spans all classes of day) */}
+                                {/* LUNCH TIME */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -792,14 +1261,14 @@ export default function TimetablePage() {
                                         )}
                                         title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || "No teacher"})` : "Click to edit slot"}
                                       >
-                                        <div className="font-bold">{disp.label}</div>
-                                        {disp.sub && <div className="text-[9px] font-normal text-slate-400 truncate max-w-[80px] mx-auto">{disp.sub}</div>}
+                                        <div className="font-extrabold text-xs text-indigo-950">{disp.label}</div>
+                                        {disp.sub && <div className="text-[9.5px] font-medium text-slate-500 truncate max-w-[85px] mx-auto mt-0.5">{disp.sub}</div>}
                                       </td>
                                     );
                                   })
                                 )}
 
-                                {/* ASSEMBLY (spans all classes) */}
+                                {/* ASSEMBLY */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -809,7 +1278,7 @@ export default function TimetablePage() {
                                   </td>
                                 )}
 
-                                {/* EXTRA CURRICULUM (spans all classes) */}
+                                {/* EXTRA CURRICULUM */}
                                 {isFirst && (
                                   <td
                                     rowSpan={classCount}
@@ -868,7 +1337,7 @@ export default function TimetablePage() {
                   }
 
                   return (
-                    <div id="tt-print-class" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
                         <div>
                           <p className="text-sm font-bold uppercase tracking-wider">
@@ -887,82 +1356,161 @@ export default function TimetablePage() {
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[800px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
                               {PERIODS.slice(0, 4).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-amber-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-amber-800" style={{ writingMode: "vertical-rl" }}>BREAK</span><span className="text-[8px] font-normal text-amber-600">{data.settings.breakTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
                               {PERIODS.slice(4, 7).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-rose-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-rose-800" style={{ writingMode: "vertical-rl" }}>LUNCH</span><span className="text-[8px] font-normal text-rose-600">{data.settings.lunchTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
                               {PERIODS.slice(7, 9).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-violet-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-violet-800" style={{ writingMode: "vertical-rl" }}>ASSEMBLY</span><span className="text-[8px] font-normal text-violet-600">{data.settings.assemblyTime}</span></th>
-                              <th className="border border-slate-200 px-3 py-2 text-center font-extrabold text-[11px] text-slate-700 w-36">
-                                Extra Curriculum
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-                                {([1, 2, 3, 4] as const).map((n) => {
-                                  const p = PERIODS[n - 1];
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
                                   const disp = getSlotDisplay(slot);
+
                                   return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
+                                    <td
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
                                     </td>
                                   );
                                 })}
-                                <td className="border border-slate-200 bg-amber-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-amber-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Break</span></td>
-                                {([5, 6, 7] as const).map((n) => {
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
                                   const disp = getSlotDisplay(slot);
+
                                   return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
+                                    <td
+                                      key={p}
+                                      onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                      className={cls(
+                                        "border border-slate-200 px-2 py-2 text-center transition",
+                                        isManager && "cursor-pointer hover:bg-violet-50",
+                                        disp.isSpecial ? "bg-slate-100" : "",
+                                      )}
+                                      title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                    >
+                                      <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                      {slot?.teacherName && (
+                                        <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                          {slot.teacherName}
+                                        </div>
+                                      )}
                                     </td>
                                   );
                                 })}
-                                <td className="border border-slate-200 bg-rose-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-rose-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Lunch</span></td>
-                                {([8, 9] as const).map((n) => {
-                                  const slot = slotMap.get(`${day.id}-${n}-${targetClass.id}`);
-                                  const disp = getSlotDisplay(slot);
-                                  return (
-                                    <td key={n} onClick={() => isManager && handleSlotClick(day.id, n, targetClass.id)} className={cls("border border-slate-200 px-2 py-2 text-center transition", isManager && "cursor-pointer hover:bg-violet-50", disp.isSpecial ? "bg-slate-100" : "")} title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}>
-                                      <div className="font-extrabold text-slate-900 text-sm">{disp.label}</div>
-                                      {slot?.teacherName && <div className="text-[10px] text-violet-700 font-medium truncate max-w-[90px] mx-auto mt-0.5">{slot.teacherName}</div>}
-                                      {slot?.room && <div className="text-[9px] text-slate-400">{slot.room}</div>}
-                                    </td>
-                                  );
-                                })}
-                                <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black text-violet-800 uppercase tracking-wider" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-2 text-center font-bold text-xs text-emerald-800">
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = slotMap.get(`${day.id}-${p}-${targetClass.id}`);
+                                    const disp = getSlotDisplay(slot);
+                                    return (
+                                      <td
+                                        key={p}
+                                        onClick={() => isManager && handleSlotClick(day.id, p, targetClass.id)}
+                                        className={cls(
+                                          "border border-slate-200 px-2 py-2 text-center transition",
+                                          isManager && "cursor-pointer hover:bg-violet-50",
+                                          disp.isSpecial ? "bg-slate-100" : "",
+                                        )}
+                                        title={slot ? `${slot.subjectName || slot.customLabel} (${slot.teacherName || ""})` : ""}
+                                      >
+                                        <div className="font-extrabold text-slate-900 text-xs">{disp.label}</div>
+                                        {slot?.teacherName && (
+                                          <div className="text-[9.5px] text-violet-700 font-medium truncate max-w-[85px] mx-auto mt-0.5">
+                                            {slot.teacherName}
+                                          </div>
+                                        )}
+                                      </td>
+                                    );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
                                   {getExtraForDay(data.settings, day.id)}
                                 </td>
                               </tr>
@@ -971,9 +1519,9 @@ export default function TimetablePage() {
                         </table>
                       </div>
 
-                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-500 flex flex-wrap gap-4 justify-between">
-                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b></span>
-                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any cell to re-assign.</span>}
+                      <div className="border-t border-slate-200 bg-slate-50 p-3 text-xs text-slate-600 flex flex-wrap gap-4 justify-between">
+                        <span>☕ Break: <b>{data.settings.breakTime}</b> · 🍱 Lunch: <b>{data.settings.lunchTime}</b> · 🔔 Assembly: <b>{data.settings.assemblyTime}</b></span>
+                        {isManager && <span className="text-violet-600 font-bold">💡 Academic Master Mode: Click any period cell to re-assign.</span>}
                       </div>
                     </div>
                   );
@@ -1047,7 +1595,7 @@ export default function TimetablePage() {
                   ) || { name: data.teacherName || user?.name || "Teacher", id: Number(currentTeacherId) };
 
                   return (
-                    <div id="tt-print-teacher" className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                    <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3.5 text-white">
                         <div>
                           <p className="text-sm font-bold uppercase tracking-wider">
@@ -1061,130 +1609,199 @@ export default function TimetablePage() {
                           onClick={() => handlePrintTeacher(Number(currentTeacherId), targetTeacher.name)}
                           className={cls(btnPrimary, "text-xs font-bold")}
                         >
-                          🖨️ Print My Schedule
+                          🖨️ Print Teacher Schedule
                         </button>
                       </div>
 
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[760px] border-collapse text-xs">
+                        <table className="w-full min-w-[980px] border-collapse text-xs">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-700">
-                              <th className="border border-slate-200 px-3 py-2.5 text-left font-extrabold uppercase text-[11px] w-28">
+                            <tr className="bg-slate-900 text-white">
+                              <th className="border border-slate-800 px-3 py-2.5 text-left font-extrabold uppercase text-[10px] w-28">
                                 Day
                               </th>
                               {PERIODS.slice(0, 4).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-amber-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-amber-800" style={{ writingMode: "vertical-rl" }}>BREAK</span><span className="text-[8px] font-normal text-amber-600">{data.settings.breakTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-amber-950/60 text-amber-200 w-24">
+                                BREAK<br />{data.settings.breakTime}
+                              </th>
                               {PERIODS.slice(4, 7).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-rose-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-rose-800" style={{ writingMode: "vertical-rl" }}>LUNCH</span><span className="text-[8px] font-normal text-rose-600">{data.settings.lunchTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-rose-950/60 text-rose-200 w-24">
+                                LUNCH<br />{data.settings.lunchTime}
+                              </th>
                               {PERIODS.slice(7, 9).map((p) => (
-                                <th key={p.num} className="border border-slate-200 px-2 py-2 text-center">
-                                  <span className="block font-black text-xs text-slate-900">{p.num}</span>
-                                  <span className="text-[9px] font-normal text-slate-500">{p.time}</span>
+                                <th key={p.num} className="border border-slate-800 px-2 py-2 text-center">
+                                  <span className="block font-black text-xs">{p.num}</span>
+                                  <span className="text-[9px] font-normal text-slate-300">{p.time}</span>
                                 </th>
                               ))}
-                              <th className="border border-slate-200 bg-violet-50 px-1 py-2 text-center"><span className="block font-black text-[9px] text-violet-800" style={{ writingMode: "vertical-rl" }}>ASSEMBLY</span><span className="text-[8px] font-normal text-violet-600">{data.settings.assemblyTime}</span></th>
+                              <th className="border border-slate-800 px-2 py-2 text-center text-[9px] font-bold bg-indigo-950/60 text-indigo-200 w-24">
+                                ASSEMBLY<br />{data.settings.assemblyTime}
+                              </th>
+                              <th className="border border-slate-800 px-3 py-2 text-center text-[9px] font-bold bg-emerald-950/60 text-emerald-200 w-36">
+                                EXTRA CURRICULUM<br />{data.settings.extraCurriculumTime}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
                             {DAYS.map((day) => (
                               <tr key={day.id} className="hover:bg-slate-50">
-                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800">
+                                <td className="border border-slate-200 bg-slate-50 px-3 py-3 font-extrabold text-slate-800 uppercase">
                                   {day.name}
                                 </td>
-{PERIODS.map((p) => {
-                                  // Look up this teacher's assignment in this slot
+
+                                {/* Periods 1 to 4 */}
+                                {[1, 2, 3, 4].map((p) => {
                                   const slot = data.slots.find(
                                     (sl) =>
                                       sl.teacherId === Number(currentTeacherId) &&
                                       sl.dayOfWeek === day.id &&
-                                      sl.period === p.num,
+                                      sl.period === p,
                                   );
 
-                                  // Institutional shared blocks (RELIGIO, MEWAKA, PS…) — they are seeded
-                                  // per class with a custom label and no teacher, so show them when one
-                                  // of the teacher's classes has such a slot at this day/period.
-                                  const special = !slot
-                                    ? data.slots.find(
-                                        (sl) => sl.dayOfWeek === day.id && sl.period === p.num && (sl.customLabel !== null && sl.customLabel !== ""),
-                                      )
-                                    : undefined;
-
-                                  const body = (
-                                    <>
-                                      {p.num === 5 && (
-                                        <td className="border border-slate-200 bg-amber-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-amber-800" style={{ writingMode: "vertical-rl" }}>Break</span></td>
-                                      )}
-                                      {p.num === 8 && (
-                                        <td className="border border-slate-200 bg-rose-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-rose-800" style={{ writingMode: "vertical-rl" }}>Lunch</span></td>
-                                      )}
-                                    </>
-                                  );
-                                  void body;
-
-                                  if (!slot && !special) {
+                                  if (!slot) {
                                     return (
-                                      <Fragment key={p.num}>
-                                        {(p.num === 5 || p.num === 8) && (
-                                          <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                            <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                          </td>
-                                        )}
-                                        <td className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400">
-                                          <span className="text-[10px] italic">Free</span>
-                                        </td>
-                                        {p.num === 9 && (
-                                          <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                        )}
-                                      </Fragment>
-                                    );
-                                  }
-                                  if (!slot && special) {
-                                    return (
-                                      <Fragment key={p.num}>
-                                        {(p.num === 5 || p.num === 8) && (
-                                          <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                            <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                          </td>
-                                        )}
-                                        <td className="border border-slate-200 bg-slate-100 px-2 py-2 text-center">
-                                          <div className="font-black text-slate-700 text-sm">{special.customLabel}</div>
-                                          <div className="text-[9px] text-slate-400">{special.customLabel === "PS" ? "Private Studies" : "Shared block"}</div>
-                                        </td>
-                                        {p.num === 9 && (
-                                          <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                        )}
-                                      </Fragment>
-                                    );
-                                  }
-
-                                  return (
-                                    <Fragment key={p.num}>
-                                      {(p.num === 5 || p.num === 8) && (
-                                        <td className={cls("border border-slate-200 px-1 py-2 text-center align-middle", p.num === 5 ? "bg-amber-50" : "bg-rose-50")}>
-                                          <span className={cls("text-[8px] font-black uppercase tracking-wider", p.num === 5 ? "text-amber-800" : "text-rose-800")} style={{ writingMode: "vertical-rl" }}>{p.num === 5 ? "Break" : "Lunch"}</span>
-                                        </td>
-                                      )}
-                                      <td className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/60">
-                                        <div className="font-black text-indigo-950 text-sm">{slot!.className}</div>
-                                        <div className="font-bold text-indigo-700 text-[10px] mt-0.5">{slot!.subjectCode || slot!.subjectName || "Subject"}</div>
-                                        {slot!.room && <div className="text-[9px] text-slate-500">{slot!.room}</div>}
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
                                       </td>
-                                      {p.num === 9 && (
-                                        <td className="border border-slate-200 bg-violet-50 px-1 py-2 text-center align-middle"><span className="text-[8px] font-black uppercase tracking-wider text-violet-800" style={{ writingMode: "vertical-rl" }}>Assembly</span></td>
-                                      )}
-                                    </Fragment>
+                                    );
+                                  }
+
+                                  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
+                                  return (
+                                    <td
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                    >
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {code || "SUBJ"}
+                                      </div>
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
+                                        {slot.className}
+                                      </div>
+                                    </td>
                                   );
                                 })}
+
+                                {/* BREAK TIME */}
+                                <td className="border border-slate-200 bg-amber-50 text-amber-800 text-center text-[10px] font-black uppercase align-middle">
+                                  BREAK
+                                </td>
+
+                                {/* Periods 5 to 7 */}
+                                {[5, 6, 7].map((p) => {
+                                  const slot = data.slots.find(
+                                    (sl) =>
+                                      sl.teacherId === Number(currentTeacherId) &&
+                                      sl.dayOfWeek === day.id &&
+                                      sl.period === p,
+                                  );
+
+                                  if (!slot) {
+                                    return (
+                                      <td
+                                        key={p}
+                                        className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                      >
+                                        <span className="text-[10px] italic">Free</span>
+                                      </td>
+                                    );
+                                  }
+
+                                  const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
+                                  return (
+                                    <td
+                                      key={p}
+                                      className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                    >
+                                      <div className="font-black text-indigo-950 text-xs">
+                                        {code || "SUBJ"}
+                                      </div>
+                                      <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
+                                        {slot.className}
+                                      </div>
+                                    </td>
+                                  );
+                                })}
+
+                                {/* LUNCH TIME */}
+                                <td className="border border-slate-200 bg-rose-50 text-rose-800 text-center text-[10px] font-black uppercase align-middle">
+                                  LUNCH
+                                </td>
+
+                                {/* Periods 8 & 9 (Wed: RELIGIO, Fri: MEWAKA) */}
+                                {day.id === 3 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    RELIGIO
+                                  </td>
+                                ) : day.id === 5 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="border border-slate-200 bg-indigo-50 text-indigo-900 text-center font-black text-sm uppercase align-middle tracking-wider"
+                                  >
+                                    MEWAKA
+                                  </td>
+                                ) : (
+                                  [8, 9].map((p) => {
+                                    const slot = data.slots.find(
+                                      (sl) =>
+                                        sl.teacherId === Number(currentTeacherId) &&
+                                        sl.dayOfWeek === day.id &&
+                                        sl.period === p,
+                                    );
+
+                                    if (!slot) {
+                                      return (
+                                        <td
+                                          key={p}
+                                          className="border border-slate-200 px-2 py-2 text-center bg-slate-50/40 text-slate-400"
+                                        >
+                                          <span className="text-[10px] italic">Free</span>
+                                        </td>
+                                      );
+                                    }
+
+                                        const code = getStandardSubjectCode(slot.subjectName, slot.subjectCode);
+                                        return (
+                                          <td
+                                            key={p}
+                                            className="border border-slate-200 px-2 py-2 text-center bg-indigo-50/70"
+                                          >
+                                            <div className="font-black text-indigo-950 text-xs">
+                                              {code || "SUBJ"}
+                                            </div>
+                                            <div className="font-bold text-indigo-700 text-[10px] mt-0.5 truncate max-w-[85px] mx-auto">
+                                              {slot.className}
+                                            </div>
+                                          </td>
+                                        );
+                                  })
+                                )}
+
+                                {/* ASSEMBLY */}
+                                <td className="border border-slate-200 bg-indigo-50 text-indigo-800 text-center text-[10px] font-black uppercase align-middle">
+                                  ASSEMBLY
+                                </td>
+
+                                {/* EXTRA CURRICULUM */}
+                                <td className="border border-slate-200 bg-emerald-50 text-emerald-900 text-center font-extrabold text-xs align-middle px-3">
+                                  {getExtraForDay(data.settings, day.id)}
+                                </td>
                               </tr>
                             ))}
                           </tbody>

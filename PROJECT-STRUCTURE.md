@@ -156,8 +156,8 @@ shulehub-sms/
     │   │   ├── teachers/page.tsx         # 🔧 Manage Teachers (CRUD, auto login, Assign modal)
     │   │   ├── assignments/page.tsx      # ✅ Add Staff Member (ngazi zote na ruhusa)
     │   │   ├── profile/page.tsx          # ✅ Admin Profile & Password Change
-    │   │   ├── admissions/page.tsx       # 🚧 STUB: Idhinisha udahili wa wanafunzi
-    │   │   ├── monitor/page.tsx          # 🚧 STUB: Ufuatiliaji wa jumla
+    │   │   ├── admissions/page.tsx       # ✅ Approve Admissions & Academic Work (4 tabs: Student Admissions, Manage Exams, Behavioural Assessments, Timetable Review)
+    │   │   ├── monitor/page.tsx          # ✅ Monitor Dashboards & Staff Accounts (Master Lockdown/Enable All, single account toggle, reset password, permissions inspector)
     │   │   ├── parents/page.tsx          # 🚧 STUB: Orodha ya wazazi
     │   │   ├── parent-assignments/page.tsx # 🚧 STUB: Wazazi na watoto wao
     │   │   ├── activity/page.tsx         # 🚧 STUB: Shughuli za watumiaji
@@ -204,6 +204,8 @@ shulehub-sms/
     │       ├── admin/members/
     │       │   ├── route.ts              # ✅ GET, POST watumishi wote
     │       │   └── [id]/route.ts         # ✅ GET, PUT, DELETE mtumishi
+    │       ├── admin/admissions/route.ts # ✅ GET, PUT: idhinisha udahili, mitihani, na tathmini ya tabia
+    │       ├── admin/monitor/route.ts    # ✅ GET, POST: udhibiti wa akaunti, lockdown na single toggle
     │       │
     │       ├── students/
     │       │   ├── route.ts              # 🔧 GET, POST (admissionNo per-class, ?strict=1 support)

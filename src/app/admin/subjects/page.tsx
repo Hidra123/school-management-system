@@ -16,7 +16,15 @@ import {
 } from "@/components/ui";
 import { delJSON, postJSON, putJSON, useFetch } from "@/lib/utils";
 
-type SubjectRow = { id: number; name: string; code: string; teacherId: number | null; teacherName: string | null };
+type SubjectRow = {
+  id: number;
+  name: string;
+  code: string;
+  teacherId: number | null;
+  teacherName: string | null;
+  assignedTeachers?: string[];
+  teacherDisplay?: string | null;
+};
 
 const emptyForm = { name: "", code: "" };
 
@@ -96,13 +104,29 @@ export default function AdminManageSubjectsPage() {
                 </div>
                 <button onClick={() => remove(s)} className="rounded-lg px-2 py-1 text-xs text-rose-500 hover:bg-rose-50">🗑️</button>
               </div>
-              <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
-                <Avatar name={s.teacherName ?? "?"} tone={s.teacherName ? "indigo" : "slate"} />
-                <div className="min-w-0">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Subject Teacher</p>
-                  <p className="truncate text-sm font-bold text-slate-800">
-                    {s.teacherName ?? <span className="font-medium italic text-slate-400">Not assigned</span>}
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
+                <Avatar
+                  name={s.assignedTeachers && s.assignedTeachers.length > 0 ? s.assignedTeachers[0] : (s.teacherName ?? "?")}
+                  tone={s.teacherDisplay ? "indigo" : "slate"}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {s.assignedTeachers && s.assignedTeachers.length > 1 ? "Assigned Teachers (Shared)" : "Subject Teacher"}
                   </p>
+                  {s.assignedTeachers && s.assignedTeachers.length > 1 ? (
+                    <div className="mt-1 space-y-1">
+                      {s.assignedTeachers.map((tInfo, i) => (
+                        <div key={i} className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                          <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 inline-block"></span>
+                          <span>{tInfo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="truncate text-sm font-bold text-slate-800">
+                      {s.teacherDisplay ?? <span className="font-medium italic text-slate-400">Not assigned</span>}
+                    </p>
+                  )}
                 </div>
               </div>
               <p className="mt-2 text-center text-[11px] text-slate-400">

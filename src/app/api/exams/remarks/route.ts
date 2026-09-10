@@ -34,6 +34,7 @@ export async function GET(req: Request) {
         principalComment: "",
         academicMasterName: "",
         headmasterName: "",
+        isApproved: false,
       },
     );
   } catch (e) {
@@ -56,12 +57,14 @@ export async function PUT(req: Request) {
   }
 
   try {
+    const isAdmin = !!user && user.role === "admin";
     const values = {
       behaviorRatings: typeof body.behaviorRatings === "string" ? body.behaviorRatings : "{}",
       academicComment: typeof body.academicComment === "string" ? body.academicComment.trim() : "",
       principalComment: typeof body.principalComment === "string" ? body.principalComment.trim() : "",
       academicMasterName: typeof body.academicMasterName === "string" ? body.academicMasterName.trim() : "",
       headmasterName: typeof body.headmasterName === "string" ? body.headmasterName.trim() : "",
+      isApproved: isAdmin ? (body.isApproved !== undefined ? Boolean(body.isApproved) : true) : false,
       updatedAt: new Date(),
     };
 

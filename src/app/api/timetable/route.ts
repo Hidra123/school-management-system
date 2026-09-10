@@ -103,8 +103,29 @@ export async function GET(req: Request) {
       .from(teachers)
       .orderBy(asc(teachers.name));
 
-    // 5. Timetable slots with joined info
-    const slots = await db
+    // 5. Look up real teacher assignments from teacher_subject_classes
+    // (This guarantees that when Admin assigns/reassigns teachers in Manage Teachers,
+    // the timetable immediately displays the correct teacher for each class and subject).
+    const tscList = await db
+      .select({
+        subjectId: teacherSubjectClasses.subjectId,
+        classId: teacherSubjectClasses.classId,
+        teacherId: teacherSubjectClasses.teacherId,
+        teacherName: teachers.name,
+      })
+      .from(teacherSubjectClasses)
+      .innerJoin(teachers, eq(teacherSubjectClasses.teacherId, teachers.id));
+
+    const tscMap = new Map<string, { teacherId: number; teacherName: string }>();
+    for (const tsc of tscList) {
+      tscMap.set(`${tsc.subjectId}-${tsc.classId}`, {
+        teacherId: tsc.teacherId,
+        teacherName: tsc.teacherName,
+      });
+    }
+
+    // 6. Timetable slots with joined info
+    const rawSlots = await db
       .select({
         id: timetableSlots.id,
         dayOfWeek: timetableSlots.dayOfWeek,
@@ -132,27 +153,28 @@ export async function GET(req: Request) {
         asc(timetableSlots.period),
       );
 
-    // Subject×class assignment matrix (Manage Teachers → Assign) — the
-    // builder uses it to pre-select the right teacher when two teachers
-    // share one subject across different classes (e.g. Kiswahili F1/F2 vs
-    // F3/F4).
-    const coverage = await db
-      .select({
-        subjectId: teacherSubjectClasses.subjectId,
-        classId: teacherSubjectClasses.classId,
-        teacherId: teacherSubjectClasses.teacherId,
-        teacherName: teachers.name,
-      })
-      .from(teacherSubjectClasses)
-      .innerJoin(teachers, eq(teacherSubjectClasses.teacherId, teachers.id));
+    // Resolve effective teacher: if subjectId & classId are assigned in teacher_subject_classes,
+    // that assigned teacher ALWAYS takes precedence over old static slot values.
+    const resolvedSlots = rawSlots.map((s) => {
+      if (s.subjectId && s.classId) {
+        const assigned = tscMap.get(`${s.subjectId}-${s.classId}`);
+        if (assigned) {
+          return {
+            ...s,
+            teacherId: assigned.teacherId,
+            teacherName: assigned.teacherName,
+          };
+        }
+      }
+      return s;
+    });
 
     return Response.json({
       settings,
-      slots,
+      slots: resolvedSlots,
       classes: allClasses,
       subjects: allSubjects,
       teachers: allTeachers,
-      coverage,
       isManager,
       teacherId: teacher?.id ?? null,
       teacherName: teacher?.name ?? null,

@@ -18,7 +18,7 @@ import { EXAM_TYPES } from "@/lib/examTypes";
 import { cls, delJSON, postJSON, shortDate, useFetch } from "@/lib/utils";
 
 type ClassRow = { id: number; name: string; section: string };
-type SubjectRow = { id: number; name: string; code: string };
+type SubjectRow = { id: number; name: string; code: string; isOptional?: boolean };
 type StudentRow = { id: number; admissionNo: string; name: string; gender: "male" | "female" };
 type GradeRow = {
   id: number;
@@ -157,7 +157,10 @@ export default function GradesPage() {
   }, [examType, examOptions, activeExamTypes]);
 
   const entryStudentsUrl = useMemo(
-    () => (classId ? `/api/students?classId=${classId}&strict=1&subjectId=${subjectId}` : null),
+    () =>
+      classId
+        ? `/api/students?classId=${classId}&strict=1${subjectId ? `&subjectId=${subjectId}` : ""}`
+        : null,
     [classId, subjectId],
   );
   const entryGradesUrl = useMemo(
@@ -411,7 +414,15 @@ export default function GradesPage() {
             ) : entryStudents.loading ? (
               <Loader label="Loading students..." />
             ) : studentList.length === 0 ? (
-              <EmptyState icon="👨‍🎓" title="No students" message="This class has no students yet." />
+              <EmptyState
+                icon="👨‍🎓"
+                title="No students available"
+                message={
+                  selectedSubject?.isOptional
+                    ? `No students are mapped to this optional subject (${selectedSubject.name}) in this class. Use "Map Students" in the sidebar to enrol students.`
+                    : "This class has no students enrolled."
+                }
+              />
             ) : (
               <div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">

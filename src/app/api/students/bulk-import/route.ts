@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { classes, students } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
+import { approvals } from "@/db/schema";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
@@ -165,7 +166,25 @@ export async function POST(req: Request) {
     });
 
     if (toInsert.length > 0) {
-      await db.insert(students).values(toInsert);
+      if (user!.role !== "admin") {
+        const inserted = await db
+          .insert(students)
+          .values(toInsert.map((r) => ({ ...r, admissionStatus: "pending" })))
+          .returning({ id: students.id, name: students.name, admissionNo: students.admissionNo });
+        if (inserted.length > 0) {
+          await db.insert(approvals).values(
+            inserted.map((r) => ({
+              type: "student_admission",
+              refId: r.id,
+              summary: `${r.name} (${r.admissionNo}) [Excel import]`,
+              submittedById: user!.id,
+              submittedByName: user!.name,
+        })),
+          );
+        }
+      } else {
+        await db.insert(students).values(toInsert);
+      }
     }
 
     const successCount = results.filter((r) => r.status === "ok").length;

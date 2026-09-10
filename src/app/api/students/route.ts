@@ -2,6 +2,7 @@ import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, students } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
+import { createApproval } from "@/lib/approvals";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { classAllowed, getTeacherScope } from "@/lib/teachers";
 
@@ -79,11 +80,17 @@ export async function GET(req: Request) {
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(desc(students.createdAt));
 
+    // Pending admissions are visible only to the admin or staff trusted to admit students.
+    if (user!.role !== "admin" && !user!.permissions.includes("students.create")) {
+      return Response.json(rows.filter((r) => (r as unknown as { admissionStatus?: string }).admissionStatus !== "pending"));
+    }
     return Response.json(rows);
   } catch (e) {
     return dbErrorResponse(e, "load students");
   }
 }
+
+function name(r: { name: string }) { return r.name; }
 
 export async function POST(req: Request) {
   const user = await getSessionUser();
@@ -131,7 +138,17 @@ export async function POST(req: Request) {
         enrollmentDate,
       })
       .returning();
-    return Response.json(row, { status: 201 });
+    if (user!.role !== "admin") {
+      await db.update(students).set({ admissionStatus: "pending" }).where(eq(students.id, row.id));
+      await createApproval({
+        type: "student_admission",
+        refId: row.id,
+        summary: `${name(row)} (${admissionNo})`,
+        submittedById: user!.id,
+        submittedByName: user!.name,
+      });
+    }
+    return Response.json({ ...row, admissionStatus: user!.role === "admin" ? "approved" : "pending" }, { status: 201 });
   } catch {
     return Response.json(
       { error: "This admission number is already in use in this class. Please choose another one." },

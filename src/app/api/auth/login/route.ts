@@ -31,6 +31,18 @@ export async function POST(req: Request) {
       return Response.json({ error: "Invalid username or password." }, { status: 401 });
     }
 
+    // Monitor Dashboards global lock blocks every member sign-in (admin still works).
+    if (user.role === "member") {
+      const { systemLockState } = await import("@/lib/approvals");
+      const lock = await systemLockState();
+      if (lock.locked) {
+        return Response.json(
+          { error: lock.message.trim() || "Accounts are temporarily locked by the Administrator." },
+          { status: 403 },
+        );
+      }
+    }
+
     await createSession(user.id);
 
     return Response.json({

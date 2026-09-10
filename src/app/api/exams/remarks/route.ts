@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { studentExamRemarks } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
+import { createApproval } from "@/lib/approvals";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +35,6 @@ export async function GET(req: Request) {
         principalComment: "",
         academicMasterName: "",
         headmasterName: "",
-        isApproved: false,
       },
     );
   } catch (e) {
@@ -57,14 +57,12 @@ export async function PUT(req: Request) {
   }
 
   try {
-    const isAdmin = !!user && user.role === "admin";
     const values = {
       behaviorRatings: typeof body.behaviorRatings === "string" ? body.behaviorRatings : "{}",
       academicComment: typeof body.academicComment === "string" ? body.academicComment.trim() : "",
       principalComment: typeof body.principalComment === "string" ? body.principalComment.trim() : "",
       academicMasterName: typeof body.academicMasterName === "string" ? body.academicMasterName.trim() : "",
       headmasterName: typeof body.headmasterName === "string" ? body.headmasterName.trim() : "",
-      isApproved: isAdmin ? (body.isApproved !== undefined ? Boolean(body.isApproved) : true) : false,
       updatedAt: new Date(),
     };
 
@@ -74,19 +72,38 @@ export async function PUT(req: Request) {
       .where(and(eq(studentExamRemarks.studentId, studentId), eq(studentExamRemarks.examId, examId)))
       .limit(1);
 
+    const pending = user!.role !== "admin";
     if (existing) {
       const [updated] = await db
         .update(studentExamRemarks)
-        .set(values)
+        .set({ ...values, approvalStatus: pending ? "pending" : "approved" })
         .where(eq(studentExamRemarks.id, existing.id))
         .returning();
+      if (pending) {
+        await createApproval({
+          type: "behavior_remark",
+          refId: updated.id,
+          summary: `Behavioural assessment for student #${studentId} (exam #${examId})`,
+          submittedById: user!.id,
+          submittedByName: user!.name,
+        });
+      }
       return Response.json(updated);
     }
 
     const [created] = await db
       .insert(studentExamRemarks)
-      .values({ studentId, examId, ...values })
+      .values({ studentId, examId, ...values, approvalStatus: pending ? "pending" : "approved" })
       .returning();
+    if (pending) {
+      await createApproval({
+        type: "behavior_remark",
+        refId: created.id,
+        summary: `Behavioural assessment for student #${studentId} (exam #${examId})`,
+        submittedById: user!.id,
+        submittedByName: user!.name,
+      });
+    }
     return Response.json(created);
   } catch (e) {
     return dbErrorResponse(e, "save student remarks");

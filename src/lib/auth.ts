@@ -156,6 +156,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     .from(userPermissions)
     .where(eq(userPermissions.userId, user.id));
 
+  // Monitor Dashboards global lock: deny every member session when locked.
+  const { systemLockState } = await import("@/lib/approvals");
+  const lock = await systemLockState();
+  if (lock.locked) return null;
+
   return {
     id: user.id,
     name: user.name,

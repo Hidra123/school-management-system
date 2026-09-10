@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { classes, examClasses, exams } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
@@ -19,7 +19,7 @@ export async function GET() {
   if (err) return err;
 
   try {
-    const activeExams = await db.select().from(exams).where(eq(exams.status, "active")).orderBy(asc(exams.startDate));
+    const activeExams = await db.select().from(exams).where(and(eq(exams.status, "active"), eq(exams.approvalStatus, "approved"))).orderBy(asc(exams.startDate));
     const links = await db
       .select({ examId: examClasses.examId, classId: examClasses.classId, className: classes.name })
       .from(examClasses)

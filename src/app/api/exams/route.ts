@@ -4,6 +4,7 @@ import { classes, examClasses, exams } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { isExamType, normalizeExamType } from "@/lib/examTypes";
+import { createApproval } from "@/lib/approvals";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,7 @@ export async function POST(req: Request) {
         endDate: typeof body.endDate === "string" && body.endDate ? body.endDate : null,
         remarks: typeof body.remarks === "string" ? body.remarks.trim() : "",
         status: body.status === "inactive" ? "inactive" : "active",
+        approvalStatus: user!.role === "admin" ? "approved" : "pending",
       })
       .returning();
 
@@ -104,6 +106,15 @@ export async function POST(req: Request) {
       await db.insert(examClasses).values(classIds.map((classId) => ({ examId: row.id, classId })));
     }
 
+    if (user!.role !== "admin") {
+      await createApproval({
+        type: "exam",
+        refId: row.id,
+        summary: `${row.name} (${(row as unknown as { examType?: string }).examType ?? ""} ${row.academicYear ?? ""})`,
+        submittedById: user!.id,
+        submittedByName: user!.name,
+      });
+    }
     return Response.json({ ...row, classIds, appliesToAllClasses: classIds.length === 0 }, { status: 201 });
   } catch (e) {
     return dbErrorResponse(e, "create the examination");

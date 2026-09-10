@@ -122,33 +122,6 @@ export const teacherClasses = pgTable(
   (t) => [uniqueIndex("teacher_class_idx").on(t.teacherId, t.classId)],
 );
 
-// Specific assignment of a teacher to teach a subject in a specific class.
-// This allows multiple teachers to teach the same subject in different classes
-// (e.g., Teacher X teaches Kiswahili in Form 1 & 2; Teacher Y teaches Kiswahili in Form 3 & 4),
-// and respects class-specific subjects (e.g. Civics in Form 3 & 4 only).
-export const teacherSubjectClasses = pgTable(
-  "teacher_subject_classes",
-  {
-    id: serial("id").primaryKey(),
-    teacherId: integer("teacher_id")
-      .notNull()
-      .references(() => teachers.id, { onDelete: "cascade" }),
-    subjectId: integer("subject_id")
-      .notNull()
-      .references(() => subjects.id, { onDelete: "cascade" }),
-    classId: integer("class_id")
-      .notNull()
-      .references(() => classes.id, { onDelete: "cascade" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => [
-    uniqueIndex("teacher_subject_class_idx").on(t.subjectId, t.classId),
-    index("tsc_teacher_idx").on(t.teacherId),
-    index("tsc_class_idx").on(t.classId),
-    index("tsc_subject_idx").on(t.subjectId),
-  ],
-);
-
 export const students = pgTable(
   "students",
   {
@@ -168,7 +141,8 @@ export const students = pgTable(
     guardianPhone: varchar("guardian_phone", { length: 40 }).notNull().default(""),
     guardianAddress: varchar("guardian_address", { length: 200 }).notNull().default(""),
     enrollmentDate: date("enrollment_date", { mode: "string" }),
-    admissionStatus: varchar("admission_status", { length: 20 }).notNull().default("approved"),
+  // Members (e.g. Academic Master) can admit students, but the admin approves them.
+  admissionStatus: varchar("admission_status", { length: 12 }).notNull().default("approved"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   // Admission number must be unique per class (not school-wide). Students
@@ -213,6 +187,8 @@ export const exams = pgTable("exams", {
   remarks: varchar("remarks", { length: 300 }).notNull().default(""),
   // Inactive exams are hidden from teachers (cannot submit scores against them).
   status: examStatusEnum("status").notNull().default("active"),
+  // Exams created by the Academic Master wait for admin approval before teachers may use them.
+  approvalStatus: varchar("approval_status", { length: 12 }).notNull().default("approved"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -260,7 +236,8 @@ export const studentExamRemarks = pgTable(
     principalComment: varchar("principal_comment", { length: 300 }).notNull().default(""),
     academicMasterName: varchar("academic_master_name", { length: 120 }).notNull().default(""),
     headmasterName: varchar("headmaster_name", { length: 120 }).notNull().default(""),
-    isApproved: boolean("is_approved").notNull().default(false),
+  // Class Teacher behavioural assessments wait for admin approval before printing.
+  approvalStatus: varchar("approval_status", { length: 12 }).notNull().default("approved"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("student_exam_remarks_idx").on(t.studentId, t.examId)],
@@ -393,6 +370,65 @@ export const timetableSlots = pgTable(
   ],
 );
 
+
+// ---------- Teaching Assignments (subject x class per teacher) ----------
+// The authoritative "who teaches WHAT subject in WHICH class" matrix. Small
+// schools share subjects across teachers per class (e.g. Teacher X has
+// Kiswahili in Form 3 & 4 while Teacher Y has the SAME subject in Form 1 & 2)
+// - a single subjects.teacherId cannot express that, so assignments live here.
+// One teacher per (subject, class) cell - enforced by the unique index below.
+export const teacherSubjectClasses = pgTable(
+  "teacher_subject_classes",
+  {
+    id: serial("id").primaryKey(),
+    teacherId: integer("teacher_id")
+      .notNull()
+      .references(() => teachers.id, { onDelete: "cascade" }),
+    subjectId: integer("subject_id")
+      .notNull()
+      .references(() => subjects.id, { onDelete: "cascade" }),
+    classId: integer("class_id")
+      .notNull()
+      .references(() => classes.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("teacher_subject_class_idx").on(t.subjectId, t.classId)],
+);
+
+
+// ---------- Admin Approvals & System Lock ----------
+// One queue for every action the admin must approve (Approve Admissions page).
+// New sensitive work submitted by members lands here as "pending"; the admin
+// approves or rejects it, and the linked entity flips its own status column.
+export const approvals = pgTable(
+  "approvals",
+  {
+    id: serial("id").primaryKey(),
+    // "student_admission" | "exam" | "behavior_remark" (extensible later: fees, publishing...)
+    type: varchar("type", { length: 30 }).notNull(),
+    // id of the entity (students.id / exams.id / student_exam_remarks.id)
+    refId: integer("ref_id").notNull(),
+    status: varchar("status", { length: 12 }).notNull().default("pending"), // pending | approved | rejected
+    // Human-readable one-liner shown in the queue.
+    summary: varchar("summary", { length: 300 }).notNull().default(""),
+    submittedById: integer("submitted_by_id"),
+    submittedByName: varchar("submitted_by_name", { length: 120 }).notNull().default(""),
+    note: varchar("note", { length: 300 }).notNull().default(""),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("approvals_status_idx").on(t.status, t.type)],
+);
+
+// Single-row global switches (id = 1) — used by Monitor Dashboards to lock or
+// unlock EVERY member account at once, or single accounts via users.active.
+export const appSettings = pgTable("app_settings", {
+  id: serial("id").primaryKey(),
+  allAccountsLocked: boolean("all_accounts_locked").notNull().default(false),
+  lockMessage: varchar("lock_message", { length: 200 }).notNull().default(""),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // ---------- Types ----------
 export type UserRow = typeof users.$inferSelect;
 export type UserPermRow = typeof userPermissions.$inferSelect;
@@ -400,7 +436,6 @@ export type ClassRow = typeof classes.$inferSelect;
 export type TeacherRow = typeof teachers.$inferSelect;
 export type SubjectRow = typeof subjects.$inferSelect;
 export type TeacherClassRow = typeof teacherClasses.$inferSelect;
-export type TeacherSubjectClassRow = typeof teacherSubjectClasses.$inferSelect;
 export type StudentRow = typeof students.$inferSelect;
 export type AttendanceRow = typeof attendance.$inferSelect;
 export type GradeRow = typeof grades.$inferSelect;
@@ -411,3 +446,6 @@ export type ExamSettingsRow = typeof examSettings.$inferSelect;
 export type StudentExamRemarksRow = typeof studentExamRemarks.$inferSelect;
 export type TimetableSettingsRow = typeof timetableSettings.$inferSelect;
 export type TimetableSlotRow = typeof timetableSlots.$inferSelect;
+export type TeacherSubjectClassRow = typeof teacherSubjectClasses.$inferSelect;
+export type ApprovalRow = typeof approvals.$inferSelect;
+export type AppSettingsRow = typeof appSettings.$inferSelect;

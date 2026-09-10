@@ -135,12 +135,12 @@ shulehub-sms/
     │
     ├── components/
     │   ├── ui.tsx · AuthProvider · AppShell · Sidebar · ChangePasswordForm
-    │   ├── AssignSubjectsClassesModal · ImportStudentsModal
+    │   ├── AssignSubjectsClassesModal 🔧 (fine-grained subject-class matrix, supports teachers sharing a subject across different classes) · ImportStudentsModal
     │   ├── attendance/ (DailyEntry · MonthlyRegister · AttendanceReport · DaysSaved)
     │   ├── attendance-tracking/ (SchoolOverview · DailySummary · AtRisk)
     │   └── exams/ (ManageExaminations 🔧 · ExamRoutineResults · ClassResultReport · StudentReportCard)
     │
-    ├── db/  index.ts · schema.ts 🔧 (timetable_settings, timetable_slots) · seed.ts
+    ├── db/  index.ts · schema.ts 🔧 (teacher_subject_classes, timetable_settings, timetable_slots) · seed.ts
     │
     └── lib/ auth.ts · permissions.ts · teachers.ts 🔧 · examTypes.ts 🔧
         · examGrading.ts · attendanceHelpers.ts · apiError.ts · utils.ts

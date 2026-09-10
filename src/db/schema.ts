@@ -270,38 +270,98 @@ export const fees = pgTable("fees", {
     .notNull()
     .references(() => students.id, { onDelete: "cascade" }),
   description: varchar("description", { length: 160 }).notNull().default("School fee"),
-    amount: doublePrecision("amount").notNull().default(0),
+  amount: doublePrecision("amount").notNull().default(0),
   paidAmount: doublePrecision("paid_amount").notNull().default(0),
   dueDate: date("due_date", { mode: "string" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// ---------- Timetable ----------
-// One lesson slot per (class, day, period). The Academic Master builds the
-// general school timetable by filling these cells; teachers only ever READ
-// the entries that involve their assigned classes/subjects.
-export const timetableEntries = pgTable(
-  "timetable_entries",
+// ---------- Timetable Tables ----------
+export const timetableSettings = pgTable("timetable_settings", {
+  id: serial("id").primaryKey(),
+  councilName: varchar("council_name", { length: 150 })
+    .notNull()
+    .default("ROMBO DISTRICT COUNCIL"),
+  schoolName: varchar("school_name", { length: 150 })
+    .notNull()
+    .default("MANGI WINGIA SECONDARY SCHOOL"),
+  academicYear: varchar("academic_year", { length: 20 })
+    .notNull()
+    .default("2026"),
+  title: varchar("title", { length: 150 })
+    .notNull()
+    .default("GENERAL TEACHING TIME TABLE: 2026"),
+  breakTime: varchar("break_time", { length: 50 })
+    .notNull()
+    .default("10:40 - 11:00"),
+  lunchTime: varchar("lunch_time", { length: 50 })
+    .notNull()
+    .default("13:00 - 13:30"),
+  assemblyTime: varchar("assembly_time", { length: 50 })
+    .notNull()
+    .default("14:50 - 15:00"),
+  extraCurriculumTime: varchar("extra_curriculum_time", { length: 50 })
+    .notNull()
+    .default("15:00 - 16:30"),
+  mondayExtra: varchar("monday_extra", { length: 100 })
+    .notNull()
+    .default("Sport & Game"),
+  tuesdayExtra: varchar("tuesday_extra", { length: 100 })
+    .notNull()
+    .default("Subject Clubs"),
+  wednesdayExtra: varchar("wednesday_extra", { length: 100 })
+    .notNull()
+    .default("Debate"),
+  thursdayExtra: varchar("thursday_extra", { length: 100 })
+    .notNull()
+    .default("Self Study"),
+  fridayExtra: varchar("friday_extra", { length: 100 })
+    .notNull()
+    .default("General Cleanliness"),
+  notes: text("notes")
+    .notNull()
+    .default(
+      "Note: HIS/TZ – Historia ya Tanzania na Maadili, CIV – Civics, HIS – History, GEO – Geography, KISW – Kiswahili, ENG – English, PHY – Physics, CHEM – Chemistry, BIO – Biology, MATH – Mathematics, B/STD – Business Studies, CSC – Computer Science, PS – Private Studies.",
+    ),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const timetableSlots = pgTable(
+  "timetable_slots",
   {
     id: serial("id").primaryKey(),
+    dayOfWeek: integer("day_of_week").notNull(), // 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri
+    period: integer("period").notNull(), // 1 to 9
     classId: integer("class_id")
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
-    // 1 = Monday .. 5 = Friday (see src/lib/timetableConfig.ts).
-    dayOfWeek: integer("day_of_week").notNull(),
-    // Lesson period number 1..9 (breaks/lunch/assembly are fixed slots in
-    // src/lib/timetableConfig.ts and are NOT stored in the database).
-    period: integer("period").notNull(),
-    subjectId: integer("subject_id")
+    subjectId: integer("subject_id").references(() => subjects.id, {
+      onDelete: "set null",
+    }),
+    teacherId: integer("teacher_id").references(() => teachers.id, {
+      onDelete: "set null",
+    }),
+    customLabel: varchar("custom_label", { length: 50 }),
+    room: varchar("room", { length: 50 }),
+    academicYear: varchar("academic_year", { length: 20 })
       .notNull()
-      .references(() => subjects.id, { onDelete: "cascade" }),
-    // Denormalized from subjects.teacherId at save time so a teacher's own
-    // timetable can be one fast lookup; nullable when the subject is unassigned.
-    teacherId: integer("teacher_id").references(() => teachers.id, { onDelete: "set null" }),
-    academicYear: varchar("academic_year", { length: 10 }).notNull().default(""),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+      .default("2026"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (t) => [uniqueIndex("timetable_class_day_period_idx").on(t.classId, t.dayOfWeek, t.period)],
+  (t) => [
+    uniqueIndex("timetable_slot_unique_idx").on(
+      t.dayOfWeek,
+      t.period,
+      t.classId,
+      t.academicYear,
+    ),
+    index("timetable_slot_class_idx").on(t.classId),
+    index("timetable_slot_teacher_idx").on(t.teacherId),
+  ],
 );
 
 // ---------- Types ----------
@@ -319,4 +379,5 @@ export type ExamRow = typeof exams.$inferSelect;
 export type ExamClassRow = typeof examClasses.$inferSelect;
 export type ExamSettingsRow = typeof examSettings.$inferSelect;
 export type StudentExamRemarksRow = typeof studentExamRemarks.$inferSelect;
-export type TimetableEntryRow = typeof timetableEntries.$inferSelect;
+export type TimetableSettingsRow = typeof timetableSettings.$inferSelect;
+export type TimetableSlotRow = typeof timetableSlots.$inferSelect;

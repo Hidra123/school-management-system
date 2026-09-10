@@ -30,27 +30,45 @@ export async function getTeacherByUserId(userId: number) {
 
 /** Class IDs a teacher is assigned to (deduplicated — defense in depth). */
 export async function getAssignedClassIds(teacherId: number): Promise<number[]> {
-  const rows = await db
-    .select({ classId: teacherClasses.classId })
-    .from(teacherClasses)
-    .where(eq(teacherClasses.teacherId, teacherId));
-  return Array.from(new Set(rows.map((r) => r.classId)));
+  const [tcRows, tscRows] = await Promise.all([
+    db
+      .select({ classId: teacherClasses.classId })
+      .from(teacherClasses)
+      .where(eq(teacherClasses.teacherId, teacherId)),
+    db
+      .select({ classId: teacherSubjectClasses.classId })
+      .from(teacherSubjectClasses)
+      .where(eq(teacherSubjectClasses.teacherId, teacherId)),
+  ]);
+  const combined = [...tcRows.map((r) => r.classId), ...tscRows.map((r) => r.classId)];
+  return Array.from(new Set(combined));
 }
 
-/**
- * Subject IDs a teacher teaches, from BOTH sources:
- *  - the authoritative subject×class assignment matrix (teacher_subject_classes)
- *  - the legacy single-owner subjects.teacherId (kept as backward-compat)
- * Two teachers may share the same subject NAME for different classes — the
- * matrix allows that while the legacy column can only name one owner.
- */
+/** Subject IDs a teacher is assigned to teach across any class (deduplicated). */
 export async function getAssignedSubjectIds(teacherId: number): Promise<number[]> {
-  const legacy = await db.select({ id: subjects.id }).from(subjects).where(eq(subjects.teacherId, teacherId));
-  const matrix = await db
-    .select({ subjectId: teacherSubjectClasses.subjectId })
+  const [legacyRows, tscRows] = await Promise.all([
+    db.select({ id: subjects.id }).from(subjects).where(eq(subjects.teacherId, teacherId)),
+    db
+      .select({ id: teacherSubjectClasses.subjectId })
+      .from(teacherSubjectClasses)
+      .where(eq(teacherSubjectClasses.teacherId, teacherId)),
+  ]);
+  const combined = [...legacyRows.map((r) => r.id), ...tscRows.map((r) => r.id)];
+  return Array.from(new Set(combined));
+}
+
+/** Specific (subjectId, classId) pairings a teacher is assigned to teach. */
+export async function getAssignedSubjectClassPairs(
+  teacherId: number,
+): Promise<{ subjectId: number; classId: number }[]> {
+  const tscRows = await db
+    .select({
+      subjectId: teacherSubjectClasses.subjectId,
+      classId: teacherSubjectClasses.classId,
+    })
     .from(teacherSubjectClasses)
     .where(eq(teacherSubjectClasses.teacherId, teacherId));
-  return Array.from(new Set([...legacy.map((r) => r.id), ...matrix.map((r) => r.subjectId)]));
+  return tscRows;
 }
 
 /**
@@ -63,6 +81,7 @@ export type TeacherScope = {
   teacherId: number | null;
   classIds: number[];
   subjectIds: number[];
+  pairs?: { subjectId: number; classId: number }[];
 };
 
 export type TeacherScopeOptions = {
@@ -100,11 +119,12 @@ export async function getTeacherScope(
     if (opts.strictForAcademicMaster) return { scoped: true, teacherId: null, classIds: [], subjectIds: [] };
     return { scoped: false, teacherId: null, classIds: [], subjectIds: [] };
   }
-  const [classIds, subjectIds] = await Promise.all([
+  const [classIds, subjectIds, pairs] = await Promise.all([
     getAssignedClassIds(teacher.id),
     getAssignedSubjectIds(teacher.id),
+    getAssignedSubjectClassPairs(teacher.id),
   ]);
-  return { scoped: true, teacherId: teacher.id, classIds, subjectIds };
+  return { scoped: true, teacherId: teacher.id, classIds, subjectIds, pairs };
 }
 
 /** True if a class id is allowed for a scoped teacher (always true when unscoped). */
@@ -119,4 +139,22 @@ export function subjectAllowed(scope: TeacherScope, subjectId: number | null | u
   if (!scope.scoped) return true;
   if (subjectId === null || subjectId === undefined) return false;
   return scope.subjectIds.includes(subjectId);
+}
+
+/**
+ * True if a scoped teacher is allowed to teach a specific subject in a specific class.
+ * Respects fine-grained assignments (e.g. Teacher X teaches Kiswahili in Form 1 & 2 only).
+ */
+export function subjectClassAllowed(
+  scope: TeacherScope,
+  subjectId: number | null | undefined,
+  classId: number | null | undefined,
+): boolean {
+  if (!scope.scoped) return true;
+  if (subjectId === null || subjectId === undefined) return false;
+  if (classId === null || classId === undefined) return false;
+  if (scope.pairs && scope.pairs.length > 0) {
+    return scope.pairs.some((p) => p.subjectId === subjectId && p.classId === classId);
+  }
+  return classAllowed(scope, classId) && subjectAllowed(scope, subjectId);
 }

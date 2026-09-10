@@ -1,187 +1,895 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import { Badge, EmptyState, Loader, PageHeader, btnPrimary, inputCls } from "@/components/ui";
-import { cls, postJSON, useFetch } from "@/lib/utils";
+import {
+  Badge,
+  EmptyState,
+  Field,
+  Loader,
+  Modal,
+  PageHeader,
+  StatCard,
+  btnDanger,
+  btnGhost,
+  btnPrimary,
+  inputCls,
+} from "@/components/ui";
+import { EXAM_TYPES, examTypeShort, examTypeTone } from "@/lib/examTypes";
+import { cls, putJSON, shortDate, useFetch } from "@/lib/utils";
 
-type ApprovalRow = {
+type StudentAdmission = {
   id: number;
-  type: "student_admission" | "exam" | "behavior_remark";
-  refId: number;
-  status: "pending" | "approved" | "rejected";
-  summary: string;
-  submittedById: number | null;
-  submittedByName: string;
-  note: string;
-  decidedAt: string | null;
+  name: string;
+  admissionNo: string;
+  gender: "male" | "female";
+  classId: number | null;
+  className: string | null;
+  classSection: string | null;
+  guardianName: string;
+  guardianPhone: string;
+  guardianAddress: string;
+  enrollmentDate: string | null;
+  admissionStatus: string;
   createdAt: string;
 };
 
-const TYPES = [
-  { key: "student_admission", label: "Student Admissions", icon: "👨‍🎓", hint: "Students admitted by the Academic Master (incl. Excel imports)" },
-  { key: "exam", label: "Examinations", icon: "📋", hint: "New examinations created by the Academic Master" },
-  { key: "behavior_remark", label: "Behavioural Assessments", icon: "🌟", hint: "Class Teacher behaviour ratings & comments for report cards" },
+type ExamApproval = {
+  id: number;
+  name: string;
+  examType: string;
+  academicYear: string;
+  startDate: string | null;
+  endDate: string | null;
+  remarks: string;
+  status: "active" | "inactive";
+  approvalStatus: string;
+  classNames: string[];
+  appliesToAllClasses: boolean;
+  scoresCount: number;
+};
+
+type RemarkApproval = {
+  id: number;
+  studentId: number;
+  studentName: string;
+  studentAdmissionNo: string;
+  studentGender: "male" | "female";
+  classId: number | null;
+  className: string | null;
+  classSection: string | null;
+  examId: number;
+  examName: string;
+  examType: string;
+  academicYear: string;
+  behaviorRatings: string;
+  academicComment: string;
+  principalComment: string;
+  academicMasterName: string;
+  headmasterName: string;
+  approvalStatus: string;
+  hasScores: boolean;
+  scoresCount: number;
+  updatedAt: string;
+};
+
+type ApprovalsResponse = {
+  students: StudentAdmission[];
+  exams: ExamApproval[];
+  remarks: RemarkApproval[];
+  classes: { id: number; name: string; section: string }[];
+  summary: {
+    admissions: { total: number; pending: number; approved: number; rejected: number };
+    exams: { total: number; active: number; inactive: number; pending: number; approved: number };
+    remarks: { total: number; approved: number; pending: number; rejected: number };
+  };
+};
+
+const DEFAULT_BEHAVIOR_CRITERIA = [
+  "Communication Skills",
+  "Team Work & Collaboration",
+  "Discipline & Respect",
+  "Leadership & Responsibility",
+  "Punctuality & Attendance",
+  "Sports & Extracurricular Participation",
 ] as const;
 
 export default function ApproveAdmissionsPage() {
-  const { data, loading, error, refresh } = useFetch<ApprovalRow[]>("/api/admin/approvals");
-  const [tab, setTab] = useState<(typeof TYPES)[number]["key"]>("student_admission");
-  const [showHistory, setShowHistory] = useState(false);
-  const [busyId, setBusyId] = useState<number | null>(null);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"admissions" | "exams" | "remarks" | "timetable">("admissions");
 
-  const rows = useMemo(() => data ?? [], [data]);
-  const pending = useMemo(() => rows.filter((r) => r.status === "pending"), [rows]);
-  const history = useMemo(() => rows.filter((r) => r.status !== "pending"), [rows]);
+  // Filters for Students tab
+  const [admissionFilter, setAdmissionFilter] = useState<string>("all");
+  const [classFilter, setClassFilter] = useState<string>("");
+  const [searchStudent, setSearchStudent] = useState<string>("");
 
-  const list = showHistory ? history.filter((r) => r.type === tab) : pending.filter((r) => r.type === tab);
+  // Filters for Exams tab
+  const [examStatusFilter, setExamStatusFilter] = useState<string>("all");
+  const [examSearch, setExamSearch] = useState<string>("");
 
-  function count(t: string): number {
-    return pending.filter((r) => r.type === t).length;
-  }
+  // Filters for Remarks tab
+  const [remarksClassFilter, setRemarksClassFilter] = useState<string>("");
+  const [remarksApprovalFilter, setRemarksApprovalFilter] = useState<string>("all");
 
-  async function decide(row: ApprovalRow, action: "approve" | "reject") {
-    if (action === "reject" && !window.confirm(`Reject "${row.summary}"? The record will be marked as rejected.`)) return;
-    setBusyId(row.id);
-    setMsg(null);
+  // Review & Edit Remarks Modal
+  const [inspectRemark, setInspectRemark] = useState<RemarkApproval | null>(null);
+  const [savingRemark, setSavingRemark] = useState(false);
+  const [inspectRatings, setInspectRatings] = useState<Record<string, string>>({});
+  const [inspectAcademicComment, setInspectAcademicComment] = useState("");
+  const [inspectPrincipalComment, setInspectPrincipalComment] = useState("");
+  const [inspectHeadmasterName, setInspectHeadmasterName] = useState("");
+
+  const approvalsFetch = useFetch<ApprovalsResponse>("/api/admin/admissions-hub");
+  const data = approvalsFetch.data;
+  const summary = data?.summary;
+
+  // Filtered Students
+  const filteredStudents = useMemo(() => {
+    let list = data?.students ?? [];
+    if (admissionFilter !== "all") {
+      list = list.filter((s) => s.admissionStatus === admissionFilter);
+    }
+    if (classFilter) {
+      list = list.filter((s) => String(s.classId) === classFilter);
+    }
+    if (searchStudent.trim()) {
+      const q = searchStudent.toLowerCase();
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.admissionNo.toLowerCase().includes(q) ||
+          s.guardianName.toLowerCase().includes(q) ||
+          s.guardianPhone.includes(q),
+      );
+    }
+    return list;
+  }, [data?.students, admissionFilter, classFilter, searchStudent]);
+
+  // Filtered Exams
+  const filteredExams = useMemo(() => {
+    let list = data?.exams ?? [];
+    if (examStatusFilter === "active") {
+      list = list.filter((e) => e.status === "active");
+    } else if (examStatusFilter === "inactive") {
+      list = list.filter((e) => e.status === "inactive");
+    }
+    if (examSearch.trim()) {
+      const q = examSearch.toLowerCase();
+      list = list.filter((e) => e.name.toLowerCase().includes(q) || e.academicYear.includes(q));
+    }
+    return list;
+  }, [data?.exams, examStatusFilter, examSearch]);
+
+  // Filtered Remarks
+  const filteredRemarks = useMemo(() => {
+    let list = data?.remarks ?? [];
+    if (remarksClassFilter) {
+      list = list.filter((r) => String(r.classId) === remarksClassFilter);
+    }
+    if (remarksApprovalFilter !== "all") {
+      list = list.filter((r) => r.approvalStatus === remarksApprovalFilter);
+    }
+    return list;
+  }, [data?.remarks, remarksClassFilter, remarksApprovalFilter]);
+
+  // ---------------- ACTIONS ----------------
+  async function handleSetStudentStatus(studentId: number, status: "approved" | "pending" | "rejected") {
     try {
-      await postJSON("/api/admin/approvals", { id: row.id, action, note: "" });
-      setMsg(action === "approve" ? `✅ "${row.summary}" approved.` : `⚠️ "${row.summary}" rejected.`);
-      refresh();
-    } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Action failed.");
-    } finally {
-      setBusyId(null);
+      await putJSON("/api/admin/admissions-hub", { action: "set_student_status", studentId, status });
+      approvalsFetch.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update student status.");
     }
   }
 
-  async function approveAll() {
-    const items = pending.filter((r) => r.type === tab);
-    if (items.length === 0) return;
-    if (!window.confirm(`Approve all ${items.length} pending item(s) in this tab?`)) return;
-    setBusyId(-1);
-    setMsg(null);
+  async function handleBulkApproveStudents() {
+    if (!window.confirm("Approve all pending student admissions?")) return;
     try {
-      for (const r of items) {
-        await postJSON("/api/admin/approvals", { id: r.id, action: "approve", note: "" });
-      }
-      setMsg(`✅ Approved ${items.length} item(s).`);
-      refresh();
+      await putJSON("/api/admin/admissions-hub", { action: "bulk_set_student_status", status: "approved" });
+      approvalsFetch.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to bulk approve students.");
+    }
+  }
+
+  async function handleToggleExamStatus(examId: number, currentStatus: "active" | "inactive") {
+    const newStatus = currentStatus === "active" ? "inactive" : "active";
+    try {
+      await putJSON("/api/admin/admissions-hub", { action: "toggle_exam_status", examId, status: newStatus });
+      approvalsFetch.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update exam status.");
+    }
+  }
+
+  async function handleSetRemarkStatus(remarkId: number, status: "approved" | "pending" | "rejected") {
+    try {
+      await putJSON("/api/admin/admissions-hub", { action: "set_remark_status", remarkId, status });
+      approvalsFetch.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to update remark status.");
+    }
+  }
+
+  async function handleBulkApproveRemarks() {
+    if (!window.confirm("Approve all pending behavioural remarks for student report cards?")) return;
+    try {
+      await putJSON("/api/admin/admissions-hub", { action: "bulk_set_remark_status", status: "approved" });
+      approvalsFetch.refresh();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Failed to bulk approve remarks.");
+    }
+  }
+
+  function openInspectRemarkModal(r: RemarkApproval) {
+    setInspectRemark(r);
+    try {
+      setInspectRatings(JSON.parse(r.behaviorRatings || "{}"));
+    } catch {
+      setInspectRatings({});
+    }
+    setInspectAcademicComment(r.academicComment || "");
+    setInspectPrincipalComment(r.principalComment || "");
+    setInspectHeadmasterName(r.headmasterName || "Head of School");
+  }
+
+  async function handleSaveAndApproveRemark(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inspectRemark) return;
+    setSavingRemark(true);
+    try {
+      await putJSON("/api/admin/admissions-hub", {
+        action: "save_and_approve_remark",
+        studentId: inspectRemark.studentId,
+        examId: inspectRemark.examId,
+        behaviorRatings: JSON.stringify(inspectRatings),
+        academicComment: inspectAcademicComment,
+        principalComment: inspectPrincipalComment,
+        academicMasterName: inspectRemark.academicMasterName,
+        headmasterName: inspectHeadmasterName,
+      });
+      setInspectRemark(null);
+      approvalsFetch.refresh();
     } catch (err) {
-      setMsg(err instanceof Error ? err.message : "Action failed.");
+      alert(err instanceof Error ? err.message : "Failed to save and approve remarks.");
     } finally {
-      setBusyId(null);
+      setSavingRemark(false);
     }
   }
 
   return (
     <AppShell>
-      <PageHeader icon="✅" title="Approve Admissions" subtitle="Review and approve sensitive work submitted by Academic and Class Teachers">
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => setShowHistory(false)}
-            className={cls("rounded-xl px-4 py-2 text-xs font-bold transition", !showHistory ? "bg-amber-500 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}
-          >
-            ⏳ Pending ({pending.length})
-          </button>
-          <button
-            onClick={() => setShowHistory(true)}
-            className={cls("rounded-xl px-4 py-2 text-xs font-bold transition", showHistory ? "bg-slate-900 text-white" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50")}
-          >
-            🗂️ History ({history.length})
-          </button>
-        </div>
-      </PageHeader>
-
-      <div className="mb-4 flex flex-wrap gap-2">
-        {TYPES.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cls(
-              "inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition",
-              tab === t.key ? "bg-violet-600 text-white shadow-sm" : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
-            )}
-          >
-            {t.icon} {t.label}
-            {!showHistory && count(t.key) > 0 && (
-              <span className="rounded-full bg-amber-400 px-2 py-0.5 text-[11px] font-black text-amber-950">{count(t.key)}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {!showHistory && count(tab) > 0 && (
-        <div className="mb-4 flex items-center justify-between rounded-xl bg-amber-50 px-4 py-3 ring-1 ring-inset ring-amber-200">
-          <p className="text-xs font-semibold text-amber-800">⏳ {count(tab)} pending — {TYPES.find((t) => t.key === tab)?.hint}</p>
-          <button onClick={approveAll} disabled={busyId !== null} className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-50">
-            ✅ Approve all {count(tab)}
-          </button>
-        </div>
-      )}
-
-      {msg && <p className="mb-4 rounded-xl bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700">{msg}</p>}
-
-      {loading && !data ? (
-        <Loader label="Loading approval queue..." />
-      ) : error ? (
-        <EmptyState icon="⚠️" title="Could not load" message={error} />
-      ) : list.length === 0 ? (
-        <EmptyState
-          icon={showHistory ? "🗂️" : "🎉"}
-          title={showHistory ? "No history yet" : "Nothing waiting for approval"}
-          message={showHistory ? "Approved and rejected items will appear here." : "Everything from Academic and Class Teachers is already approved. New submissions will appear here automatically."}
+      <div className="space-y-5">
+        <PageHeader
+          icon="✅"
+          title="Approve Admissions & Academic Work"
+          subtitle="Direct control over student admissions, examinations, and class teacher assessments"
         />
-      ) : (
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900 text-white">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-bold">#</th>
-                <th className="px-4 py-3 text-left text-xs font-bold">Item</th>
-                <th className="px-4 py-3 text-left text-xs font-bold">Submitted By</th>
-                <th className="px-4 py-3 text-left text-xs font-bold">When</th>
-                <th className="px-4 py-3 text-left text-xs font-bold">Status</th>
-                {!showHistory && <th className="px-4 py-3 text-right text-xs font-bold">Decision</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {list.map((r, i) => (
-                <tr key={r.id} className="odd:bg-white even:bg-slate-50/60">
-                  <td className="px-4 py-3 text-slate-400">{i + 1}</td>
-                  <td className="px-4 py-3 font-bold text-slate-900">{r.summary || `#${r.refId}`}</td>
-                  <td className="px-4 py-3 text-slate-600">{r.submittedByName || "—"}</td>
-                  <td className="px-4 py-3 text-slate-500">{new Date(r.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}</td>
-                  <td className="px-4 py-3">
-                    <Badge tone={r.status === "approved" ? "emerald" : r.status === "rejected" ? "rose" : "amber"}>{r.status}</Badge>
-                  </td>
-                  {!showHistory && (
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => decide(r, "approve")}
-                          disabled={busyId !== null}
-                          className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-40"
-                        >
-                          {busyId === r.id ? "..." : "✅ Approve"}
-                        </button>
-                        <button
-                          onClick={() => decide(r, "reject")}
-                          disabled={busyId !== null}
-                          className="rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700 disabled:opacity-40"
-                        >
-                          {busyId === r.id ? "..." : "✖ Reject"}
-                        </button>
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        {/* Top KPI Cards with Real Counts */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard
+            icon="👨‍🎓"
+            label="Total Students"
+            value={summary?.admissions.total ?? 0}
+            tone="indigo"
+            sub={`${summary?.admissions.approved ?? 0} Approved · ${summary?.admissions.pending ?? 0} Pending`}
+          />
+          <StatCard
+            icon="⏳"
+            label="Pending Admissions"
+            value={summary?.admissions.pending ?? 0}
+            tone={summary?.admissions.pending ? "amber" : "emerald"}
+            sub={summary?.admissions.pending ? "Awaiting admin decision" : "None pending"}
+          />
+          <StatCard
+            icon="📋"
+            label="Examinations"
+            value={summary?.exams.total ?? 0}
+            tone="blue"
+            sub={`${summary?.exams.active ?? 0} Active (Open) · ${summary?.exams.inactive ?? 0} Suspended`}
+          />
+          <StatCard
+            icon="🌟"
+            label="Behaviour Remarks"
+            value={summary?.remarks.total ?? 0}
+            tone={summary?.remarks.pending ? "amber" : "emerald"}
+            sub={`${summary?.remarks.approved ?? 0} Approved · ${summary?.remarks.pending ?? 0} Pending`}
+          />
         </div>
-      )}
+
+        {/* Tab Switchers */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-3">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setActiveTab("admissions")}
+              className={cls(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                activeTab === "admissions"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              👨‍🎓 Student Admissions ({data?.students.length ?? 0})
+              {summary && summary.admissions.pending > 0 && (
+                <span className="rounded-full bg-amber-400 text-slate-900 px-2 py-0.5 text-xs font-black">
+                  {summary.admissions.pending} pending
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("exams")}
+              className={cls(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                activeTab === "exams"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              📋 Manage Examinations ({summary?.exams.total ?? 0})
+            </button>
+            <button
+              onClick={() => setActiveTab("remarks")}
+              className={cls(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                activeTab === "remarks"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              🌟 Behavioural Assessments ({summary?.remarks.total ?? 0})
+              {summary && summary.remarks.pending > 0 && (
+                <span className="rounded-full bg-amber-400 text-slate-900 px-2 py-0.5 text-xs font-black">
+                  {summary.remarks.pending} pending
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab("timetable")}
+              className={cls(
+                "inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition",
+                activeTab === "timetable"
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50",
+              )}
+            >
+              📅 Timetable Approvals
+            </button>
+          </div>
+        </div>
+
+        {/* LOADING STATE */}
+        {approvalsFetch.loading && !data ? (
+          <Loader label="Loading admissions and approval lists..." />
+        ) : approvalsFetch.error ? (
+          <EmptyState icon="⚠️" title="Could not load data" message={approvalsFetch.error} />
+        ) : !data ? null : (
+          <>
+            {/* ========================================================= */}
+            {/* TAB 1: STUDENT ADMISSIONS LIST (Approved & Pending)        */}
+            {/* ========================================================= */}
+            {activeTab === "admissions" && (
+              <div className="space-y-4">
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <input
+                      type="text"
+                      value={searchStudent}
+                      onChange={(e) => setSearchStudent(e.target.value)}
+                      placeholder="🔍 Search student, admission no, or guardian..."
+                      className={cls(inputCls, "w-64 text-xs")}
+                    />
+                    <select
+                      value={admissionFilter}
+                      onChange={(e) => setAdmissionFilter(e.target.value)}
+                      className={cls(inputCls, "w-48 text-xs font-bold")}
+                    >
+                      <option value="all">All Students ({summary?.admissions.total ?? 0})</option>
+                      <option value="approved">Approved List ({summary?.admissions.approved ?? 0})</option>
+                      <option value="pending">Pending Approval ({summary?.admissions.pending ?? 0})</option>
+                      <option value="rejected">Suspended / Rejected ({summary?.admissions.rejected ?? 0})</option>
+                    </select>
+                    <select
+                      value={classFilter}
+                      onChange={(e) => setClassFilter(e.target.value)}
+                      className={cls(inputCls, "w-40 text-xs font-bold")}
+                    >
+                      <option value="">All Classes</option>
+                      {data.classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.section ? `(${c.section})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {summary && summary.admissions.pending > 0 && (
+                    <button
+                      onClick={handleBulkApproveStudents}
+                      className={cls(btnPrimary, "text-xs font-bold")}
+                    >
+                      ✅ Approve All Pending ({summary.admissions.pending})
+                    </button>
+                  )}
+                </div>
+
+                {/* Table */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-900 text-white">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">#</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Adm No</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Student Name</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Class</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Gender</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Guardian / Contact</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Enrolled Date</th>
+                          <th className="px-3 py-2.5 text-center font-extrabold uppercase">Status</th>
+                          <th className="px-3 py-2.5 text-right font-extrabold uppercase">Admin Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredStudents.length === 0 ? (
+                          <tr>
+                            <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                              No students found matching your selected filters.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredStudents.map((s, idx) => (
+                            <tr key={s.id} className={idx % 2 ? "bg-slate-50/50 hover:bg-slate-50" : "bg-white hover:bg-slate-50"}>
+                              <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
+                              <td className="px-3 py-2 font-mono font-bold text-indigo-700">{s.admissionNo}</td>
+                              <td className="px-3 py-2 font-bold text-slate-900">{s.name}</td>
+                              <td className="px-3 py-2 font-semibold text-slate-700">
+                                {s.className || "Unassigned"} {s.classSection ? `(${s.classSection})` : ""}
+                              </td>
+                              <td className="px-3 py-2 capitalize text-slate-600">{s.gender}</td>
+                              <td className="px-3 py-2 text-slate-600">
+                                {s.guardianName ? (
+                                  <div>
+                                    <span className="font-semibold text-slate-800">{s.guardianName}</span>
+                                    {s.guardianPhone && <span className="block text-[10px] text-slate-400">{s.guardianPhone}</span>}
+                                  </div>
+                                ) : (
+                                  "—"
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-slate-500">{shortDate(s.enrollmentDate || s.createdAt)}</td>
+                              <td className="px-3 py-2 text-center">
+                                {s.admissionStatus === "approved" ? (
+                                  <Badge tone="emerald">✅ Approved</Badge>
+                                ) : s.admissionStatus === "rejected" ? (
+                                  <Badge tone="rose">⛔ Suspended</Badge>
+                                ) : (
+                                  <Badge tone="amber">⏳ Pending</Badge>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <div className="flex justify-end gap-1.5">
+                                  {s.admissionStatus !== "approved" && (
+                                    <button
+                                      onClick={() => handleSetStudentStatus(s.id, "approved")}
+                                      className="rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 text-xs font-bold"
+                                      title="Approve student admission"
+                                    >
+                                      Approve
+                                    </button>
+                                  )}
+                                  {s.admissionStatus === "approved" && (
+                                    <button
+                                      onClick={() => handleSetStudentStatus(s.id, "rejected")}
+                                      className="rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 text-xs font-bold"
+                                      title="Suspend student admission"
+                                    >
+                                      Suspend
+                                    </button>
+                                  )}
+                                  {s.admissionStatus !== "pending" && (
+                                    <button
+                                      onClick={() => handleSetStudentStatus(s.id, "pending")}
+                                      className="rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 px-2 py-1 text-xs font-bold"
+                                      title="Mark back to pending"
+                                    >
+                                      Set Pending
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 2: EXAMINATIONS LIST (Active / Suspended / Approvals)   */}
+            {/* ========================================================= */}
+            {activeTab === "exams" && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="text"
+                      value={examSearch}
+                      onChange={(e) => setExamSearch(e.target.value)}
+                      placeholder="🔍 Search exam name or year..."
+                      className={cls(inputCls, "w-64 text-xs")}
+                    />
+                    <select
+                      value={examStatusFilter}
+                      onChange={(e) => setExamStatusFilter(e.target.value)}
+                      className={cls(inputCls, "w-44 text-xs font-bold")}
+                    >
+                      <option value="all">All Exams ({data.exams.length})</option>
+                      <option value="active">Active (Approved) ({summary?.exams.active ?? 0})</option>
+                      <option value="inactive">Inactive (Locked) ({summary?.exams.inactive ?? 0})</option>
+                    </select>
+                  </div>
+                  <Link
+                    href="/exams"
+                    className={cls(btnGhost, "text-xs font-bold text-indigo-700 border-indigo-200")}
+                  >
+                    Manage Exams Page ↗
+                  </Link>
+                </div>
+
+                <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-900 text-white">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">#</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Exam Name</th>
+                          <th className="px-3 py-2.5 text-center font-extrabold uppercase">Type</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Academic Year</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Dates</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Classes Applied</th>
+                          <th className="px-3 py-2.5 text-right font-extrabold uppercase">Scores Captured</th>
+                          <th className="px-3 py-2.5 text-center font-extrabold uppercase">Status</th>
+                          <th className="px-3 py-2.5 text-right font-extrabold uppercase">Admin Decision</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredExams.map((e, idx) => (
+                          <tr key={e.id} className={idx % 2 ? "bg-slate-50/50 hover:bg-slate-50" : "bg-white hover:bg-slate-50"}>
+                            <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
+                            <td className="px-3 py-2 font-bold text-slate-900">{e.name}</td>
+                            <td className="px-3 py-2 text-center">
+                              <Badge tone={examTypeTone(e.examType)}>{examTypeShort(e.examType)}</Badge>
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">{e.academicYear || "—"}</td>
+                            <td className="px-3 py-2 text-slate-500">
+                              {e.startDate ? `${shortDate(e.startDate)} – ${shortDate(e.endDate)}` : "Not scheduled"}
+                            </td>
+                            <td className="px-3 py-2 text-slate-700">
+                              {e.appliesToAllClasses ? "All classes" : e.classNames.join(", ")}
+                            </td>
+                            <td className="px-3 py-2 text-right font-bold text-slate-800">
+                              {e.scoresCount} scores
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {e.status === "active" ? (
+                                <Badge tone="emerald">🟢 Active (Approved)</Badge>
+                              ) : (
+                                <Badge tone="rose">⏸️ Inactive (Locked)</Badge>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <button
+                                onClick={() => handleToggleExamStatus(e.id, e.status)}
+                                className={cls(
+                                  "rounded-lg px-2.5 py-1 text-xs font-bold border",
+                                  e.status === "active"
+                                    ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                                    : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100",
+                                )}
+                              >
+                                {e.status === "active" ? "⏸️ Suspend / Lock" : "✅ Approve & Open"}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 3: BEHAVIOURAL ASSESSMENTS (Approved & Pending)        */}
+            {/* ========================================================= */}
+            {activeTab === "remarks" && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-violet-100 bg-violet-50/70 p-3.5 text-xs text-violet-950 leading-relaxed">
+                  <p className="font-extrabold text-[12.5px] text-violet-900 mb-1">
+                    🌟 Student Behavioural &amp; Character Assessments
+                  </p>
+                  <p>
+                    Review assessments submitted by Class Teachers. When approved, these character evaluations appear directly on official Student Report Cards.
+                  </p>
+                </div>
+
+                {/* Filters */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <select
+                      value={remarksApprovalFilter}
+                      onChange={(e) => setRemarksApprovalFilter(e.target.value)}
+                      className={cls(inputCls, "w-48 text-xs font-bold")}
+                    >
+                      <option value="all">All Assessments ({data.remarks.length})</option>
+                      <option value="approved">Approved List ({summary?.remarks.approved ?? 0})</option>
+                      <option value="pending">Pending Approval ({summary?.remarks.pending ?? 0})</option>
+                      <option value="rejected">Suspended ({summary?.remarks.rejected ?? 0})</option>
+                    </select>
+                    <select
+                      value={remarksClassFilter}
+                      onChange={(e) => setRemarksClassFilter(e.target.value)}
+                      className={cls(inputCls, "w-40 text-xs font-bold")}
+                    >
+                      <option value="">All Classes</option>
+                      {data.classes.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.section ? `(${c.section})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {summary && summary.remarks.pending > 0 && (
+                    <button
+                      onClick={handleBulkApproveRemarks}
+                      className={cls(btnPrimary, "text-xs font-bold")}
+                    >
+                      ✅ Approve All Pending Remarks ({summary.remarks.pending})
+                    </button>
+                  )}
+                </div>
+
+                {/* Table */}
+                <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-900 text-white">
+                        <tr>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">#</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Student</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Class</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Exam</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Scores Status</th>
+                          <th className="px-3 py-2.5 text-left font-extrabold uppercase">Evaluation / Comment</th>
+                          <th className="px-3 py-2.5 text-center font-extrabold uppercase">Status</th>
+                          <th className="px-3 py-2.5 text-right font-extrabold uppercase">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {filteredRemarks.length === 0 ? (
+                          <tr>
+                            <td colSpan={8} className="px-4 py-12 text-center text-slate-400">
+                              No behavioural assessments found. Assessments submitted by Class Teachers in the Report Card module appear here.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredRemarks.map((r, idx) => (
+                            <tr key={r.id} className={idx % 2 ? "bg-slate-50/50 hover:bg-slate-50" : "bg-white hover:bg-slate-50"}>
+                              <td className="px-3 py-2 text-slate-500">{idx + 1}</td>
+                              <td className="px-3 py-2 font-bold text-slate-900">
+                                {r.studentName}
+                                <span className="block font-mono text-[10px] text-slate-400">{r.studentAdmissionNo}</span>
+                              </td>
+                              <td className="px-3 py-2 font-semibold text-slate-700">{r.className}</td>
+                              <td className="px-3 py-2 font-medium text-slate-800">
+                                {r.examName} <Badge tone="indigo">{r.examType}</Badge>
+                              </td>
+                              <td className="px-3 py-2">
+                                {r.hasScores ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                    ✅ Scores Submitted ({r.scoresCount})
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                                    ⏳ Scores Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 max-w-xs truncate text-slate-600">
+                                {r.academicComment || r.principalComment ? (
+                                  <span>{r.academicComment || r.principalComment}</span>
+                                ) : (
+                                  <span className="italic text-slate-400">Ratings entered</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {r.approvalStatus === "approved" ? (
+                                  <Badge tone="emerald">✅ Approved</Badge>
+                                ) : r.approvalStatus === "rejected" ? (
+                                  <Badge tone="rose">⛔ Suspended</Badge>
+                                ) : (
+                                  <Badge tone="amber">⏳ Pending</Badge>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                <div className="flex justify-end gap-1.5">
+                                  <button
+                                    onClick={() => openInspectRemarkModal(r)}
+                                    className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-bold text-slate-700 hover:bg-slate-50"
+                                  >
+                                    👁️ Review
+                                  </button>
+                                  {r.approvalStatus === "approved" ? (
+                                    <button
+                                      onClick={() => handleSetRemarkStatus(r.id, "rejected")}
+                                      className="rounded-lg bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-200 px-2 py-1 text-xs font-bold"
+                                      title="Suspend assessment"
+                                    >
+                                      Suspend
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => handleSetRemarkStatus(r.id, "approved")}
+                                      className="rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 px-2 py-1 text-xs font-bold"
+                                      title="Approve assessment"
+                                    >
+                                      Approve
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================= */}
+            {/* TAB 4: TIMETABLE REVIEW & APPROVAL                        */}
+            {/* ========================================================= */}
+            {activeTab === "timetable" && (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                    <div>
+                      <h2 className="text-lg font-bold text-slate-900">📅 General Teaching Timetable Approval</h2>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Verify the school master schedule prepared by the Academic Master before issuing prints to staff and noticeboards.
+                      </p>
+                    </div>
+                    <Link
+                      href="/timetable"
+                      className={cls(btnPrimary, "text-xs font-bold")}
+                    >
+                      Open Master Timetable ↗
+                    </Link>
+                  </div>
+
+                  <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-xs font-bold uppercase text-slate-400">Total Classes</p>
+                      <p className="mt-1 text-xl font-black text-slate-800">{data.classes.length}</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-xs font-bold uppercase text-slate-400">Days / Periods</p>
+                      <p className="mt-1 text-xl font-black text-slate-800">5 Days × 9 Periods</p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-xs font-bold uppercase text-slate-400">Status</p>
+                      <p className="mt-1 text-sm font-black text-emerald-600 flex items-center gap-1">
+                        <span>●</span> Active on Master View
+                      </p>
+                    </div>
+                    <div className="p-4 rounded-xl bg-slate-50 border border-slate-200">
+                      <p className="text-xs font-bold uppercase text-slate-400">Print Ready</p>
+                      <p className="mt-1 text-sm font-black text-indigo-700">A3 Poster / A4 Clean</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ========================================================= */}
+        {/* MODAL: INSPECT / EDIT BEHAVIOURAL REMARKS                 */}
+        {/* ========================================================= */}
+        {inspectRemark && (
+          <Modal
+            open={!!inspectRemark}
+            onClose={() => setInspectRemark(null)}
+            title={`Review & Approve Behavioural Assessment: ${inspectRemark.studentName}`}
+            wide
+          >
+            <form onSubmit={handleSaveAndApproveRemark} className="space-y-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs flex justify-between font-semibold text-slate-700">
+                <span>Class: <b>{inspectRemark.className}</b></span>
+                <span>Exam: <b>{inspectRemark.examName} ({inspectRemark.examType})</b></span>
+                <span>Scores: <b>{inspectRemark.hasScores ? `${inspectRemark.scoresCount} scores submitted` : "Pending"}</b></span>
+              </div>
+
+              <div>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-600">
+                  Behaviour &amp; Character Criteria Ratings (A to F)
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {DEFAULT_BEHAVIOR_CRITERIA.map((crit) => (
+                    <div key={crit} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-slate-200 bg-white">
+                      <span className="text-xs font-medium text-slate-800">{crit}</span>
+                      <select
+                        value={inspectRatings[crit] ?? ""}
+                        onChange={(e) => setInspectRatings({ ...inspectRatings, [crit]: e.target.value })}
+                        className={cls(inputCls, "w-24 text-xs font-bold")}
+                      >
+                        <option value="">—</option>
+                        {["A", "B", "C", "D", "F"].map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Field label="Academic Comment">
+                <textarea
+                  rows={2}
+                  value={inspectAcademicComment}
+                  onChange={(e) => setInspectAcademicComment(e.target.value)}
+                  className={inputCls}
+                  placeholder="Academic performance evaluation comment..."
+                />
+              </Field>
+
+              <Field label="Head of School / Administration Remark">
+                <textarea
+                  rows={2}
+                  value={inspectPrincipalComment}
+                  onChange={(e) => setInspectPrincipalComment(e.target.value)}
+                  className={inputCls}
+                  placeholder="Head of school official sign-off remark..."
+                />
+              </Field>
+
+              <Field label="Head of School Name">
+                <input
+                  type="text"
+                  value={inspectHeadmasterName}
+                  onChange={(e) => setInspectHeadmasterName(e.target.value)}
+                  className={inputCls}
+                />
+              </Field>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setInspectRemark(null)}
+                  className={btnGhost}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingRemark}
+                  className={btnPrimary}
+                >
+                  {savingRemark ? "Saving..." : "✅ Save & Approve for Report Card"}
+                </button>
+              </div>
+            </form>
+          </Modal>
+        )}
+      </div>
     </AppShell>
   );
 }

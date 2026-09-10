@@ -101,8 +101,6 @@ export const subjects = pgTable("subjects", {
   teacherId: integer("teacher_id").references(() => teachers.id, {
     onDelete: "set null",
   }),
-  // Optional/elective subjects (e.g. Civics F3-4, Computer Application F1...) —
-  // only students mapped to them appear when submitting scores.
   isOptional: boolean("is_optional").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -434,11 +432,9 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-
-// ---------- Student-Subject Mapping (optional / elective subjects) ----------
-// Academic Master assigns which students enrol in each optional subject.
-// A mapped student may have scores submitted for that subject; unmapped ones
-// never appear in the Submit Scores roster for it.
+// ---------- Student–Subject Mapping (Optional Subjects) ----------
+// Enrolls specific students into optional/elective subjects in their class.
+// Used by Academic Master (Map Students) and respected by Submit Scores.
 export const studentSubjectMap = pgTable(
   "student_subject_map",
   {
@@ -454,7 +450,7 @@ export const studentSubjectMap = pgTable(
   (t) => [uniqueIndex("student_subject_map_idx").on(t.studentId, t.subjectId)],
 );
 
-// ---------- Academic Years & Alumni (Year Progression) ----------
+// ---------- Academic Year & Promotion ----------
 export const academicYears = pgTable("academic_years", {
   id: serial("id").primaryKey(),
   year: varchar("year", { length: 10 }).notNull().unique(),
@@ -463,8 +459,7 @@ export const academicYears = pgTable("academic_years", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Graduated students (Form 4 completers). Full snapshot so the row stays
-// readable even if the live student record changes later.
+// Permanent archive of graduated students (Form 4 -> Alumni)
 export const alumni = pgTable("alumni", {
   id: serial("id").primaryKey(),
   studentId: integer("student_id").notNull(),

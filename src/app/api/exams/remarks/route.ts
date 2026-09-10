@@ -76,7 +76,7 @@ export async function PUT(req: Request) {
     if (existing) {
       const [updated] = await db
         .update(studentExamRemarks)
-        .set({ ...values, approvalStatus: pending ? "pending" : "approved" })
+        .set({ ...values, approvalStatus: pending ? "pending" : "approved", isApproved: !pending })
         .where(eq(studentExamRemarks.id, existing.id))
         .returning();
       if (pending) {
@@ -93,7 +93,7 @@ export async function PUT(req: Request) {
 
     const [created] = await db
       .insert(studentExamRemarks)
-      .values({ studentId, examId, ...values, approvalStatus: pending ? "pending" : "approved" })
+      .values({ studentId, examId, ...values, approvalStatus: pending ? "pending" : "approved", isApproved: !pending })
       .returning();
     if (pending) {
       await createApproval({

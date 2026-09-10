@@ -50,7 +50,7 @@ export async function decideApproval(
   } else if (row.type === "exam") {
     await db.update(exams).set({ approvalStatus: status }).where(eq(exams.id, row.refId));
   } else if (row.type === "behavior_remark") {
-    await db.update(studentExamRemarks).set({ approvalStatus: status }).where(eq(studentExamRemarks.id, row.refId));
+    await db.update(studentExamRemarks).set({ approvalStatus: status, isApproved: action === "approve" }).where(eq(studentExamRemarks.id, row.refId));
   }
 
   await db

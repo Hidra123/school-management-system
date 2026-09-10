@@ -238,6 +238,8 @@ export const studentExamRemarks = pgTable(
     headmasterName: varchar("headmaster_name", { length: 120 }).notNull().default(""),
   // Class Teacher behavioural assessments wait for admin approval before printing.
   approvalStatus: varchar("approval_status", { length: 12 }).notNull().default("approved"),
+  // Same flag as a boolean for the report card and admin admissiions checks.
+  isApproved: boolean("is_approved").notNull().default(true),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("student_exam_remarks_idx").on(t.studentId, t.examId)],

@@ -55,7 +55,7 @@ function signatureName(name: string): string {
   return parts.slice(0, -1).map((w) => w[0]!.toUpperCase()).join(".") + ". " + surname;
 }
 
-/** T.O.D auto-comment â€” tuned to the attendance percentage of the day. */
+/** T.O.D auto-comment - tuned to the attendance percentage of the day. */
 export function autoTodComment(pct: number, absent: number): string {
   if (pct >= 100) return `Attendance was a perfect 100% - every single student was present. A truly exemplary day for the whole school; my sincere appreciation goes to the students and their class teachers.`;
   if (pct >= 90) return `Attendance stood high at ${pct}%. The day ran smoothly and learning progressed well. A big thank-you to the students - and I encourage the ${absent} absent to aim for full attendance tomorrow.`;
@@ -64,7 +64,7 @@ export function autoTodComment(pct: number, absent: number): string {
   return `Attendance was concerningly low at ${pct}%. I have raised the alarm with class teachers; ${absent} students requires urgent follow-up with parents/guardians. We must act swiftly to restore full attendance.`;
 }
 
-/** Headmaster auto-comment â€” acknowledging on strong days, directing follow-up when low. */
+/** Headmaster auto-comment - acknowledging on strong days, directing follow-up when low. */
 export function autoHeadComment(pct: number, absent: number): string {
   if (pct >= 100) return `Outstanding - 100% attendance. My heartfelt congratulations to all students, teachers and the T.O.D. for an exceptional day. Keep this remarkable standard going.`;
   if (pct >= 90) return `Excellent attendance at ${pct}%. Well done to everyone involved; I acknowledge and appreciate the effort. Continue with the same commitment - I am proud of this progress.`;
@@ -182,12 +182,12 @@ export default function TodPage() {
       };
 
       const res = await postJSON<unknown>("/api/tod", body);
-      // API returns { ok: true, report } â€” unwrap if present
+      // API returns { ok: true, report } - unwrap if present
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const asAny = res as any;
       const report = asAny?.report ?? asAny;
 
-      setMsg("âœ… Duty report saved.");
+      setMsg("Duty report saved.");
       dataFetch.refresh();
       listFetch.refresh();
       return report as ReportRow;
@@ -327,7 +327,7 @@ export default function TodPage() {
         <EmptyState icon="!" title="Could not load" message={dataFetch.error} />
       ) : (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-          {/* LEFT â€” 10 selection sections */}
+          {/* LEFT - 10 selection sections */}
           <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <div className="bg-slate-900 px-5 py-3">
               <p className="text-sm font-bold text-white">Daily Sections 1-10 (Selections)</p>
@@ -372,7 +372,7 @@ export default function TodPage() {
             </div>
           </section>
 
-          {/* RIGHT â€” Attendance + head comment + recent */}
+          {/* RIGHT - Attendance + head comment + recent */}
           <div className="space-y-5">
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="bg-slate-900 px-5 py-3">

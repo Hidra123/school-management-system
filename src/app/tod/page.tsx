@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { useAuth } from "@/components/AuthProvider";
 import { EmptyState, Loader, PageHeader, btnPrimary, inputCls } from "@/components/ui";
-import { cls, postJSON, useFetch, todayStr } from "@/lib/utils";
+import { cls, delJSON, postJSON, useFetch, todayStr } from "@/lib/utils";
 
 // ---------- 10 duty-report sections (SELECTION fields) ----------
 const SECTIONS: { key: string; label: string; options: string[] }[] = [
@@ -169,6 +169,33 @@ export default function TodPage() {
       for (const s of SECTIONS) {
         const v = answers[s.key] ?? "";
         final[s.key] = v === "Other (type below)" ? (custom[s.key]?.trim() || "Other") : v;
+      }
+
+      function editReport(report: ReportRow) {
+        setDate(report.date);
+        try {
+          setAnswers(JSON.parse(report.answers || "{}") as Record<string, string>);
+          setRows(JSON.parse(report.attendanceRows || "[]") as AttRow[]);
+        } catch {
+          setMsg("This report cannot be edited because its saved data is invalid.");
+          return;
+        }
+        setMsg(`Editing duty report for ${report.date}.`);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      async function deleteReport(report: ReportRow) {
+        if (!window.confirm(`Delete your duty report for ${report.date}?`)) return;
+        try {
+          await delJSON(`/api/tod?id=${report.id}`);
+          setMsg("Duty report deleted.");
+          if (date === report.date) {
+            dataFetch.refresh();
+          }
+          listFetch.refresh();
+        } catch (err) {
+          setMsg(err instanceof Error ? err.message : "Failed to delete report.");
+        }
       }
       const body = {
         date,
@@ -366,9 +393,6 @@ export default function TodPage() {
               <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
                 {autoTodComment(percentage, totals.absent)}
               </p>
-              <button onClick={save} disabled={saving} className={cls(btnPrimary, "mt-3 w-full")}>
-                {saving ? "Saving..." : "Save Duty Report"}
-              </button>
             </div>
           </section>
 
@@ -454,26 +478,36 @@ export default function TodPage() {
                 <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
                   {autoHeadComment(percentage, totals.absent)}
                 </p>
+                <button onClick={save} disabled={saving} className={cls(btnPrimary, "mt-3 w-full")}>
+                  {saving ? "Saving..." : "Save Duty Report"}
+                </button>
               </div>
             </section>
 
             {/* Recent reports */}
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="bg-slate-900 px-5 py-3">
-                <p className="text-sm font-bold text-white">Recent Duty Reports</p>
+                <p className="text-sm font-bold text-white">My Duty Reports</p>
               </div>
-              {(listFetch.data ?? []).length === 0 ? (
+              {(listFetch.data ?? []).filter((r) => r.teacherName === (dataFetch.data?.myTeacher?.name ?? user?.name)).length === 0 ? (
                 <p className="px-5 py-6 text-center text-xs italic text-slate-400">No reports filed yet.</p>
               ) : (
                 <ul className="divide-y divide-slate-100">
-                  {(listFetch.data ?? []).slice(0, 8).map((r) => (
+                  {(listFetch.data ?? [])
+                    .filter((r) => r.teacherName === (dataFetch.data?.myTeacher?.name ?? user?.name))
+                    .slice(0, 8)
+                    .map((r) => (
                     <li key={r.id} className="flex items-center justify-between px-5 py-2.5 text-sm">
                       <span>
                         <b className="text-slate-900">{r.date}</b>
                         <span className="ml-2 text-xs text-slate-500">{r.teacherName}</span>
                         {r.headAcknowledged && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Acknowledged</span>}
                       </span>
-                      <button onClick={() => openPrint(r)} className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-bold text-white hover:bg-sky-700">Print</button>
+                      <span className="flex items-center gap-2">
+                        <button onClick={() => editReport(r)} className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-bold text-white hover:bg-amber-600">Edit</button>
+                        <button onClick={() => deleteReport(r)} className="rounded-lg bg-rose-600 px-3 py-1 text-xs font-bold text-white hover:bg-rose-700">Delete</button>
+                        <button onClick={() => openPrint(r)} className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-bold text-white hover:bg-sky-700">Print</button>
+                      </span>
                     </li>
                   ))}
                 </ul>

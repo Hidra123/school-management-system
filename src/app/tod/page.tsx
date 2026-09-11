@@ -232,7 +232,7 @@ export default function TodPage() {
     const totRow = `<tr style="font-weight:900;"><td style="border:1px solid #000;padding:4px;">TOTAL</td>${numCell(tTot.rb)}${numCell(tTot.rg)}${numCell(tTot.rb + tTot.rg)}${numCell(tTot.rb - tTot.ab)}${numCell(tTot.rg - tTot.ag)}${numCell(presTot)}${numCell(tTot.ab)}${numCell(tTot.ag)}${numCell(tTot.ab + tTot.ag)}${numCell(tTot.sb)}${numCell(tTot.sg)}${numCell(tTot.sb + tTot.sg)}${numCell(tTot.pb)}${numCell(tTot.pg)}${numCell(tTot.pb + tTot.pg)}${numCell(regTot)}</tr>`;
 
     const sectionLines = SECTIONS.map(
-      (sec) => `<p style="margin:7px 0;font-size:11.5px;"><span class="secnum">${sec.key}</span><b style="color:#1e1b4b;">${sec.label}</b><span style="float:right;">${esc(finalAns[sec.key] ?? "")}</span><br/><span style="display:block;border-bottom:1px dotted #000;height:8px;"></span></p>`,
+      (sec) => `<div style="display:grid;grid-template-columns:27% 73%;margin:7px 0 8px;font-size:11.5px;line-height:1.25;"><div><span class="secnum">${sec.key}</span><b style="color:#1e1b4b;">${sec.label}</b></div><div style="border-bottom:1px dotted #000;min-height:20px;padding:0 0 3px 4px;">${esc(finalAns[sec.key] ?? "")}</div></div>`,
     ).join("");
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Duty Report ${mine.date} - ${esc(mine.teacherName)}</title><style>
@@ -283,10 +283,10 @@ export default function TodPage() {
       </table>
       <p style="border:2px solid #4f46e5;background:#eef2ff;color:#312e81;font-weight:900;font-size:12.5px;padding:6px 10px;margin:10px 0;border-radius:6px;text-align:center;">PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL Ã— 100 = <b style="color:#7c3aed;font-size:15px;">${pct}%</b></p>
       <div class="commentbox"><b style="color:#047857;">ðŸ“ T.O.D.'S COMMENT(S):</b><br/>${esc(printedTodComment)}</div>
-      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(mine.teacherName)}</b></span><span>SIGNATURE: <span class="sig" style="border:none;">${esc(signatureName(mine.teacherName))}</span> <b class="u" style="min-width:120px;"></b></span></p>
+      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(mine.teacherName)}</b></span><span>SIGNATURE: <span class="sig" style="border:none;">${esc(signatureName(mine.teacherName))}</span></span></p>
       <div style="border-top:2px solid #000;margin:10px 0;"></div>
       <div class="commentbox hos"><b style="color:#4338ca;">ðŸ›¡ï¸ HEADMASTER'S COMMENT(S):</b><br/>${esc(printedHeadComment)}<br/><b style="color:#047857;">âœ“ Acknowledged</b></div>
-      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(s.headOfSchoolName)}</b></span><span>SIGNATURE: <span class="sig">${esc(signatureName(s.headOfSchoolName))}</span> <b class="u" style="min-width:120px;"></b></span></p>
+      <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(s.headOfSchoolName)}</b></span><span>SIGNATURE: <span class="sig">${esc(signatureName(s.headOfSchoolName))}</span></span></p>
       <p style="text-align:center;font-style:italic;font-size:10.5px;margin-top:12px;">${esc(s.motto)}</p>
       </div>
       <script>window.onload=function(){setTimeout(function(){window.print();},350);};</script>

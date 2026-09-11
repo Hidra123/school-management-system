@@ -334,8 +334,8 @@ export default function TodPage() {
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cls(inputCls, "w-40")} />
           <button
             onClick={async () => {
-              const saved = mineRow ?? (await save());
-              openPrint(saved);
+              const saved = await save();
+              openPrint(saved ?? mineRow);
             }}
             disabled={!mineRow && !rows.length}
             className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-sky-700"

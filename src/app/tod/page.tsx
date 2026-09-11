@@ -192,7 +192,7 @@ export default function TodPage() {
     try {
       const final: Record<string, string> = {};
       for (const s of SECTIONS) {
-        const v = answers[s.key] ?? "";
+        const v = answers[s.key] || s.options[0];
         final[s.key] = v === "Other (type below)" ? (custom[s.key]?.trim() || "Other") : v;
       }
 

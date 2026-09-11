@@ -161,6 +161,31 @@ export default function TodPage() {
     setRows((prev) => prev.map((r) => (r.classId === classId ? { ...r, [field]: Math.max(0, Math.min(999, Number(val) || 0)) } : r)));
   }
 
+  function editReport(report: ReportRow) {
+    setDate(report.date);
+    try {
+      setAnswers(JSON.parse(report.answers || "{}") as Record<string, string>);
+      setRows(JSON.parse(report.attendanceRows || "[]") as AttRow[]);
+    } catch {
+      setMsg("This report cannot be edited because its saved data is invalid.");
+      return;
+    }
+    setMsg(`Editing duty report for ${report.date}.`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteReport(report: ReportRow) {
+    if (!window.confirm(`Delete your duty report for ${report.date}?`)) return;
+    try {
+      await delJSON(`/api/tod?id=${report.id}`);
+      setMsg("Duty report deleted.");
+      if (date === report.date) dataFetch.refresh();
+      listFetch.refresh();
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : "Failed to delete report.");
+    }
+  }
+
   async function save() {
     setSaving(true);
     setMsg(null);
@@ -171,32 +196,6 @@ export default function TodPage() {
         final[s.key] = v === "Other (type below)" ? (custom[s.key]?.trim() || "Other") : v;
       }
 
-      function editReport(report: ReportRow) {
-        setDate(report.date);
-        try {
-          setAnswers(JSON.parse(report.answers || "{}") as Record<string, string>);
-          setRows(JSON.parse(report.attendanceRows || "[]") as AttRow[]);
-        } catch {
-          setMsg("This report cannot be edited because its saved data is invalid.");
-          return;
-        }
-        setMsg(`Editing duty report for ${report.date}.`);
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }
-
-      async function deleteReport(report: ReportRow) {
-        if (!window.confirm(`Delete your duty report for ${report.date}?`)) return;
-        try {
-          await delJSON(`/api/tod?id=${report.id}`);
-          setMsg("Duty report deleted.");
-          if (date === report.date) {
-            dataFetch.refresh();
-          }
-          listFetch.refresh();
-        } catch (err) {
-          setMsg(err instanceof Error ? err.message : "Failed to delete report.");
-        }
-      }
       const body = {
         date,
         teacherName: dataFetch.data?.myTeacher?.name ?? user?.name ?? "",

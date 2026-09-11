@@ -427,6 +427,19 @@ export const approvals = pgTable(
 // unlock EVERY member account at once, or single accounts via users.active.
 export const appSettings = pgTable("app_settings", {
   id: serial("id").primaryKey(),
+  schoolName: varchar("school_name", { length: 200 })
+    .notNull()
+    .default("MANGI WINGIA SECONDARY SCHOOL"),
+  councilName: varchar("council_name", { length: 200 })
+    .notNull()
+    .default("ROMBO DISTRICT COUNCIL"),
+  motto: varchar("motto", { length: 300 })
+    .notNull()
+    .default("MANGI WINGIA SECONDARY SCHOOL: Honor All Build Together"),
+  headOfSchoolName: varchar("head_of_school_name", { length: 160 })
+    .notNull()
+    .default("Saidi Rashid Mpambika"),
+  logoData: text("logo_data").notNull().default(""),
   allAccountsLocked: boolean("all_accounts_locked").notNull().default(false),
   lockMessage: varchar("lock_message", { length: 200 }).notNull().default(""),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

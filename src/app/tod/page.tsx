@@ -57,20 +57,20 @@ function signatureName(name: string): string {
 
 /** T.O.D auto-comment â€” tuned to the attendance percentage of the day. */
 export function autoTodComment(pct: number, absent: number): string {
-  if (pct >= 100) return `Attendance was a perfect 100% â€” every single student was present. A truly exemplary day for the whole school; my sincere appreciation goes to the students and their class teachers.`;
-  if (pct >= 90) return `Attendance stood high at ${pct}%. The day ran smoothly and learning progressed well. A big thank-you to the students â€” and I encourage the ${absent} absent to aim for full attendance tomorrow.`;
+  if (pct >= 100) return `Attendance was a perfect 100% - every single student was present. A truly exemplary day for the whole school; my sincere appreciation goes to the students and their class teachers.`;
+  if (pct >= 90) return `Attendance stood high at ${pct}%. The day ran smoothly and learning progressed well. A big thank-you to the students - and I encourage the ${absent} absent to aim for full attendance tomorrow.`;
   if (pct >= 80) return `The school day was generally positive, with attendance at ${pct}%. We appreciate the effort of the students who attended, and we will keep encouraging the ${absent} who missed out to attend regularly. Together we will achieve even better results in the days ahead.`;
-  if (pct >= 70) return `Today was a moderate day at ${pct}% attendance. There's clear room for improvement â€” I call upon class teachers to remind students of the importance of daily attendance, and I will follow-up with the ${absent} absent tomorrow.`;
+  if (pct >= 70) return `Today was a moderate day at ${pct}% attendance. There's clear room for improvement - I call upon class teachers to remind students of the importance of daily attendance, and I will follow-up with the ${absent} absent tomorrow.`;
   return `Attendance was concerningly low at ${pct}%. I have raised the alarm with class teachers; ${absent} students requires urgent follow-up with parents/guardians. We must act swiftly to restore full attendance.`;
 }
 
 /** Headmaster auto-comment â€” acknowledging on strong days, directing follow-up when low. */
 export function autoHeadComment(pct: number, absent: number): string {
-  if (pct >= 100) return `Outstanding â€” 100% attendance. My heartfelt congratulations to all students, teachers and the T.O.D. for an exceptional day. Keep this remarkable standard going.`;
-  if (pct >= 90) return `Excellent attendance at ${pct}%. Well done to everyone involved; I acknowledge and appreciate the effort. Continue with the same commitment â€” I am proud of this progress.`;
+  if (pct >= 100) return `Outstanding - 100% attendance. My heartfelt congratulations to all students, teachers and the T.O.D. for an exceptional day. Keep this remarkable standard going.`;
+  if (pct >= 90) return `Excellent attendance at ${pct}%. Well done to everyone involved; I acknowledge and appreciate the effort. Continue with the same commitment - I am proud of this progress.`;
   if (pct >= 80) return `Attendance is good at ${pct}%. I acknowledge this effort with gratitude; however, the ${absent} absent case(s) require follow-up before tomorrow. The T.O.D. report is acknowledged.`;
-  if (pct >= 70) return `Noted â€” attendance at ${pct}% is reasonable but must improve. Class teachers are directed to contact the ${absent} students' homes and report back. The T.O.D. report is acknowledged.`;
-  return `This is an urgent matter â€” ${pct}% attendance is unacceptable. Class teachers & discipline office must make immediate follow-up with the ${absent} absent and report within 24 hours. I expect full corrective action.`;
+  if (pct >= 70) return `Noted - attendance at ${pct}% is reasonable but must improve. Class teachers are directed to contact the ${absent} students' homes and report back. The T.O.D. report is acknowledged.`;
+  return `This is an urgent matter - ${pct}% attendance is unacceptable. Class teachers & discipline office must make immediate follow-up with the ${absent} absent and report within 24 hours. I expect full corrective action.`;
 }
 
 function esc(s: string): string {
@@ -257,7 +257,7 @@ export default function TodPage() {
       .commentbox { border:1.5px solid #c7d2fe; border-left:5px solid #059669; border-radius:8px; background:#f0fdf7; padding:8px 12px; font-size:11.5px; }
       .commentbox.hos { border-left-color:#4f46e5; background:#eef2ff; border-color:#c7d2fe; }
     </style></head><body>
-      <div class="toolbar"><button onclick="window.print()">ðŸ–¨ï¸ Print / Save as PDF</button></div>
+      <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button></div>
       <div class="sheet">
       <div class="topline"></div>
       <div style="text-align:center;margin-bottom:2px;">${s.logoData ? `<img src="${s.logoData}" style="height:60px;object-fit:contain;" alt="School logo"/>` : ""}</div>
@@ -281,11 +281,11 @@ export default function TodPage() {
         </thead>
         <tbody>${attRows}${totRow}</tbody>
       </table>
-      <p style="border:2px solid #4f46e5;background:#eef2ff;color:#312e81;font-weight:900;font-size:12.5px;padding:6px 10px;margin:10px 0;border-radius:6px;text-align:center;">PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL Ã— 100 = <b style="color:#7c3aed;font-size:15px;">${pct}%</b></p>
-      <div class="commentbox"><b style="color:#047857;">ðŸ“ T.O.D.'S COMMENT(S):</b><br/>${esc(printedTodComment)}</div>
+      <p style="border:2px solid #4f46e5;background:#eef2ff;color:#312e81;font-weight:900;font-size:12.5px;padding:6px 10px;margin:10px 0;border-radius:6px;text-align:center;">PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL x 100 = <b style="color:#7c3aed;font-size:15px;">${pct}%</b></p>
+      <div class="commentbox"><b style="color:#047857;">T.O.D.'S COMMENT(S):</b><br/>${esc(printedTodComment)}</div>
       <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(mine.teacherName)}</b></span><span>SIGNATURE: <span class="sig" style="border:none;">${esc(signatureName(mine.teacherName))}</span></span></p>
       <div style="border-top:2px solid #000;margin:10px 0;"></div>
-      <div class="commentbox hos"><b style="color:#4338ca;">ðŸ›¡ï¸ HEADMASTER'S COMMENT(S):</b><br/>${esc(printedHeadComment)}<br/><b style="color:#047857;">âœ“ Acknowledged</b></div>
+      <div class="commentbox hos"><b style="color:#4338ca;">HEADMASTER'S COMMENT(S):</b><br/>${esc(printedHeadComment)}<br/><b style="color:#047857;">Acknowledged</b></div>
       <p style="margin:14px 0 2px;display:flex;justify-content:space-between;"><span>NAME: <b class="u" style="min-width:170px;">${esc(s.headOfSchoolName)}</b></span><span>SIGNATURE: <span class="sig">${esc(signatureName(s.headOfSchoolName))}</span></span></p>
       <p style="text-align:center;font-style:italic;font-size:10.5px;margin-top:12px;">${esc(s.motto)}</p>
       </div>
@@ -303,7 +303,7 @@ export default function TodPage() {
 
   return (
     <AppShell permission="tod.view">
-      <PageHeader icon="ðŸ”°" title="Teacher On Duty" subtitle="Daily duty report â€” selections, attendance auto-calc, and the official printable report">
+      <PageHeader icon="TOD" title="Teacher On Duty" subtitle="Daily duty report - selections, attendance auto-calc, and the official printable report">
         <div className="flex items-center gap-2">
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className={cls(inputCls, "w-40")} />
           <button
@@ -314,7 +314,7 @@ export default function TodPage() {
             disabled={!mineRow && !rows.length}
             className="rounded-xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-sky-700"
           >
-            ðŸ–¨ï¸ Print / Save PDF
+            Print / Save PDF
           </button>
         </div>
       </PageHeader>
@@ -324,13 +324,13 @@ export default function TodPage() {
       {dataFetch.loading ? (
         <Loader label="Loading duty report..." />
       ) : dataFetch.error ? (
-        <EmptyState icon="âš ï¸" title="Could not load" message={dataFetch.error} />
+        <EmptyState icon="!" title="Could not load" message={dataFetch.error} />
       ) : (
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
           {/* LEFT â€” 10 selection sections */}
           <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
             <div className="bg-slate-900 px-5 py-3">
-              <p className="text-sm font-bold text-white">ðŸ“ Daily Sections 1-10 (Selections)</p>
+              <p className="text-sm font-bold text-white">Daily Sections 1-10 (Selections)</p>
             </div>
             <ul className="divide-y divide-slate-100">
               {SECTIONS.map((sec) => {
@@ -353,7 +353,7 @@ export default function TodPage() {
                       <input
                         value={custom[sec.key] ?? ""}
                         onChange={(e) => setCustom({ ...custom, [sec.key]: e.target.value })}
-                        placeholder="Type your answerâ€¦"
+                        placeholder="Type your answer..."
                         className={cls(inputCls, "mt-2")}
                       />
                     )}
@@ -364,10 +364,10 @@ export default function TodPage() {
             <div className="border-t border-slate-100 p-5">
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">T.O.D.'s Comment(s)</label>
               <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
-                âœ¨ {autoTodComment(percentage, totals.absent)}
+                {autoTodComment(percentage, totals.absent)}
               </p>
               <button onClick={save} disabled={saving} className={cls(btnPrimary, "mt-3 w-full")}>
-                {saving ? "Saving..." : "ðŸ’¾ Save Duty Report"}
+                {saving ? "Saving..." : "Save Duty Report"}
               </button>
             </div>
           </section>
@@ -376,7 +376,7 @@ export default function TodPage() {
           <div className="space-y-5">
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="bg-slate-900 px-5 py-3">
-                <p className="text-sm font-bold text-white">ðŸ“Š Students Attendance on {date}</p>
+                <p className="text-sm font-bold text-white">Students Attendance on {date}</p>
               </div>
               <div className="overflow-x-auto p-4">
                 <table className="w-full min-w-[720px] border-collapse text-[11px]">
@@ -440,7 +440,7 @@ export default function TodPage() {
                   </tbody>
                 </table>
                 <p className="mt-3 rounded-xl border-2 border-slate-900 bg-slate-50 px-4 py-2.5 text-center text-sm font-black text-slate-900">
-                  PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL Ã— 100 = {percentage}%
+                  PERCENTAGE OF ATTENDANCE: PRESENT / TOTAL x 100 = {percentage}%
                 </p>
               </div>
             </section>
@@ -448,11 +448,11 @@ export default function TodPage() {
             {/* Head comment */}
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="bg-slate-900 px-5 py-3">
-                <p className="text-sm font-bold text-white">ðŸ›¡ï¸ Headmaster's Comment(s) â€” âœ“ Acknowledged</p>
+                <p className="text-sm font-bold text-white">Headmaster's Comment(s) - Acknowledged</p>
               </div>
               <div className="p-5">
                 <p className="rounded-xl bg-indigo-50 px-4 py-3 text-sm font-semibold text-indigo-800">
-                  âœ¨ {autoHeadComment(percentage, totals.absent)}
+                  {autoHeadComment(percentage, totals.absent)}
                 </p>
               </div>
             </section>
@@ -460,7 +460,7 @@ export default function TodPage() {
             {/* Recent reports */}
             <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
               <div className="bg-slate-900 px-5 py-3">
-                <p className="text-sm font-bold text-white">ðŸ—‚ï¸ Recent Duty Reports</p>
+                <p className="text-sm font-bold text-white">Recent Duty Reports</p>
               </div>
               {(listFetch.data ?? []).length === 0 ? (
                 <p className="px-5 py-6 text-center text-xs italic text-slate-400">No reports filed yet.</p>
@@ -471,9 +471,9 @@ export default function TodPage() {
                       <span>
                         <b className="text-slate-900">{r.date}</b>
                         <span className="ml-2 text-xs text-slate-500">{r.teacherName}</span>
-                        {r.headAcknowledged && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">âœ“ acknowledged</span>}
+                        {r.headAcknowledged && <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Acknowledged</span>}
                       </span>
-                      <button onClick={() => openPrint(r)} className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-bold text-white hover:bg-sky-700">ðŸ–¨ï¸</button>
+                      <button onClick={() => openPrint(r)} className="rounded-lg bg-sky-600 px-3 py-1 text-xs font-bold text-white hover:bg-sky-700">Print</button>
                     </li>
                   ))}
                 </ul>

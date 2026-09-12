@@ -167,14 +167,8 @@ export const ADMIN_SIDEBAR = [
   { href: "/admin/teachers", label: "Manage Teachers", icon: "👨‍🏫", group: "STAFF MANAGEMENT" },
   { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "STAFF MANAGEMENT" },
   { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
-  // ASSIGNMENTS — teacher-facing feature controls
+  // ASSIGNMENTS
   { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "ASSIGNMENTS" },
-  { href: "/admin/classes", label: "Manage Classes", icon: "🏫", group: "ASSIGNMENTS" },
-  { href: "/admin/subjects", label: "Manage Subjects", icon: "📚", group: "ASSIGNMENTS" },
-  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "ASSIGNMENTS" },
-  { href: "/map-students", label: "Map Students", icon: "👥", group: "ASSIGNMENTS" },
-  { href: "/year-progression", label: "Year Progression", icon: "➔", group: "ASSIGNMENTS" },
-  { href: "/tod", label: "TOD Report", icon: "🔰", group: "ASSIGNMENTS" },
   // PARENTS
   { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
   // USER CONTROL
@@ -382,12 +376,6 @@ export const ADMIN_SIDEBAR = [
   { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
   // ASSIGNMENTS — teacher-facing feature controls
   { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "ASSIGNMENTS" },
-  { href: "/admin/classes", label: "Manage Classes", icon: "🏫", group: "ASSIGNMENTS" },
-  { href: "/admin/subjects", label: "Manage Subjects", icon: "📚", group: "ASSIGNMENTS" },
-  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "ASSIGNMENTS" },
-  { href: "/map-students", label: "Map Students", icon: "�DC65", group: "ASSIGNMENTS" },
-  { href: "/year-progression", label: "Year Progression", icon: "➔", group: "ASSIGNMENTS" },
-  { href: "/tod", label: "TOD Report", icon: "�DD30", group: "ASSIGNMENTS" },
   // PARENTS
   { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
   // USER CONTROL

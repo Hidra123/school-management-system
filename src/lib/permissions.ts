@@ -3,77 +3,77 @@
 // ========================================
 export const ALL_PERMISSIONS = [
   // Dashboard
-  { key: "dashboard", label: "View Dashboard", group: "Dashboard", icon: "📊" },
+  { key: "dashboard", label: "View Dashboard", group: "Dashboard", icon: "ðŸ“Š" },
 
   // Students
-  { key: "students.view", label: "View Students", group: "Students", icon: "👨‍🎓" },
-  { key: "students.create", label: "Add / Admit Students", group: "Students", icon: "👨‍🎓" },
-  { key: "students.edit", label: "Edit Students", group: "Students", icon: "👨‍🎓" },
-  { key: "students.delete", label: "Delete Students", group: "Students", icon: "👨‍🎓" },
+  { key: "students.view", label: "View Students", group: "Students", icon: "ðŸ‘¨â€ðŸŽ“" },
+  { key: "students.create", label: "Add / Admit Students", group: "Students", icon: "ðŸ‘¨â€ðŸŽ“" },
+  { key: "students.edit", label: "Edit Students", group: "Students", icon: "ðŸ‘¨â€ðŸŽ“" },
+  { key: "students.delete", label: "Delete Students", group: "Students", icon: "ðŸ‘¨â€ðŸŽ“" },
 
-  // Teachers (member-level — view only)
-  { key: "teachers.view", label: "View Teachers", group: "Teachers", icon: "👨‍🏫" },
+  // Teachers (member-level â€” view only)
+  { key: "teachers.view", label: "View Teachers", group: "Teachers", icon: "ðŸ‘¨â€ðŸ«" },
 
   // Classes
-  { key: "classes.view", label: "View Classes", group: "Classes", icon: "🏫" },
-  { key: "classes.manage", label: "Manage Classes", group: "Classes", icon: "🏫" },
+  { key: "classes.view", label: "View Classes", group: "Classes", icon: "ðŸ«" },
+  { key: "classes.manage", label: "Manage Classes", group: "Classes", icon: "ðŸ«" },
 
   // Subjects
-  { key: "subjects.view", label: "View Subjects", group: "Subjects", icon: "📚" },
-  { key: "subjects.manage", label: "Manage Subjects", group: "Subjects", icon: "📚" },
+  { key: "subjects.view", label: "View Subjects", group: "Subjects", icon: "ðŸ“š" },
+  { key: "subjects.manage", label: "Manage Subjects", group: "Subjects", icon: "ðŸ“š" },
 
   // Attendance
-  { key: "attendance.view", label: "View Attendance", group: "Attendance", icon: "✅" },
-  { key: "attendance.manage", label: "Mark / Edit Attendance", group: "Attendance", icon: "✅" },
-  { key: "attendance.trackall", label: "Attendance Tracking Centre (All Classes)", group: "Attendance", icon: "🗓️" },
+  { key: "attendance.view", label: "View Attendance", group: "Attendance", icon: "âœ…" },
+  { key: "attendance.manage", label: "Mark / Edit Attendance", group: "Attendance", icon: "âœ…" },
+  { key: "attendance.trackall", label: "Attendance Tracking Centre (All Classes)", group: "Attendance", icon: "ðŸ—“ï¸" },
 
   // Examinations
-  { key: "exams.view", label: "View Examinations", group: "Examinations", icon: "📋" },
-  { key: "exams.manage", label: "Manage Examinations", group: "Examinations", icon: "📋" },
-  { key: "exams.results", label: "Publish Results", group: "Examinations", icon: "📋" },
+  { key: "exams.view", label: "View Examinations", group: "Examinations", icon: "ðŸ“‹" },
+  { key: "exams.manage", label: "Manage Examinations", group: "Examinations", icon: "ðŸ“‹" },
+  { key: "exams.results", label: "Publish Results", group: "Examinations", icon: "ðŸ“‹" },
 
   // Grades / Scores
-  { key: "grades.view", label: "View Scores", group: "Scores", icon: "📝" },
-  { key: "grades.submit", label: "Submit Scores", group: "Scores", icon: "📝" },
-  { key: "grades.track", label: "Score Tracking", group: "Scores", icon: "📝" },
-  { key: "grades.report", label: "Submission Report", group: "Scores", icon: "📝" },
+  { key: "grades.view", label: "View Scores", group: "Scores", icon: "ðŸ“" },
+  { key: "grades.submit", label: "Submit Scores", group: "Scores", icon: "ðŸ“" },
+  { key: "grades.track", label: "Score Tracking", group: "Scores", icon: "ðŸ“" },
+  { key: "grades.report", label: "Submission Report", group: "Scores", icon: "ðŸ“" },
 
   // Fees
-  { key: "fees.view", label: "View Fees", group: "Fees", icon: "💰" },
-  { key: "fees.manage", label: "Manage Fees & Payments", group: "Fees", icon: "💰" },
+  { key: "fees.view", label: "View Fees", group: "Fees", icon: "ðŸ’°" },
+  { key: "fees.manage", label: "Manage Fees & Payments", group: "Fees", icon: "ðŸ’°" },
 
   // Timetable
-  { key: "timetable.view", label: "View Timetable", group: "Timetable", icon: "📅" },
-  { key: "timetable.manage", label: "Manage Timetable", group: "Timetable", icon: "📅" },
+  { key: "timetable.view", label: "View Timetable", group: "Timetable", icon: "ðŸ“…" },
+  { key: "timetable.manage", label: "Manage Timetable", group: "Timetable", icon: "ðŸ“…" },
 
   // Assignments
-  { key: "assignments.view", label: "View Assignments", group: "Assignments", icon: "📄" },
-  { key: "assignments.manage", label: "Manage Assignments", group: "Assignments", icon: "📄" },
+  { key: "assignments.view", label: "View Assignments", group: "Assignments", icon: "ðŸ“„" },
+  { key: "assignments.manage", label: "Manage Assignments", group: "Assignments", icon: "ðŸ“„" },
 
   // Lesson Plan
-  { key: "lessonplan.view", label: "View Lesson Plans", group: "Lesson Plans", icon: "📖" },
-  { key: "lessonplan.manage", label: "Manage Lesson Plans", group: "Lesson Plans", icon: "📖" },
+  { key: "lessonplan.view", label: "View Lesson Plans", group: "Lesson Plans", icon: "ðŸ“–" },
+  { key: "lessonplan.manage", label: "Manage Lesson Plans", group: "Lesson Plans", icon: "ðŸ“–" },
 
   // Subject Log Book
-  { key: "logbook.view", label: "View Subject Log Book", group: "Log Book", icon: "📓" },
-  { key: "logbook.manage", label: "Manage Log Entries", group: "Log Book", icon: "📓" },
+  { key: "logbook.view", label: "View Subject Log Book", group: "Log Book", icon: "ðŸ““" },
+  { key: "logbook.manage", label: "Manage Log Entries", group: "Log Book", icon: "ðŸ““" },
 
   // TOD Report
-  { key: "tod.view", label: "View TOD Reports", group: "Teacher On Duty", icon: "🔰" },
-  { key: "tod.manage", label: "Manage TOD Reports", group: "Teacher On Duty", icon: "🔰" },
+  { key: "tod.view", label: "View TOD Reports", group: "Teacher On Duty", icon: "ðŸ”°" },
+  { key: "tod.manage", label: "Manage TOD Reports", group: "Teacher On Duty", icon: "ðŸ”°" },
 
   // Messages
-  { key: "messages.view", label: "View Messages", group: "Messages", icon: "💬" },
-  { key: "messages.send", label: "Send Messages", group: "Messages", icon: "💬" },
+  { key: "messages.view", label: "View Messages", group: "Messages", icon: "ðŸ’¬" },
+  { key: "messages.send", label: "Send Messages", group: "Messages", icon: "ðŸ’¬" },
 
-  // Student–Subject Mapping
-  { key: "students.map", label: "Map Students to Subjects", group: "Students", icon: "👥" },
+  // Studentâ€“Subject Mapping
+  { key: "students.map", label: "Map Students to Subjects", group: "Students", icon: "ðŸ‘¥" },
 
   // Academic Year Progression & Promotion
-  { key: "year.manage", label: "Year Progression & Promotion", group: "Year Management", icon: "➔" },
+  { key: "year.manage", label: "Year Progression & Promotion", group: "Year Management", icon: "âž”" },
 
   // Change Password (all members get this by default)
-  { key: "profile.edit", label: "Change Password", group: "Account", icon: "🔑" },
+  { key: "profile.edit", label: "Change Password", group: "Account", icon: "ðŸ”‘" },
 ] as const;
 
 export type PermissionKey = (typeof ALL_PERMISSIONS)[number]["key"];
@@ -88,11 +88,11 @@ export function getPermissionGroups() {
 }
 
 // ========================================
-// Role presets — quick-assign for admin
+// Role presets â€” quick-assign for admin
 // ========================================
 export const ROLE_PRESETS = {
   academic_master: {
-    label: "📘 Academic Master",
+    label: "ðŸ“˜ Academic Master",
     description: "Full academic control",
     permissions: [
       "dashboard", "students.view", "students.create", "students.edit", "students.map",
@@ -112,7 +112,7 @@ export const ROLE_PRESETS = {
     ],
   },
   class_teacher: {
-    label: "🏫 Class Teacher",
+    label: "ðŸ« Class Teacher",
     description: "Manage own class",
     permissions: [
       "dashboard", "students.view", "classes.view", "subjects.view",
@@ -128,7 +128,7 @@ export const ROLE_PRESETS = {
     ],
   },
   teacher: {
-    label: "👨‍🏫 Subject Teacher",
+    label: "ðŸ‘¨â€ðŸ« Subject Teacher",
     description: "Submit scores & assignments",
     permissions: [
       "dashboard", "students.view", "classes.view", "subjects.view",
@@ -149,65 +149,65 @@ export function staffRoleLabel(key: string | null | undefined): string | null {
   if (!key) return null;
   if (key in ROLE_PRESETS) return ROLE_PRESETS[key as keyof typeof ROLE_PRESETS].label;
   const EXTRA: Record<string, string> = {
-    accountant: "💰 Accountant",
-    sports: "⚽ Sports Manager",
-    lab: "🔬 Lab Technician",
-    librarian: "📚 Librarian",
+    accountant: "ðŸ’° Accountant",
+    sports: "âš½ Sports Manager",
+    lab: "ðŸ”¬ Lab Technician",
+    librarian: "ðŸ“š Librarian",
   };
   return EXTRA[key] ?? null;
 }
 
 // ========================================
-// ADMIN sidebar — only admin sees these
+// ADMIN sidebar â€” only admin sees these
 // ========================================
 export const ADMIN_SIDEBAR = [
   // MAIN
-  { href: "/admin", label: "Dashboard", icon: "📊", group: "MAIN" },
+  { href: "/admin", label: "Dashboard", icon: "ðŸ“Š", group: "MAIN" },
   // STAFF MANAGEMENT
-  { href: "/admin/classes", label: "Manage Classes", icon: "🏫", group: "STAFF MANAGEMENT" },
-  { href: "/admin/subjects", label: "Manage Subjects", icon: "📚", group: "STAFF MANAGEMENT" },
-  { href: "/admin/teachers", label: "Manage Teachers", icon: "👨‍🏫", group: "STAFF MANAGEMENT" },
-  { href: "/admin/assignments", label: "Assignments", icon: "🎯", group: "STAFF MANAGEMENT" },
-  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", group: "STAFF MANAGEMENT" },
-  { href: "/admin/admissions", label: "Approve Admissions", icon: "✅", group: "STAFF MANAGEMENT" },
-  { href: "/admin/monitor", label: "Monitor Dashboards", icon: "📡", group: "STAFF MANAGEMENT" },
-  { href: "/map-students", label: "Map Students", icon: "👥", group: "STAFF MANAGEMENT" },
-  { href: "/year-progression", label: "Year Progression", icon: "➔", group: "STAFF MANAGEMENT" },
-  { href: "/tod", label: "TOD Report", icon: "🔰", group: "STAFF MANAGEMENT" },
+  { href: "/admin/teachers", label: "Manage Teachers", icon: "ðŸ‘¨â€ðŸ«", group: "STAFF MANAGEMENT" },
+  { href: "/admin/admissions", label: "Approve Admissions", icon: "âœ…", group: "STAFF MANAGEMENT" },
+  { href: "/admin/monitor", label: "Monitor Dashboards", icon: "ðŸ“¡", group: "STAFF MANAGEMENT" },
+  // ASSIGNMENTS â€” teacher-facing feature controls
+  { href: "/admin/assignments", label: "Assignments", icon: "ðŸŽ¯", group: "ASSIGNMENTS" },
+  { href: "/admin/classes", label: "Manage Classes", icon: "ðŸ«", group: "ASSIGNMENTS" },
+  { href: "/admin/subjects", label: "Manage Subjects", icon: "ðŸ“š", group: "ASSIGNMENTS" },
+  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "ðŸ—“ï¸", group: "ASSIGNMENTS" },
+  { href: "/map-students", label: "Map Students", icon: "ðŸ‘¥", group: "ASSIGNMENTS" },
+  { href: "/year-progression", label: "Year Progression", icon: "âž”", group: "ASSIGNMENTS" },
+  { href: "/tod", label: "TOD Report", icon: "ðŸ”°", group: "ASSIGNMENTS" },
   // PARENTS
-  { href: "/admin/parents", label: "Manage Parents", icon: "👪", group: "PARENTS" },
-  { href: "/admin/parent-assignments", label: "Assignments", icon: "🎯", group: "PARENTS" },
+  { href: "/admin/parents", label: "Manage Parents", icon: "ðŸ‘ª", group: "PARENTS" },
   // USER CONTROL
-  { href: "/admin/activity", label: "Activity Control", icon: "🔔", group: "USER CONTROL", badge: "NEW" },
-  { href: "/admin/sessions", label: "Live Sessions", icon: "👥", group: "USER CONTROL" },
-  { href: "/admin/audit", label: "Audit Trail", icon: "📋", group: "USER CONTROL" },
+  { href: "/admin/activity", label: "Activity Control", icon: "ðŸ””", group: "USER CONTROL", badge: "NEW" },
+  { href: "/admin/sessions", label: "Live Sessions", icon: "ðŸ‘¥", group: "USER CONTROL" },
+  { href: "/admin/audit", label: "Audit Trail", icon: "ðŸ“‹", group: "USER CONTROL" },
   // ADMINISTRATION
-  { href: "/admin/settings", label: "System Settings", icon: "⚙️", group: "ADMINISTRATION" },
-  { href: "/admin/profile", label: "Admin Profile", icon: "👤", group: "ADMINISTRATION" },
+  { href: "/admin/settings", label: "System Settings", icon: "âš™ï¸", group: "ADMINISTRATION" },
+  { href: "/admin/profile", label: "Admin Profile", icon: "ðŸ‘¤", group: "ADMINISTRATION" },
 ] as const;
 
 // ========================================
-// MEMBER sidebar — filtered by permissions
+// MEMBER sidebar â€” filtered by permissions
 // ========================================
 export const MEMBER_SIDEBAR = [
-  { href: "/", label: "Dashboard", icon: "📊", perm: "dashboard", group: "MAIN" },
-  { href: "/students", label: "Students", icon: "👨‍🎓", perm: "students.view", group: "STUDENT MANAGEMENT" },
-  { href: "/classes", label: "Classes", icon: "🏫", perm: "classes.view", group: "STUDENT MANAGEMENT" },
-  { href: "/map-students", label: "Map Students", icon: "👥", perm: "students.map", group: "STUDENT MANAGEMENT" },
-  { href: "/year-progression", label: "Year Progression", icon: "➔", perm: "year.manage", group: "YEAR MANAGEMENT" },
-  { href: "/subjects", label: "Subjects", icon: "📚", perm: "subjects.view", group: "ACADEMIC" },
-  { href: "/attendance", label: "Attendance", icon: "✅", perm: "attendance.view", group: "ACADEMIC" },
-  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "🗓️", perm: "attendance.trackall", group: "MONITORING" },
-  { href: "/exams", label: "Examinations", icon: "📋", perm: "exams.view", group: "ACADEMIC" },
-  { href: "/grades", label: "Submit Scores", icon: "📝", perm: "grades.view", group: "ACADEMIC" },
-  { href: "/grades/tracking", label: "Score Tracking", icon: "📊", perm: "grades.track", group: "ACADEMIC" },
-  { href: "/timetable", label: "Timetable", icon: "📅", perm: "timetable.view", group: "ACADEMIC" },
-  { href: "/assignments", label: "Assignments", icon: "📄", perm: "assignments.view", group: "MY CLASS" },
-  { href: "/lesson-plans", label: "Lesson Plans", icon: "📖", perm: "lessonplan.view", group: "ACADEMIC" },
-  { href: "/logbook", label: "Subject Log Book", icon: "📓", perm: "logbook.view", group: "ACADEMIC" },
-  { href: "/tod", label: "Teacher On Duty", icon: "🔰", perm: "tod.view", group: "REPORTS" },
-  { href: "/grades/report", label: "Submission Report", icon: "📈", perm: "grades.report", group: "REPORTS" },
-  { href: "/fees", label: "Fees", icon: "💰", perm: "fees.view", group: "FINANCE" },
-  { href: "/messages", label: "Messages", icon: "💬", perm: "messages.view", group: "COMMUNICATION" },
-  { href: "/profile", label: "Change Password", icon: "🔑", perm: "profile.edit", group: "ACCOUNT" },
+  { href: "/", label: "Dashboard", icon: "ðŸ“Š", perm: "dashboard", group: "MAIN" },
+  { href: "/students", label: "Students", icon: "ðŸ‘¨â€ðŸŽ“", perm: "students.view", group: "STUDENT MANAGEMENT" },
+  { href: "/classes", label: "Classes", icon: "ðŸ«", perm: "classes.view", group: "STUDENT MANAGEMENT" },
+  { href: "/map-students", label: "Map Students", icon: "ðŸ‘¥", perm: "students.map", group: "STUDENT MANAGEMENT" },
+  { href: "/year-progression", label: "Year Progression", icon: "âž”", perm: "year.manage", group: "YEAR MANAGEMENT" },
+  { href: "/subjects", label: "Subjects", icon: "ðŸ“š", perm: "subjects.view", group: "ACADEMIC" },
+  { href: "/attendance", label: "Attendance", icon: "âœ…", perm: "attendance.view", group: "ACADEMIC" },
+  { href: "/attendance-tracking", label: "Attendance Tracking", icon: "ðŸ—“ï¸", perm: "attendance.trackall", group: "MONITORING" },
+  { href: "/exams", label: "Examinations", icon: "ðŸ“‹", perm: "exams.view", group: "ACADEMIC" },
+  { href: "/grades", label: "Submit Scores", icon: "ðŸ“", perm: "grades.view", group: "ACADEMIC" },
+  { href: "/grades/tracking", label: "Score Tracking", icon: "ðŸ“Š", perm: "grades.track", group: "ACADEMIC" },
+  { href: "/timetable", label: "Timetable", icon: "ðŸ“…", perm: "timetable.view", group: "ACADEMIC" },
+  { href: "/assignments", label: "Assignments", icon: "ðŸ“„", perm: "assignments.view", group: "MY CLASS" },
+  { href: "/lesson-plans", label: "Lesson Plans", icon: "ðŸ“–", perm: "lessonplan.view", group: "ACADEMIC" },
+  { href: "/logbook", label: "Subject Log Book", icon: "ðŸ““", perm: "logbook.view", group: "ACADEMIC" },
+  { href: "/tod", label: "Teacher On Duty", icon: "ðŸ”°", perm: "tod.view", group: "REPORTS" },
+  { href: "/grades/report", label: "Submission Report", icon: "ðŸ“ˆ", perm: "grades.report", group: "REPORTS" },
+  { href: "/fees", label: "Fees", icon: "ðŸ’°", perm: "fees.view", group: "FINANCE" },
+  { href: "/messages", label: "Messages", icon: "ðŸ’¬", perm: "messages.view", group: "COMMUNICATION" },
+  { href: "/profile", label: "Change Password", icon: "ðŸ”‘", perm: "profile.edit", group: "ACCOUNT" },
 ] as const;

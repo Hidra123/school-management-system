@@ -347,7 +347,8 @@ export default function GradesPage() {
                   </p>
                   {step2Done && examOptions.length === 0 && (
                     <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      ⚠️ There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
+                      ⚠️ There is no ACTIVE exam for this class yet. If the Academic Master already created and
+                      activated one, it may still be waiting for the Admin&apos;s approval — ask them to check.
                     </p>
                   )}
                 </>

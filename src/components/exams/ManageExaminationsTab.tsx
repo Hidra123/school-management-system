@@ -14,6 +14,12 @@ type ExamRow = {
   endDate: string | null;
   remarks: string;
   status: "active" | "inactive";
+  // Set by the server: "approved" (admin-created, or admin already approved
+  // it) vs "pending" (Academic Master created it and it is waiting on admin
+  // approval) vs "rejected". An exam with status="active" but
+  // approvalStatus!=="approved" is INVISIBLE to teachers on Submit Scores —
+  // see /api/exams/active — so we must surface it here or this looks broken.
+  approvalStatus?: "approved" | "pending" | "rejected" | string;
   classNames: string[];
   appliesToAllClasses: boolean;
 };
@@ -214,6 +220,12 @@ export default function ManageExaminationsTab() {
           <p className="text-sm font-bold text-white">📋 Examination List</p>
           <button onClick={() => refresh()} className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold text-white hover:bg-white/20">🔄 Reload</button>
         </div>
+        {examList.some((e) => e.approvalStatus === "pending") && (
+          <p className="border-b border-amber-100 bg-amber-50 px-5 py-2.5 text-xs font-semibold text-amber-800">
+            ⏳ Exam zenye lebo <b>&quot;Pending Admin&quot;</b> hazionekani bado kwa walimu kwenye Submit Scores — zinasubiri
+            Admin aende <b>Approve Admissions &amp; Academic Work → Exams</b> (/admin/admissions) na azi-approve kwanza.
+          </p>
+        )}
         {loading ? (
           <Loader label="Loading examinations..." />
         ) : error ? (
@@ -231,6 +243,7 @@ export default function ManageExaminationsTab() {
                   <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Year</th>
                   <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Dates</th>
                   <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Status</th>
+                  <th className="px-3 py-2.5 text-left text-xs font-bold text-slate-600">Approval</th>
                   <th className="px-3 py-2.5 text-right text-xs font-bold text-slate-600">Act</th>
                 </tr>
               </thead>
@@ -249,6 +262,15 @@ export default function ManageExaminationsTab() {
                     <td className="px-3 py-2.5 text-xs text-slate-500">{shortDate(e.startDate)} – {shortDate(e.endDate)}</td>
                     <td className="px-3 py-2.5">
                       <Badge tone={e.status === "active" ? "emerald" : "rose"}>{e.status}</Badge>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {e.approvalStatus === "pending" ? (
+                        <Badge tone="amber">⏳ Pending Admin</Badge>
+                      ) : e.approvalStatus === "rejected" ? (
+                        <Badge tone="rose">Rejected</Badge>
+                      ) : (
+                        <Badge tone="emerald">Approved</Badge>
+                      )}
                     </td>
                     <td className="px-3 py-2.5">
                       <div className="flex justify-end gap-1.5">

@@ -44,14 +44,6 @@ type ActiveExam = {
 
 const TERMS = ["Term 1", "Term 2", "Term 3", "Full Year"];
 
-/** A score cell counts as "filled" (and gets the ✅ tick) once it's a plain 0–100 number. */
-function isFilledScore(raw: string | undefined): boolean {
-  const t = raw?.trim();
-  if (!t) return false;
-  const n = Number(t);
-  return Number.isFinite(n) && n >= 0 && n <= 100;
-}
-
 function examLabel(key: string): string {
   if (key === "SE") return "School Examination (SE)";
   if (key === "CA") return "Continuously Assessment (CAs)";
@@ -199,6 +191,23 @@ export default function GradesPage() {
   }, [studentList, existingGrades]);
 
   const entryCount = Object.values(scores).filter((v) => v.trim() !== "").length;
+
+  // A student's score only counts as "submitted" (tick + green box) once it
+  // is confirmed saved in the database AND the box still shows that exact
+  // value. Editing an already-saved score clears its tick immediately, and
+  // the tick only comes back after that new value is saved successfully —
+  // it is never shown just because something is typed in the box.
+  const savedScores = useMemo(() => {
+    const m: Record<number, number> = {};
+    for (const g of existingGrades) m[g.studentId] = g.score;
+    return m;
+  }, [existingGrades]);
+  function isSubmitted(studentId: number): boolean {
+    const saved = savedScores[studentId];
+    if (saved === undefined) return false;
+    return (scores[studentId] ?? "").trim() === String(saved);
+  }
+  const submittedCount = studentList.filter((s) => savedScores[s.id] !== undefined).length;
 
   async function saveEntry() {
     if (!classId || !subjectId || !examType || !examId) {
@@ -452,11 +461,14 @@ export default function GradesPage() {
                       <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-100">
                         <div
                           className="h-full rounded-full bg-emerald-500 transition-all"
-                          style={{ width: `${studentList.length ? Math.round((entryCount / studentList.length) * 100) : 0}%` }}
+                          style={{ width: `${studentList.length ? Math.round((submittedCount / studentList.length) * 100) : 0}%` }}
                         />
                       </div>
                       <span className="text-xs font-semibold text-slate-500">
-                        {entryCount}/{studentList.length} entered
+                        {submittedCount}/{studentList.length} submitted
+                        {entryCount !== submittedCount && (
+                          <span className="ml-1 font-normal text-amber-600">({entryCount} typed, not yet saved)</span>
+                        )}
                       </span>
                     </div>
                     {!editing && (
@@ -478,9 +490,9 @@ export default function GradesPage() {
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {studentList.map((s, i) => {
-                        const filled = isFilledScore(scores[s.id]);
+                        const submitted = isSubmitted(s.id);
                         return (
-                          <tr key={s.id} className={cls("hover:bg-slate-50", filled && "bg-emerald-50/30")}>
+                          <tr key={s.id} className={cls("hover:bg-slate-50", submitted && "bg-emerald-50/40")}>
                             <td className="px-3 py-2 text-slate-500">{i + 1}</td>
                             <td className="px-3 py-2">
                               <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{s.admissionNo}</code>
@@ -499,12 +511,12 @@ export default function GradesPage() {
                                   inputCls,
                                   "w-24",
                                   !editing && "bg-slate-50 text-slate-700",
-                                  scores[s.id]?.trim() !== "" && scoreTone(Number(scores[s.id])),
+                                  submitted && "border-emerald-400 bg-emerald-50 text-emerald-800 focus:border-emerald-500 focus:ring-emerald-200",
                                 )}
                               />
                             </td>
                             <td className="px-3 py-2 text-center">
-                              {filled && <span className="text-base text-emerald-600" title="Score entered">✅</span>}
+                              {submitted && <span className="text-base text-emerald-600" title="Submitted and saved">✅</span>}
                             </td>
                           </tr>
                         );

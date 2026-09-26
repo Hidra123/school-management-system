@@ -44,6 +44,14 @@ type ActiveExam = {
 
 const TERMS = ["Term 1", "Term 2", "Term 3", "Full Year"];
 
+/** A score cell counts as "filled" (and gets the ✅ tick) once it's a plain 0–100 number. */
+function isFilledScore(raw: string | undefined): boolean {
+  const t = raw?.trim();
+  if (!t) return false;
+  const n = Number(t);
+  return Number.isFinite(n) && n >= 0 && n <= 100;
+}
+
 function examLabel(key: string): string {
   if (key === "SE") return "School Examination (SE)";
   if (key === "CA") return "Continuously Assessment (CAs)";
@@ -198,7 +206,12 @@ export default function GradesPage() {
       return;
     }
     if (entryCount === 0) {
-      setEntryErr("Fill in at least one score before saving.");
+      // Nothing typed at all — there is genuinely nothing to send to the
+      // server. Partial entries (some students filled, some left blank) are
+      // fully supported below: only the filled ones are sent, the rest are
+      // simply skipped (no error), so a teacher can save 3 out of 51 today
+      // and come back for the rest later.
+      setEntryErr("Enter at least one student's score before saving — blank rows are fine and are just skipped.");
       return;
     }
     setSaving(true);
@@ -435,89 +448,106 @@ export default function GradesPage() {
                         ))}
                       </select>
                     </Field>
-                    <span className="text-xs text-slate-500">
-                      Max: <b>100</b> · {entryCount}/{studentList.length} entered
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          style={{ width: `${studentList.length ? Math.round((entryCount / studentList.length) * 100) : 0}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-semibold text-slate-500">
+                        {entryCount}/{studentList.length} entered
+                      </span>
+                    </div>
                     {!editing && (
                       <Badge tone="emerald">Saved — press Edit to modify</Badge>
                     )}
                   </div>
                 </div>
 
-                {entryMsg && (
-                  <p className="mx-5 mt-3 rounded-xl bg-emerald-50 px-3.5 py-2.5 text-sm font-semibold text-emerald-700">
-                    {entryMsg}
-                  </p>
-                )}
-                {entryErr && (
-                  <p className="mx-5 mt-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-700">
-                    {entryErr}
-                  </p>
-                )}
-
-                <div className="overflow-x-auto p-5">
-                  <table className="w-full min-w-[520px] text-sm">
-                    <thead className="bg-slate-100">
+                <div className="max-h-[520px] overflow-x-auto overflow-y-auto p-5">
+                  <table className="w-full min-w-[560px] text-sm">
+                    <thead className="sticky top-0 z-[1] bg-slate-100">
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">#</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Adm No</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Student</th>
                         <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Score / 100</th>
+                        <th className="px-3 py-2 text-center text-xs font-bold text-slate-600 w-10"> </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {studentList.map((s, i) => (
-                        <tr key={s.id} className="hover:bg-slate-50">
-                          <td className="px-3 py-2 text-slate-500">{i + 1}</td>
-                          <td className="px-3 py-2">
-                            <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{s.admissionNo}</code>
-                          </td>
-                          <td className="px-3 py-2 font-medium text-slate-800">{s.name}</td>
-                          <td className="px-3 py-2">
-                            <input
-                              type="number"
-                              min={0}
-                              max={100}
-                              step="0.5"
-                              value={scores[s.id] ?? ""}
-                              disabled={!editing}
-                              onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
-                              className={cls(
-                                inputCls,
-                                "w-24",
-                                !editing && "bg-slate-50 text-slate-700",
-                                scores[s.id]?.trim() !== "" && scoreTone(Number(scores[s.id])),
-                              )}
-                            />
-                          </td>
-                        </tr>
-                      ))}
+                      {studentList.map((s, i) => {
+                        const filled = isFilledScore(scores[s.id]);
+                        return (
+                          <tr key={s.id} className={cls("hover:bg-slate-50", filled && "bg-emerald-50/30")}>
+                            <td className="px-3 py-2 text-slate-500">{i + 1}</td>
+                            <td className="px-3 py-2">
+                              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{s.admissionNo}</code>
+                            </td>
+                            <td className="px-3 py-2 font-medium text-slate-800">{s.name}</td>
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.5"
+                                value={scores[s.id] ?? ""}
+                                disabled={!editing}
+                                onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
+                                className={cls(
+                                  inputCls,
+                                  "w-24",
+                                  !editing && "bg-slate-50 text-slate-700",
+                                  scores[s.id]?.trim() !== "" && scoreTone(Number(scores[s.id])),
+                                )}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              {filled && <span className="text-base text-emerald-600" title="Score entered">✅</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
-                {/* FOOTER — buttons 3 ziko CHINI ya jedwali */}
-                <div className="flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-5 py-3">
-                  <button
-                    onClick={() => { setScores(Object.fromEntries(studentList.map((st) => [st.id, ""]))); setEditing(true); }}
-                    className={btnGhost}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    onClick={() => void saveEntry()}
-                    disabled={saving || entryCount === 0}
-                    className={btnPrimary}
-                  >
-                    {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
-                  </button>
-                  <button
-                    onClick={() => setEditing(true)}
-                    disabled={editing}
-                    className={cls(btnGhost, "border-violet-200 text-violet-700 hover:bg-violet-50", editing && "opacity-50")}
-                  >
-                    ✏️ Edit
-                  </button>
+                {/* FOOTER — sticky so the Save button + result message stay visible
+                    even when scrolling through a long class list (51 students etc). */}
+                <div className="sticky bottom-0 z-10 space-y-2 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+                  {entryMsg && (
+                    <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700">
+                      {entryMsg}
+                    </p>
+                  )}
+                  {entryErr && (
+                    <p className="rounded-xl bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-700">
+                      {entryErr}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center justify-end gap-2">
+                    <button
+                      onClick={() => { setScores(Object.fromEntries(studentList.map((st) => [st.id, ""]))); setEditing(true); }}
+                      className={btnGhost}
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => void saveEntry()}
+                      disabled={saving || entryCount === 0}
+                      className={btnPrimary}
+                    >
+                      {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
+                    </button>
+                    <button
+                      onClick={() => setEditing(true)}
+                      disabled={editing}
+                      className={cls(btnGhost, "border-violet-200 text-violet-700 hover:bg-violet-50", editing && "opacity-50")}
+                    >
+                      ✏️ Edit
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

@@ -265,16 +265,39 @@ export default function GradesPage() {
   const records = useFetch<GradeRow[]>(listUrl);
   const gradeList = records.data ?? [];
 
+  // When Class + Subject + Exam Category are all picked, we know exactly
+  // which roster this table is about, so we can show EVERY student in that
+  // class — not just the ones who already have a saved score — with an
+  // explicit "Not submitted" placeholder for the rest. With looser filters
+  // (or none) there is no single well-defined roster to complete against,
+  // so the table just lists the grade records that exist, as before.
+  const recordsFiltersComplete = !!(fClass && fSubject && fExam);
+  const recordsRosterUrl = useMemo(
+    () => (recordsFiltersComplete ? `/api/students?classId=${fClass}&subjectId=${fSubject}&strict=1` : null),
+    [recordsFiltersComplete, fClass, fSubject],
+  );
+  const recordsRoster = useFetch<StudentRow[]>(recordsRosterUrl);
+
+  type DisplayRow = { student: StudentRow; grade: GradeRow | null };
+  const displayRows: DisplayRow[] | null = useMemo(() => {
+    if (!recordsFiltersComplete) return null;
+    const roster = recordsRoster.data ?? [];
+    return roster.map((s) => ({ student: s, grade: gradeList.find((g) => g.studentId === s.id) ?? null }));
+  }, [recordsFiltersComplete, recordsRoster.data, gradeList]);
+  const recordsFSubjectName = subjectList.find((s) => String(s.id) === fSubject)?.name ?? "";
+
   async function removeGrade(g: GradeRow) {
     if (!window.confirm(`Delete ${g.studentName}'s score (${examLabel(g.examType)})?`)) return;
     try {
       await delJSON(`/api/grades/${g.id}`);
       records.refresh();
       entryGrades.refresh();
+      recordsRoster.refresh();
     } catch (err) {
       window.alert(err instanceof Error ? err.message : "Failed to delete.");
     }
   }
+
 
   const stepBox = (
     n: number,
@@ -285,12 +308,12 @@ export default function GradesPage() {
   ) => (
     <div
       className={cls(
-        "rounded-xl border p-3.5 transition",
-        active ? "border-violet-200 bg-violet-50/40" : "border-slate-100 bg-white",
-        !active && done && "border-emerald-100",
+        "rounded-xl border p-4 shadow-sm transition",
+        active ? "border-violet-200 bg-violet-50/50 ring-1 ring-violet-100" : "border-slate-100 bg-white",
+        !active && done && "border-emerald-200 bg-emerald-50/20",
       )}
     >
-      <p className={cls("mb-2 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider", active || done ? "text-slate-700" : "text-slate-400")}>
+      <p className={cls("mb-2.5 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider", active || done ? "text-slate-700" : "text-slate-400")}>
         <StepBadge n={n} done={done} active={active} /> {title}
       </p>
       {children}
@@ -309,8 +332,8 @@ export default function GradesPage() {
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
           {/* ==================== LEFT: STEP BY STEP ==================== */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm lg:col-span-5">
-            <div className="bg-slate-900 px-5 py-3">
+          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50 lg:col-span-5">
+            <div className="bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
               <p className="text-sm font-bold text-white">📝 Score Submission</p>
             </div>
             <div className="space-y-3 p-4">
@@ -418,9 +441,9 @@ export default function GradesPage() {
           </section>
 
           {/* ==================== RIGHT: ENTER SCORES ==================== */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm lg:col-span-7">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900 px-5 py-3">
-              <p className="text-sm font-bold text-white">≡ Enter Scores</p>
+          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50 lg:col-span-7">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
+              <p className="text-sm font-bold text-white">📋 Enter Scores</p>
               {allStepsDone && (
                 <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-[11px] font-bold text-emerald-300">
                   {selectedClass?.name} {selectedClass?.section ? `— ${selectedClass.section}` : ""} · {selectedSubject?.name} · {selectedExam?.name}
@@ -448,7 +471,7 @@ export default function GradesPage() {
               />
             ) : (
               <div>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
                   <div className="flex flex-wrap items-center gap-3">
                     <Field label="Term">
                       <select value={term} onChange={(e) => setTerm(e.target.value)} className={cls(inputCls, "w-32")}>
@@ -481,18 +504,24 @@ export default function GradesPage() {
                   <table className="w-full min-w-[560px] text-sm">
                     <thead className="sticky top-0 z-[1] bg-slate-100">
                       <tr>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">#</th>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Adm No</th>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Student</th>
-                        <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Score / 100</th>
-                        <th className="px-3 py-2 text-center text-xs font-bold text-slate-600 w-10"> </th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">#</th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Adm No</th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Student</th>
+                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Score / 100</th>
+                        <th className="w-10 px-3 py-2.5 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500"> </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {studentList.map((s, i) => {
                         const submitted = isSubmitted(s.id);
                         return (
-                          <tr key={s.id} className={cls("hover:bg-slate-50", submitted && "bg-emerald-50/40")}>
+                          <tr
+                            key={s.id}
+                            className={cls(
+                              "transition-colors hover:bg-violet-50/40",
+                              submitted ? "bg-emerald-50/40" : i % 2 === 1 && "bg-slate-50/50",
+                            )}
+                          >
                             <td className="px-3 py-2 text-slate-500">{i + 1}</td>
                             <td className="px-3 py-2">
                               <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{s.admissionNo}</code>
@@ -527,7 +556,7 @@ export default function GradesPage() {
 
                 {/* FOOTER — sticky so the Save button + result message stay visible
                     even when scrolling through a long class list (51 students etc). */}
-                <div className="sticky bottom-0 z-10 space-y-2 border-t border-slate-200 bg-white/95 px-5 py-3 backdrop-blur">
+                <div className="sticky bottom-0 z-10 space-y-2 border-t border-slate-200 bg-white/95 px-5 py-3.5 shadow-[0_-4px_10px_rgba(0,0,0,0.04)] backdrop-blur">
                   {entryMsg && (
                     <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700">
                       {entryMsg}
@@ -567,8 +596,8 @@ export default function GradesPage() {
         </div>
 
         {/* ==================== RECORDS (angalia + futa) ==================== */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900 px-5 py-3">
+        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
             <p className="text-sm font-bold text-white">📋 Score Records</p>
             <button onClick={() => records.refresh()} className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold text-white hover:bg-white/20">
               🔄 Reload
@@ -594,10 +623,63 @@ export default function GradesPage() {
               ))}
             </select>
           </div>
-          {records.loading && !gradeList.length ? (
-            <Loader label="Loading records..." />
+          {recordsFiltersComplete ? (
+            recordsRoster.loading && !displayRows?.length ? (
+              <Loader label="Loading records..." />
+            ) : !displayRows || displayRows.length === 0 ? (
+              <EmptyState icon="👨‍🎓" title="No students in this class" message="This class has no students enrolled for this subject." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-100">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Student</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Subject</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Exam Type</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Term</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Score</th>
+                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Date</th>
+                      <th className="px-3 py-2 text-right text-xs font-bold text-slate-600">Act</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {displayRows.map(({ student: s, grade: g }) => (
+                      <tr key={s.id} className={cls("hover:bg-slate-50", !g && "bg-slate-50/60")}>
+                        <td className="px-3 py-2 font-medium text-slate-800">
+                          {s.name}
+                          <p className="text-[11px] font-normal text-slate-400">{s.admissionNo}</p>
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">{g?.subjectName ?? recordsFSubjectName}</td>
+                        <td className="px-3 py-2 text-slate-600">{examLabel(fExam)}</td>
+                        <td className="px-3 py-2 text-slate-600">{g?.term ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          {g ? (
+                            <span className={cls("rounded-lg px-2 py-0.5 text-sm font-bold", scoreTone(g.score))}>
+                              {g.score}
+                            </span>
+                          ) : (
+                            <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">Not submitted</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-500">{g ? shortDate(g.createdAt) : "—"}</td>
+                        <td className="px-3 py-2 text-right">
+                          {g && (
+                            <button
+                              onClick={() => void removeGrade(g)}
+                              className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-200"
+                            >
+                              🗑️
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
           ) : gradeList.length === 0 ? (
-            <EmptyState icon="📭" title="No score records" message="Scores you save above will appear here." />
+            <EmptyState icon="📭" title="No score records" message="Scores you save above will appear here. Pick a Class + Subject + Exam Category above to also see students who haven't been scored yet." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

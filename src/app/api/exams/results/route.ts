@@ -161,12 +161,22 @@ export async function GET(req: Request) {
       }
     }
 
-    // ----- Full scoresheet + highlights, sorted by total points ascending (best first) -----
-    const sheetRows = [...withResults].sort((a, b) => a.totalPoints - b.totalPoints || b.totalScore - a.totalScore);
-    const passedList = sheetRows
+    // ----- Full scoresheet + highlights -----
+    // Students who scored on at least one subject are ranked by points
+    // (ascending — NECTA-style, fewer points = better). Students with ZERO
+    // subject scores for this exam are NOT ranked (they have nothing to rank
+    // by) but are still listed in the sheet — with "—" for every subject
+    // score/grade and for division/points — so the register always shows
+    // every student in the class, scored or not.
+    const scoredSorted = [...withResults].sort((a, b) => a.totalPoints - b.totalPoints || b.totalScore - a.totalScore);
+    const notExamined = computed.filter((c) => c.subjectsTaken === 0);
+    const sheetRows = [...scoredSorted, ...notExamined];
+    // passedList/failedList must only ever contain students who actually sat
+    // the exam — a not-examined student is neither "passed" nor "failed".
+    const passedList = scoredSorted
       .filter((c) => c.division !== "0")
       .map((c, i) => ({ position: i + 1, id: c.id, name: c.name, gender: c.gender, grade: overallGradeOf(c), division: c.division, points: c.totalPoints }));
-    const failedList = sheetRows
+    const failedList = scoredSorted
       .filter((c) => c.division === "0")
       .map((c) => ({ id: c.id, name: c.name, gender: c.gender, grade: overallGradeOf(c), points: c.totalPoints }));
 
@@ -206,8 +216,11 @@ export async function GET(req: Request) {
         name: c.name,
         gender: c.gender,
         subjectScores: c.subjectScores,
-        division: c.division,
-        points: c.totalPoints,
+        // "—" / null for students who haven't been scored on anything yet —
+        // a real division/points value would misleadingly look like "failed
+        // everything" (division 0) instead of "not examined yet".
+        division: c.subjectsTaken > 0 ? c.division : "—",
+        points: c.subjectsTaken > 0 ? c.totalPoints : null,
       })),
       subjectList: subjectList.map((s) => ({ id: s.id, name: s.name, code: s.code || s.name.slice(0, 4).toUpperCase() })),
       passedList,

@@ -8,4 +8,8 @@ export default defineConfig({
       process.env.DATABASE_URL ??
       "postgresql://postgres:postgres@127.0.0.1:5432/app_db",
   },
+  // Neon database optimization settings
+  schemaFilter: ["public"],
+  verbose: true,
+  strict: true,
 });

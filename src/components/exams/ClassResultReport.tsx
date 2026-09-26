@@ -6,7 +6,7 @@ import { cls } from "@/lib/utils";
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 type SubjectScore = { subjectId: number; score: number | null; grade: Grade | null };
-type SheetRow = { id: number; name: string; gender: "male" | "female"; subjectScores: SubjectScore[]; division: string; points: number };
+type SheetRow = { id: number; name: string; gender: "male" | "female"; subjectScores: SubjectScore[]; division: string; points: number | null };
 type SubjectPerf = {
   subjectId: number; name: string; code: string; pass: number; fail: number;
   A: number; B: number; C: number; D: number; F: number; gpa: number; competencyGrade: Grade; competencyLabel: string;
@@ -259,7 +259,7 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
                     );
                   })}
                   <td className="px-2 py-1 text-center"><DivisionPill division={row.division} /></td>
-                  <td className="px-2 py-1 text-center font-bold">{row.points}</td>
+                  <td className="px-2 py-1 text-center font-bold">{row.points ?? "—"}</td>
                 </tr>
               ))}
               {data.sheet.length === 0 && (

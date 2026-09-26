@@ -4,7 +4,7 @@ import { classes, studentSubjectMap, students, subjects } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { createApproval } from "@/lib/approvals";
 import { getSessionUser, requirePermission } from "@/lib/auth";
-import { classAllowed, getTeacherScope } from "@/lib/teachers";
+import { classAllowed, getTeacherScope, subjectClassAllowed } from "@/lib/teachers";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +39,16 @@ export async function GET(req: Request) {
 
     // A scoped teacher asking for a class outside their assignment gets nothing.
     if (requestedClassId !== null && !classAllowed(scope, requestedClassId)) {
+      return Response.json([]);
+    }
+    // A scoped teacher asking for THIS SUBJECT in THIS CLASS specifically (e.g.
+    // Submit Scores step 5) must actually be assigned that exact subject+class
+    // pairing. Without this check, classAllowed() alone would let the roster
+    // through (they teach the class SOMETHING) while /api/grades POST — which
+    // does check the pairing — rejects the save afterwards. That mismatch is
+    // exactly what produced "One or more students are outside your assigned
+    // subject/class" after the teacher had already typed in every score.
+    if (requestedClassId !== null && requestedSubjectId !== null && !subjectClassAllowed(scope, requestedSubjectId, requestedClassId)) {
       return Response.json([]);
     }
     // A scoped teacher with no assigned classes at all has nothing to see.

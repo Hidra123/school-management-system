@@ -421,7 +421,7 @@ export default function GradesPage() {
                 message={
                   selectedSubject?.isOptional
                     ? `No students are mapped to this optional subject (${selectedSubject.name}) in this class. Use "Map Students" in the sidebar to enrol students.`
-                    : "This class has no students enrolled."
+                    : "This class has no students enrolled, OR you are not assigned to teach this subject in this class yet. Ask the Admin to check your subject/class assignment in Manage Teachers."
                 }
               />
             ) : (

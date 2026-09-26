@@ -1,5 +1,14 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  // Optimize for production
+  swcMinify: true,
+  // Ensure environment variables are available at runtime
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
+  },
+};
 
 export default nextConfig;

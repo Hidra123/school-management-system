@@ -62,12 +62,12 @@ function StepBadge({ n, done, active }: { n: number; done: boolean; active: bool
   return (
     <span
       className={cls(
-        "grid h-6 w-6 shrink-0 place-items-center rounded-full text-[11px] font-extrabold transition",
+        "grid h-7 w-7 shrink-0 place-items-center rounded-full text-[11px] font-extrabold transition-all duration-300",
         done
-          ? "bg-emerald-500 text-white"
+          ? "bg-gradient-to-br from-emerald-400 to-emerald-600 text-white shadow-lg shadow-emerald-200"
           : active
-            ? "bg-violet-600 text-white"
-            : "bg-slate-200 text-slate-500",
+            ? "bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-lg shadow-violet-200"
+            : "bg-slate-100 text-slate-400",
       )}
     >
       {done ? "✓" : n}
@@ -86,6 +86,7 @@ export default function GradesPage() {
   const [term, setTerm] = useState("Term 1");
 
   const [scores, setScores] = useState<Record<number, string>>({});
+  const [editing, setEditing] = useState(true); // false = view mode (scores saved), true = editable
   const [saving, setSaving] = useState(false);
   const [entryMsg, setEntryMsg] = useState<string | null>(null);
   const [entryErr, setEntryErr] = useState<string | null>(null);
@@ -101,22 +102,10 @@ export default function GradesPage() {
   const subjectsFetch = useFetch<SubjectRow[]>("/api/subjects?strict=1");
   // Exams ACTIVE tu — server inafilter status='active' (see /api/exams/active).
   const activeExamsFetch = useFetch<ActiveExam[]>("/api/exams/active");
-  // Admin-configured submission window (Exam Routine & Results → deadlines).
-  // Same logic/endpoint the admin's own settings screen uses.
-  const settingsFetch = useFetch<{ submissionOpensAt: string | null; submissionClosesAt: string | null }>(
-    "/api/exams/settings",
-  );
 
   const classList = classesFetch.data ?? [];
   const subjectList = subjectsFetch.data ?? [];
   const allActiveExams = activeExamsFetch.data ?? [];
-
-  const opensAtDate = settingsFetch.data?.submissionOpensAt ? new Date(settingsFetch.data.submissionOpensAt) : null;
-  const closesAtDate = settingsFetch.data?.submissionClosesAt ? new Date(settingsFetch.data.submissionClosesAt) : null;
-  const now = Date.now();
-  const submissionNotYetOpen = !!opensAtDate && now < opensAtDate.getTime();
-  const submissionClosed = !!closesAtDate && now > closesAtDate.getTime();
-  const submissionBlocked = submissionNotYetOpen || submissionClosed;
 
   const selectedClass = useMemo(() => classList.find((c) => String(c.id) === classId) ?? null, [classList, classId]);
   const selectedSubject = useMemo(
@@ -219,20 +208,8 @@ export default function GradesPage() {
     return (scores[studentId] ?? "").trim() === String(saved);
   }
   const submittedCount = studentList.filter((s) => savedScores[s.id] !== undefined).length;
-  // "Dirty" = at least one box differs from what's actually saved in the DB.
-  // Submit/Update stay disabled until there is something new to send —
-  // mirrors the reference dashboard's change-detection behaviour.
-  const isDirty = studentList.some((s) => !isSubmitted(s.id) && (scores[s.id] ?? "").trim() !== "");
 
   async function saveEntry() {
-    if (submissionBlocked && user?.role !== "admin") {
-      setEntryErr(
-        submissionNotYetOpen
-          ? "Score submission has not opened yet."
-          : "Score submission is CLOSED. Contact the Academic Master / Admin.",
-      );
-      return;
-    }
     if (!classId || !subjectId || !examType || !examId) {
       setEntryErr("Complete all 4 steps (Class, Subject, Exam Category and Exam Name) before saving.");
       return;
@@ -267,6 +244,7 @@ export default function GradesPage() {
         entries,
       });
       setEntryMsg(`✅ Scores for ${entries.length} students saved (${examLabel(examType)} — ${term}).`);
+      setEditing(false);
       entryGrades.refresh();
     } catch (err) {
       setEntryErr(err instanceof Error ? err.message : "Failed to save.");
@@ -330,12 +308,14 @@ export default function GradesPage() {
   ) => (
     <div
       className={cls(
-        "rounded-xl border p-4 shadow-sm transition",
-        active ? "border-violet-200 bg-violet-50/50 ring-1 ring-violet-100" : "border-slate-100 bg-white",
-        !active && done && "border-emerald-200 bg-emerald-50/20",
+        "rounded-2xl border p-5 shadow-lg transition-all duration-300",
+        active
+          ? "border-violet-300 bg-gradient-to-br from-violet-50 to-indigo-50 ring-2 ring-violet-200 shadow-violet-100/50"
+          : "border-slate-200 bg-white",
+        !active && done && "border-emerald-300 bg-gradient-to-br from-emerald-50 to-green-50 ring-2 ring-emerald-200 shadow-emerald-100/50",
       )}
     >
-      <p className={cls("mb-2.5 flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-wider", active || done ? "text-slate-700" : "text-slate-400")}>
+      <p className={cls("mb-3 flex items-center gap-2.5 text-[11px] font-extrabold uppercase tracking-wider", active || done ? "text-slate-700" : "text-slate-400")}>
         <StepBadge n={n} done={done} active={active} /> {title}
       </p>
       {children}
@@ -352,47 +332,20 @@ export default function GradesPage() {
         )}
         <PageHeader icon="📝" title="Submit Scores" subtitle="Step by step — pick Class, Subject, Exam Category and Exam Name, then enter the scores." />
 
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
           {/* ==================== LEFT: STEP BY STEP ==================== */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50 lg:col-span-5">
-            <div className="bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
+          <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/60 lg:col-span-5">
+            <div className="bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-700 px-6 py-4">
               <p className="text-sm font-bold text-white">📝 Score Submission</p>
+              <p className="text-[11px] text-violet-100">Step-by-step grade entry workflow</p>
             </div>
-            <div className="space-y-3 p-4">
-              {settingsFetch.data && (submissionBlocked || opensAtDate || closesAtDate) && (
-                <div
-                  className={cls(
-                    "flex items-center gap-3 rounded-xl border px-4 py-3 font-semibold",
-                    submissionClosed
-                      ? "border-rose-300 bg-gradient-to-r from-rose-50 to-rose-100 text-rose-800"
-                      : submissionNotYetOpen
-                        ? "border-amber-300 bg-gradient-to-r from-amber-50 to-amber-100 text-amber-800"
-                        : "border-emerald-300 bg-gradient-to-r from-emerald-50 to-emerald-100 text-emerald-800",
-                  )}
-                >
-                  <span className="text-lg">{submissionClosed ? "🔒" : submissionNotYetOpen ? "⏳" : "🔓"}</span>
-                  <div>
-                    <p className="text-sm font-extrabold">
-                      {submissionClosed
-                        ? "Score Submission is CLOSED"
-                        : submissionNotYetOpen
-                          ? "Submission not yet open"
-                          : "Score Submission is OPEN"}
-                    </p>
-                    <p className="text-[11px] font-medium opacity-80">
-                      {submissionClosed
-                        ? `Closed: ${closesAtDate!.toLocaleString()} — contact the Academic Master/Admin.`
-                        : submissionNotYetOpen
-                          ? `Opens: ${opensAtDate!.toLocaleString()}`
-                          : closesAtDate
-                            ? `Closes: ${closesAtDate.toLocaleString()}`
-                            : ""}
-                    </p>
-                  </div>
-                </div>
-              )}
+            <div className="space-y-4 p-5">
               {stepBox(1, "Select Class", step1Done, true, (
-                <select value={classId} onChange={(e) => { setClassId(e.target.value); setSubjectId(""); setExamType(""); setExamId(""); setScores({}); }} className={inputCls}>
+                <select 
+                  value={classId} 
+                  onChange={(e) => { setClassId(e.target.value); setSubjectId(""); setExamType(""); setExamId(""); setScores({}); }} 
+                  className={cls(inputCls, "transition-all duration-200 focus:ring-2 focus:ring-violet-200 focus:border-violet-400")}
+                >
                   <option value="">— Select Class —</option>
                   {classList.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -403,9 +356,12 @@ export default function GradesPage() {
                 </select>
               ))}
               {classList.length === 0 && !classesFetch.loading && (
-                <p className="text-xs font-semibold text-amber-700">
-                  ⚠️ No classes assigned to you yet — ask the admin to assign classes via Manage Teachers.
-                </p>
+                <div className="flex items-start gap-2 rounded-xl bg-amber-50 px-4 py-3 border border-amber-200">
+                  <span className="text-lg">⚠️</span>
+                  <p className="text-xs font-semibold text-amber-700 leading-relaxed">
+                    No classes assigned to you yet — ask the admin to assign classes via Manage Teachers.
+                  </p>
+                </div>
               )}
 
               {stepBox(2, "Select Subject", step2Done, step1Done, (
@@ -413,7 +369,7 @@ export default function GradesPage() {
                   value={subjectId}
                   disabled={!step1Done}
                   onChange={(e) => { setSubjectId(e.target.value); setExamId(""); setScores({}); }}
-                  className={cls(inputCls, !step1Done && "opacity-50")}
+                  className={cls(inputCls, !step1Done && "opacity-50", "transition-all duration-200 focus:ring-2 focus:ring-violet-200 focus:border-violet-400")}
                 >
                   <option value="">— Select Subject —</option>
                   {subjectList.map((s) => (
@@ -431,7 +387,7 @@ export default function GradesPage() {
                     value={examType}
                     disabled={!step2Done || examOptions.length === 0}
                     onChange={(e) => { setExamType(e.target.value); setExamId(""); setScores({}); }}
-                    className={cls(inputCls, (!step2Done || examOptions.length === 0) && "opacity-50")}
+                    className={cls(inputCls, (!step2Done || examOptions.length === 0) && "opacity-50", "transition-all duration-200 focus:ring-2 focus:ring-violet-200 focus:border-violet-400")}
                   >
                     <option value="">— Select Category —</option>
                     {/* Only exam types that HAVE an active exam for this class */}
@@ -441,14 +397,17 @@ export default function GradesPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-2 text-[11px] text-slate-500">
                     Exam Category = Exam Type. Only categories with ACTIVE exams appear here.
                   </p>
                   {step2Done && examOptions.length === 0 && (
-                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      ⚠️ There is no ACTIVE exam for this class yet. If the Academic Master already created and
-                      activated one, it may still be waiting for the Admin&apos;s approval — ask them to check.
-                    </p>
+                    <div className="flex items-start gap-2 mt-2 rounded-xl bg-amber-50 px-4 py-3 border border-amber-200">
+                      <span className="text-lg">⚠️</span>
+                      <p className="text-[11px] font-semibold text-amber-700 leading-relaxed">
+                        There is no ACTIVE exam for this class yet. If the Academic Master already created and
+                        activated one, it may still be waiting for the Admin's approval — ask them to check.
+                      </p>
+                    </div>
                   )}
                 </>
               ))}
@@ -459,7 +418,7 @@ export default function GradesPage() {
                     value={examId}
                     disabled={!step3Done}
                     onChange={(e) => { setExamId(e.target.value); setScores({}); }}
-                    className={cls(inputCls, !step3Done && "opacity-50")}
+                    className={cls(inputCls, !step3Done && "opacity-50", "transition-all duration-200 focus:ring-2 focus:ring-violet-200 focus:border-violet-400")}
                   >
                     <option value="">— Select Exam —</option>
                     {examOptionsForType.map((e) => (
@@ -469,23 +428,26 @@ export default function GradesPage() {
                       </option>
                     ))}
                   </select>
-                  <p className="mt-1 text-[11px] text-slate-400">
+                  <p className="mt-2 text-[11px] text-slate-500">
                     Only <b>ACTIVE</b> examinations of the selected category appear here.
                   </p>
                   {step3Done && examOptionsForType.length === 0 && (
-                    <p className="mt-1 text-[11px] font-semibold text-amber-700">
-                      ⚠️ There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
-                    </p>
+                    <div className="flex items-start gap-2 mt-2 rounded-xl bg-amber-50 px-4 py-3 border border-amber-200">
+                      <span className="text-lg">⚠️</span>
+                      <p className="text-[11px] font-semibold text-amber-700 leading-relaxed">
+                        There is no ACTIVE exam for this class yet — please contact the Academic Master for further assistance.
+                      </p>
+                    </div>
                   )}
                 </>
               ))}
 
               {(classesFetch.error || subjectsFetch.error || activeExamsFetch.error) && (
-                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-rose-50 px-3.5 py-2.5 text-sm font-semibold text-rose-700">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl bg-gradient-to-r from-rose-50 to-red-50 px-4 py-3 text-sm font-semibold text-rose-700 border border-rose-200">
                   <span>⚠️ {classesFetch.error || subjectsFetch.error || activeExamsFetch.error}</span>
                   <button
                     onClick={() => { classesFetch.refresh(); subjectsFetch.refresh(); activeExamsFetch.refresh(); }}
-                    className="rounded-lg border border-rose-200 bg-white px-3 py-1 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                    className="rounded-lg border border-rose-300 bg-white px-4 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-50 transition-all duration-200 shadow-sm"
                   >
                     🔄 Refresh
                   </button>
@@ -495,11 +457,14 @@ export default function GradesPage() {
           </section>
 
           {/* ==================== RIGHT: ENTER SCORES ==================== */}
-          <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50 lg:col-span-7">
-            <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
-              <p className="text-sm font-bold text-white">📋 Enter Scores</p>
+          <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/60 lg:col-span-7">
+            <div className="flex flex-wrap items-center justify-between gap-2 bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-700 px-6 py-4">
+              <div>
+                <p className="text-sm font-bold text-white">📋 Enter Scores</p>
+                <p className="text-[11px] text-violet-100">Enter grades for each student</p>
+              </div>
               {allStepsDone && (
-                <span className="rounded-full bg-emerald-500/20 px-3 py-1 text-[11px] font-bold text-emerald-300">
+                <span className="rounded-full bg-white/10 backdrop-blur-sm px-4 py-1.5 text-[11px] font-bold text-white border border-white/20">
                   {selectedClass?.name} {selectedClass?.section ? `— ${selectedClass.section}` : ""} · {selectedSubject?.name} · {selectedExam?.name}
                 </span>
               )}
@@ -512,7 +477,12 @@ export default function GradesPage() {
                 message="1) Select Class → 2) Select Subject → 3) Exam Category → 4) Exam Name. Then the students of that class will appear here."
               />
             ) : entryStudents.loading ? (
-              <Loader label="Loading students..." />
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="relative mb-4">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600"></div>
+                </div>
+                <p className="text-sm font-semibold text-slate-600">Loading students...</p>
+              </div>
             ) : studentList.length === 0 ? (
               <EmptyState
                 icon="👨‍🎓"
@@ -525,53 +495,46 @@ export default function GradesPage() {
               />
             ) : (
               <div>
-                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
-                  <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-violet-50/30 px-6 py-4">
+                  <div className="flex flex-wrap items-center gap-4">
                     <Field label="Term">
-                      <select value={term} onChange={(e) => setTerm(e.target.value)} className={cls(inputCls, "w-32")}>
+                      <select value={term} onChange={(e) => setTerm(e.target.value)} className={cls(inputCls, "w-36")}>
                         {TERMS.map((t) => (
                           <option key={t} value={t}>{t}</option>
                         ))}
                       </select>
                     </Field>
-                    <div className="flex items-center gap-2">
-                      <div className="h-2 w-28 overflow-hidden rounded-full bg-slate-100">
+                    <div className="flex items-center gap-3">
+                      <div className="relative h-3 w-32 overflow-hidden rounded-full bg-slate-200">
                         <div
-                          className="h-full rounded-full bg-emerald-500 transition-all"
+                          className="absolute h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-500 ease-out"
                           style={{ width: `${studentList.length ? Math.round((submittedCount / studentList.length) * 100) : 0}%` }}
                         />
                       </div>
-                      <span className="text-xs font-semibold text-slate-500">
+                      <span className="text-xs font-semibold text-slate-600">
                         {submittedCount}/{studentList.length} submitted
                         {entryCount !== submittedCount && (
                           <span className="ml-1 font-normal text-amber-600">({entryCount} typed, not yet saved)</span>
                         )}
                       </span>
                     </div>
-                    {!isDirty && submittedCount > 0 && submittedCount === studentList.length && (
-                      <Badge tone="emerald">All students scored ✓</Badge>
+                    {!editing && (
+                      <div className="rounded-full bg-emerald-100 px-3 py-1 text-[11px] font-bold text-emerald-700 border border-emerald-200">
+                        ✅ Saved — press Edit to modify
+                      </div>
                     )}
                   </div>
                 </div>
-                <p
-                  className={cls(
-                    "mx-5 mt-3 rounded-lg px-3.5 py-2 text-xs font-semibold",
-                    submittedCount > 0 ? "bg-emerald-50 text-emerald-700" : "bg-sky-50 text-sky-700",
-                  )}
-                >
-                  ℹ️ {studentList.length} students loaded.
-                  {submittedCount > 0 ? ` ${submittedCount} already scored — shown in green.` : " No scores saved yet for this exam."}
-                </p>
 
-                <div className="max-h-[520px] overflow-x-auto overflow-y-auto p-5">
-                  <table className="w-full min-w-[600px] text-sm">
-                    <thead className="sticky top-0 z-[1] bg-slate-100">
+                <div className="max-h-[520px] overflow-x-auto overflow-y-auto p-6">
+                  <table className="w-full min-w-[560px] text-sm">
+                    <thead className="sticky top-0 z-[1] bg-gradient-to-r from-slate-100 to-violet-50/50 backdrop-blur-sm">
                       <tr>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">#</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Student Name</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Sex</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Adm No.</th>
-                        <th className="px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-wide text-slate-500">Score / 100</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">#</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Adm No</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Student</th>
+                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Score / 100</th>
+                        <th className="w-10 px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-slate-600"> </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -581,38 +544,34 @@ export default function GradesPage() {
                           <tr
                             key={s.id}
                             className={cls(
-                              "transition-colors hover:bg-violet-50/40",
-                              submitted ? "bg-emerald-50/40" : i % 2 === 1 && "bg-slate-50/50",
+                              "transition-all duration-200 hover:bg-violet-50/60 hover:shadow-sm",
+                              submitted ? "bg-gradient-to-r from-emerald-50/40 to-green-50/40" : i % 2 === 1 && "bg-slate-50/60",
                             )}
                           >
-                            <td className="px-3 py-2 font-bold text-slate-500">{i + 1}</td>
-                            <td className="px-3 py-2 font-medium text-slate-800">{s.name}</td>
-                            <td className="px-3 py-2">
-                              <Badge tone={s.gender === "female" ? "amber" : "blue"}>
-                                {s.gender === "female" ? "Female" : "Male"}
-                              </Badge>
+                            <td className="px-4 py-3 text-slate-500 font-medium">{i + 1}</td>
+                            <td className="px-4 py-3">
+                              <code className="rounded-lg bg-gradient-to-r from-slate-100 to-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 border border-slate-200">{s.admissionNo}</code>
                             </td>
-                            <td className="px-3 py-2">
-                              <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{s.admissionNo}</code>
+                            <td className="px-4 py-3 font-semibold text-slate-800">{s.name}</td>
+                            <td className="px-4 py-3">
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step="0.5"
+                                value={scores[s.id] ?? ""}
+                                disabled={!editing}
+                                onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
+                                className={cls(
+                                  inputCls,
+                                  "w-28 font-semibold",
+                                  !editing && "bg-slate-50 text-slate-700",
+                                  submitted && "border-emerald-400 bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-800 focus:border-emerald-500 focus:ring-emerald-200",
+                                )}
+                              />
                             </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-1.5">
-                                <input
-                                  type="number"
-                                  min={0}
-                                  max={100}
-                                  step="0.5"
-                                  value={scores[s.id] ?? ""}
-                                  placeholder="—"
-                                  onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
-                                  className={cls(
-                                    inputCls,
-                                    "w-24",
-                                    submitted && "border-emerald-400 bg-emerald-50 text-emerald-800 focus:border-emerald-500 focus:ring-emerald-200",
-                                  )}
-                                />
-                                {submitted && <span className="text-sm text-emerald-600" title="Submitted and saved">✅</span>}
-                              </div>
+                            <td className="px-4 py-3 text-center">
+                              {submitted && <span className="text-lg text-emerald-600" title="Submitted and saved">✅</span>}
                             </td>
                           </tr>
                         );
@@ -623,39 +582,37 @@ export default function GradesPage() {
 
                 {/* FOOTER — sticky so the Save button + result message stay visible
                     even when scrolling through a long class list (51 students etc). */}
-                <div className="sticky bottom-0 z-10 space-y-2 border-t border-slate-200 bg-white/95 px-5 py-3.5 shadow-[0_-4px_10px_rgba(0,0,0,0.04)] backdrop-blur">
+                <div className="sticky bottom-0 z-10 space-y-3 border-t border-slate-200 bg-gradient-to-r from-white to-violet-50/30 px-6 py-4 shadow-[0_-4px_12px_rgba(0,0,0,0.06)] backdrop-blur-sm">
                   {entryMsg && (
-                    <p className="flex items-center gap-2 rounded-xl bg-emerald-50 px-3.5 py-2 text-sm font-semibold text-emerald-700">
+                    <div className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-50 to-green-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 border border-emerald-200">
                       {entryMsg}
-                    </p>
+                    </div>
                   )}
                   {entryErr && (
-                    <p className="rounded-xl bg-rose-50 px-3.5 py-2 text-sm font-semibold text-rose-700">
+                    <div className="rounded-xl bg-gradient-to-r from-rose-50 to-red-50 px-4 py-2.5 text-sm font-semibold text-rose-700 border border-rose-200">
                       {entryErr}
-                    </p>
+                    </div>
                   )}
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex flex-wrap items-center justify-end gap-3">
                     <button
-                      onClick={() => { setClassId(""); setSubjectId(""); setExamType(""); setExamId(""); setScores({}); }}
-                      className={btnGhost}
+                      onClick={() => { setScores(Object.fromEntries(studentList.map((st) => [st.id, ""]))); setEditing(true); }}
+                      className={cls(btnGhost, "px-4 py-2 rounded-xl font-semibold transition-all duration-200 hover:shadow-md")}
                     >
-                      ✖️ Clear
+                      Clear
                     </button>
                     <button
                       onClick={() => void saveEntry()}
-                      disabled={saving || !isDirty || (submissionBlocked && user?.role !== "admin")}
-                      className={btnPrimary}
-                      title={submittedCount === 0 ? "First time scoring this exam" : "Add scores for any students not yet scored"}
+                      disabled={saving || entryCount === 0}
+                      className={cls(btnPrimary, "px-5 py-2 rounded-xl font-semibold transition-all duration-200 hover:shadow-lg hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100")}
                     >
-                      {saving ? "Submitting..." : "📨 Submit Scores"}
+                      {saving ? "Saving..." : `💾 Save Scores (${entryCount})`}
                     </button>
                     <button
-                      onClick={() => void saveEntry()}
-                      disabled={saving || !isDirty || (submissionBlocked && user?.role !== "admin")}
-                      className="rounded-lg bg-gradient-to-r from-amber-500 to-amber-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Overwrite scores that were already submitted"
+                      onClick={() => setEditing(true)}
+                      disabled={editing}
+                      className={cls(btnGhost, "border-violet-200 text-violet-700 hover:bg-violet-50 px-4 py-2 rounded-xl font-semibold transition-all duration-200 hover:shadow-md", editing && "opacity-50")}
                     >
-                      {saving ? "Updating..." : "🔄 Update Scores"}
+                      ✏️ Edit
                     </button>
                   </div>
                 </div>
@@ -665,14 +622,17 @@ export default function GradesPage() {
         </div>
 
         {/* ==================== RECORDS (angalia + futa) ==================== */}
-        <section className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-md shadow-slate-200/50">
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-violet-700 to-indigo-700 px-5 py-3">
-            <p className="text-sm font-bold text-white">📋 Score Records</p>
-            <button onClick={() => records.refresh()} className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold text-white hover:bg-white/20">
+        <section className="overflow-hidden rounded-3xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/60">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-violet-600 via-indigo-600 to-purple-700 px-6 py-4">
+            <div>
+              <p className="text-sm font-bold text-white">📋 Score Records</p>
+              <p className="text-[11px] text-violet-100">View and manage submitted scores</p>
+            </div>
+            <button onClick={() => records.refresh()} className="rounded-lg bg-white/10 backdrop-blur-sm px-4 py-2 text-xs font-bold text-white hover:bg-white/20 transition-all duration-200 border border-white/20">
               🔄 Reload
             </button>
           </div>
-          <div className="grid grid-cols-1 gap-3 border-b border-slate-100 p-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-violet-50/30 p-5 sm:grid-cols-3">
             <select value={fClass} onChange={(e) => setFClass(e.target.value)} className={inputCls}>
               <option value="">All classes</option>
               {classList.map((c) => (
@@ -694,48 +654,78 @@ export default function GradesPage() {
           </div>
           {recordsFiltersComplete ? (
             recordsRoster.loading && !displayRows?.length ? (
-              <Loader label="Loading records..." />
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="relative mb-4">
+                  <div className="h-12 w-12 animate-spin rounded-full border-4 border-violet-200 border-t-violet-600"></div>
+                </div>
+                <p className="text-sm font-semibold text-slate-600">Loading records...</p>
+              </div>
             ) : !displayRows || displayRows.length === 0 ? (
               <EmptyState icon="👨‍🎓" title="No students in this class" message="This class has no students enrolled for this subject." />
             ) : (
               <div className="overflow-x-auto">
+                <div className="mb-4 flex items-center justify-between px-6">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600"></div>
+                      <span className="text-xs font-semibold text-slate-600">Scored</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="h-3 w-3 rounded-full bg-gradient-to-r from-amber-400 to-orange-500"></div>
+                      <span className="text-xs font-semibold text-slate-600">Not Scored</span>
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500">
+                    {displayRows.filter(r => r.grade).length} / {displayRows.length} students scored
+                  </div>
+                </div>
                 <table className="w-full text-sm">
-                  <thead className="bg-slate-100">
+                  <thead className="bg-gradient-to-r from-slate-100 to-violet-50/50">
                     <tr>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Student</th>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Subject</th>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Exam Type</th>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Term</th>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Score</th>
-                      <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Date</th>
-                      <th className="px-3 py-2 text-right text-xs font-bold text-slate-600">Act</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Student</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Subject</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Exam Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Term</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Score</th>
+                      <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Date</th>
+                      <th className="px-4 py-3 text-right text-xs font-bold text-slate-600">Act</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {displayRows.map(({ student: s, grade: g }) => (
-                      <tr key={s.id} className={cls("hover:bg-slate-50", !g && "bg-slate-50/60")}>
-                        <td className="px-3 py-2 font-medium text-slate-800">
+                      <tr 
+                        key={s.id} 
+                        className={cls(
+                          "transition-all duration-200 hover:bg-violet-50/60 hover:shadow-sm",
+                          !g && "bg-gradient-to-r from-amber-50/40 to-orange-50/40 hover:from-amber-50/60 hover:to-orange-50/60"
+                        )}
+                      >
+                        <td className="px-4 py-3 font-semibold text-slate-800">
                           {s.name}
                           <p className="text-[11px] font-normal text-slate-400">{s.admissionNo}</p>
                         </td>
-                        <td className="px-3 py-2 text-slate-600">{g?.subjectName ?? recordsFSubjectName}</td>
-                        <td className="px-3 py-2 text-slate-600">{examLabel(fExam)}</td>
-                        <td className="px-3 py-2 text-slate-600">{g?.term ?? "—"}</td>
-                        <td className="px-3 py-2">
+                        <td className="px-4 py-3 text-slate-600">{g?.subjectName ?? recordsFSubjectName}</td>
+                        <td className="px-4 py-3 text-slate-600">{examLabel(fExam)}</td>
+                        <td className="px-4 py-3 text-slate-600">{g?.term ?? "—"}</td>
+                        <td className="px-4 py-3">
                           {g ? (
-                            <span className={cls("rounded-lg px-2 py-0.5 text-sm font-bold", scoreTone(g.score))}>
+                            <span className={cls("rounded-lg px-3 py-1 text-sm font-bold shadow-sm", scoreTone(g.score))}>
                               {g.score}
                             </span>
                           ) : (
-                            <span className="rounded-lg bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-500">Not submitted</span>
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-lg bg-gradient-to-r from-amber-100 to-orange-100 px-3 py-1 text-xs font-bold text-amber-700 border border-amber-200 shadow-sm">
+                                ⚠️ Not submitted
+                              </span>
+                            </div>
                           )}
                         </td>
-                        <td className="px-3 py-2 text-xs text-slate-500">{g ? shortDate(g.createdAt) : "—"}</td>
-                        <td className="px-3 py-2 text-right">
+                        <td className="px-4 py-3 text-xs text-slate-500">{g ? shortDate(g.createdAt) : "—"}</td>
+                        <td className="px-4 py-3 text-right">
                           {g && (
                             <button
                               onClick={() => void removeGrade(g)}
-                              className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-200"
+                              className="rounded-lg bg-gradient-to-r from-rose-100 to-red-100 px-3 py-1.5 text-xs font-bold text-rose-700 hover:from-rose-200 hover:to-red-200 transition-all duration-200 border border-rose-200 shadow-sm"
                             >
                               🗑️
                             </button>
@@ -752,37 +742,37 @@ export default function GradesPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-100">
+                <thead className="bg-gradient-to-r from-slate-100 to-violet-50/50">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Student</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Subject</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Exam Type</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Term</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Score</th>
-                    <th className="px-3 py-2 text-left text-xs font-bold text-slate-600">Date</th>
-                    <th className="px-3 py-2 text-right text-xs font-bold text-slate-600">Act</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Student</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Subject</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Exam Type</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Term</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Score</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-slate-600">Date</th>
+                    <th className="px-4 py-3 text-right text-xs font-bold text-slate-600">Act</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {gradeList.map((g) => (
-                    <tr key={g.id} className="hover:bg-slate-50">
-                      <td className="px-3 py-2 font-medium text-slate-800">
+                    <tr key={g.id} className="transition-all duration-200 hover:bg-violet-50/60 hover:shadow-sm">
+                      <td className="px-4 py-3 font-semibold text-slate-800">
                         {g.studentName}
                         <p className="text-[11px] font-normal text-slate-400">{g.admissionNo}</p>
                       </td>
-                      <td className="px-3 py-2 text-slate-600">{g.subjectName}</td>
-                      <td className="px-3 py-2 text-slate-600">{examLabel(g.examType)}</td>
-                      <td className="px-3 py-2 text-slate-600">{g.term}</td>
-                      <td className="px-3 py-2">
-                        <span className={cls("rounded-lg px-2 py-0.5 text-sm font-bold", scoreTone(g.score))}>
+                      <td className="px-4 py-3 text-slate-600">{g.subjectName}</td>
+                      <td className="px-4 py-3 text-slate-600">{examLabel(g.examType)}</td>
+                      <td className="px-4 py-3 text-slate-600">{g.term}</td>
+                      <td className="px-4 py-3">
+                        <span className={cls("rounded-lg px-3 py-1 text-sm font-bold shadow-sm", scoreTone(g.score))}>
                           {g.score}
                         </span>
                       </td>
-                      <td className="px-3 py-2 text-xs text-slate-500">{shortDate(g.createdAt)}</td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-4 py-3 text-xs text-slate-500">{shortDate(g.createdAt)}</td>
+                      <td className="px-4 py-3 text-right">
                         <button
                           onClick={() => void removeGrade(g)}
-                          className="rounded-lg bg-rose-100 px-2.5 py-1 text-xs font-bold text-rose-700 hover:bg-rose-200"
+                          className="rounded-lg bg-gradient-to-r from-rose-100 to-red-100 px-3 py-1.5 text-xs font-bold text-rose-700 hover:from-rose-200 hover:to-red-200 transition-all duration-200 border border-rose-200 shadow-sm"
                         >
                           🗑️
                         </button>

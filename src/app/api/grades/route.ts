@@ -1,37 +1,11 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { examSettings, grades, students, subjects } from "@/db/schema";
+import { grades, students, subjects } from "@/db/schema";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { classAllowed, getTeacherScope, subjectAllowed, subjectClassAllowed } from "@/lib/teachers";
 import { normalizeExamType } from "@/lib/examTypes";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Enforce the admin-configured submission window (see /api/exams/settings)
- * for scoped users (regular teachers / Academic Master). Admins bypass this —
- * same convention as classAllowed/subjectAllowed — so they can always fix a
- * score even outside the window. Returns null when submission is allowed.
- */
-async function checkSubmissionWindow(scoped: boolean): Promise<Response | null> {
-  if (!scoped) return null;
-  const [settings] = await db.select().from(examSettings).limit(1);
-  if (!settings) return null;
-  const now = new Date();
-  if (settings.submissionOpensAt && now < settings.submissionOpensAt) {
-    return Response.json(
-      { error: `Score submission has not opened yet. Opens ${settings.submissionOpensAt.toLocaleString()}.` },
-      { status: 403 },
-    );
-  }
-  if (settings.submissionClosesAt && now > settings.submissionClosesAt) {
-    return Response.json(
-      { error: "Score submission is CLOSED. Contact the Academic Master / Admin to reopen it." },
-      { status: 403 },
-    );
-  }
-  return null;
-}
 
 /**
  * Exam types accepted for grades.
@@ -127,9 +101,6 @@ export async function POST(req: Request) {
   // Submit Scores: Academic Master included — they only see the classes/subjects
   // the admin has assigned to them (strictForAcademicMaster).
   const scope = await getTeacherScope(user, { strictForAcademicMaster: true });
-
-  const windowErr = await checkSubmissionWindow(scope.scoped);
-  if (windowErr) return windowErr;
 
   const body = await req.json().catch(() => null);
   if (!body) return Response.json({ error: "Invalid request data." }, { status: 400 });

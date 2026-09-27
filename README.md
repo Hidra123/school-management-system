@@ -17,8 +17,9 @@ A complete, modern school management system built with **Next.js**, **PostgreSQL
 
 - **Frontend:** Next.js 16 (App Router), React 19, Tailwind CSS 4
 - **Backend:** Next.js API Routes, Drizzle ORM
-- **Database:** PostgreSQL
+- **Database:** PostgreSQL (Neon for production)
 - **Language:** TypeScript
+- **Deployment:** Vercel
 
 ## Getting Started
 
@@ -44,7 +45,24 @@ npm run dev
 
 ## Deployment
 
-See [DEPLOY.md](./DEPLOY.md) for a step-by-step free deployment guide using GitHub + Neon + Netlify.
+See [DEPLOY.md](./DEPLOY.md) for quick deployment guide, or [NEON-VERCEL-DEPLOY.md](./NEON-VERCEL-DEPLOY.md) for comprehensive Neon + Vercel setup instructions.
+
+### Quick Deploy (Vercel + Neon)
+```bash
+# Install Vercel CLI
+npm install -g vercel
+
+# Login to Vercel
+vercel login
+
+# Set DATABASE_URL environment variable
+vercel env add DATABASE_URL
+
+# Deploy to production
+vercel --prod
+```
+
+For detailed setup instructions, see the comprehensive deployment guide.
 
 ## 🔐 Authentication
 

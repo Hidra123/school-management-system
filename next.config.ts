@@ -2,7 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Optimize for production
-  swcMinify: true,
   // Ensure environment variables are available at runtime
   experimental: {
     serverActions: {

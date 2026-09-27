@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { examSettings } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
-import { getSessionUser, requireAnyPermission, requirePermission } from "@/lib/auth";
+import { getSessionUser, requirePermission } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -15,11 +15,7 @@ async function getOrCreateSettingsRow() {
 
 export async function GET() {
   const user = await getSessionUser();
-  // Both the admin/Academic Master settings screen (exams.view) AND the
-  // Submit Scores page any teacher uses (grades.submit) need to read this —
-  // a teacher has to be able to see the deadline banner even though only
-  // exams.view holders may ever change it (enforced in PUT below).
-  const err = requireAnyPermission(user, ["exams.view", "grades.submit"]);
+  const err = requirePermission(user, "exams.view");
   if (err) return err;
 
   try {

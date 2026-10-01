@@ -124,7 +124,7 @@ function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: str
               type="button"
               onClick={() => toggleGroup(group)}
               className={cls(
-                "group flex w-full items-center justify-between gap-2.5 px-3.5 py-2.5 text-left text-xs font-bold transition rounded-xl select-none",
+                "group flex w-full items-center justify-between gap-2.5 px-3.5 py-2.5 text-left text-xs font-bold transition rounded-xl select-none border-b-2 border-blue-200",
                 hasActiveChild
                   ? "text-blue-900"
                   : "text-slate-500 hover:text-slate-900",

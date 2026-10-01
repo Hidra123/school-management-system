@@ -1,132 +1,52 @@
 @import "tailwindcss";
 
-@keyframes scaleIn {
-  0% { transform: scale(0); opacity: 0; }
-  50% { transform: scale(1.2); }
-  100% { transform: scale(1); opacity: 1; }
+@theme {
+  --color-blue-50: #eff4ff;
+  --color-blue-100: #dfe8ff;
+  --color-blue-200: #c5d4ff;
+  --color-blue-300: #9db6ff;
+  --color-blue-400: #7392fa;
+  --color-blue-500: #4d70ed;
+  --color-blue-600: #3153cf;
+  --color-blue-700: #2845b5;
+  --color-blue-800: #243c93;
+  --color-blue-900: #223673;
+  --color-blue-950: #17234b;
+  --color-indigo-50: #eff4ff;
+  --color-indigo-100: #dfe8ff;
+  --color-indigo-200: #c5d4ff;
+  --color-indigo-300: #9db6ff;
+  --color-indigo-400: #7392fa;
+  --color-indigo-500: #4d70ed;
+  --color-indigo-600: #3153cf;
+  --color-indigo-700: #2845b5;
+  --color-indigo-800: #243c93;
+  --color-indigo-900: #223673;
+  --color-indigo-950: #17234b;
+  --color-violet-50: #eff4ff;
+  --color-violet-100: #dfe8ff;
+  --color-violet-200: #c5d4ff;
+  --color-violet-300: #9db6ff;
+  --color-violet-400: #7392fa;
+  --color-violet-500: #4d70ed;
+  --color-violet-600: #3153cf;
+  --color-violet-700: #2845b5;
+  --color-violet-800: #243c93;
+  --color-violet-900: #223673;
+  --color-violet-950: #17234b;
+  --color-purple-50: #eff4ff;
+  --color-purple-100: #dfe8ff;
+  --color-purple-200: #c5d4ff;
+  --color-purple-300: #9db6ff;
+  --color-purple-400: #7392fa;
+  --color-purple-500: #4d70ed;
+  --color-purple-600: #3153cf;
+  --color-purple-700: #2845b5;
+  --color-purple-800: #243c93;
+  --color-purple-900: #223673;
+  --color-purple-950: #17234b;
 }
 
-@keyframes drawCheck {
-  0% { stroke-dasharray: 0 100; }
-  100% { stroke-dasharray: 100 0; }
-}
-
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
-/* ============================================================
-   PRINT STYLES — Attendance Register & Score Reports
-   - Hides the app chrome (sidebar / top nav / buttons / filters)
-   - Landscape A4 so wide tables (full month, score tracking) fit
-   - The scrollable register must NOT be clipped by the browser
-   ============================================================ */
-@media print {
-  @page {
-    size: A4 landscape;
-    margin: 9mm;
-  }
-
-  html,
-  body {
-    background: #fff !important;
-  }
-
-  /* Hide everything that is not the printed document itself */
-  aside,
-  header,
-  nav,
-  button,
-  input,
-  select,
-  textarea,
-  .no-print {
-    display: none !important;
-  }
-
-  /* Let the app content take the whole sheet */
-  .lg\:pl-64 {
-    padding-left: 0 !important;
-  }
-  main {
-    padding: 0 !important;
-    width: 100% !important;
-    max-width: none !important;
-  }
-
-  /* Keep colors (school banner, badges, completion bars) */
-  * {
-    print-color-adjust: exact !important;
-    -webkit-print-color-adjust: exact !important;
-  }
-
-  table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-    min-width: 0 !important;
-  }
-  table thead {
-    display: table-header-group; /* repeat header on every page */
-  }
-  table tr {
-    page-break-inside: avoid;
-  }
-  h1,
-  h2,
-  h3,
-  section,
-  .print-block {
-    break-inside: avoid;
-  }
-
-  /* Dense compact tables (monthly attendance register) */
-  .overflow-x-auto table {
-    font-size: 8px !important;
-    zoom: 0.85 !important;
-  }
-  .overflow-x-auto th,
-  .overflow-x-auto td {
-    padding: 1px 2px !important;
-  }
-  /* Sticky columns overlap badly on paper — make them static */
-  .sticky {
-    position: static !important;
-  }
-}
-
-/* ============================================================
-   SCREEN vs PRINT TOGGLES (bulletproof — !important, no cascade
-   order dependency). Use:
-     screen-only  → element inaonekana SCREEN tu (hufichwa print)
-     print-only   → element inaonekana PRINT tu (hufichwa screen)
-   ============================================================ */
-.print-only {
-  display: none !important;
-}
-.screen-only {
-  display: block !important;
-}
-@media print {
-
-  .print-only {
-    display: block !important;
-  }
-  .screen-only {
-    display: none !important;
-  }
+.app-body {
+  background-color: #edf3fa;
 }

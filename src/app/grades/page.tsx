@@ -265,25 +265,25 @@ export default function GradesPage() {
   const records = useFetch<GradeRow[]>(listUrl);
   const gradeList = records.data ?? [];
 
-  // When Class + Subject + Exam Category are all picked, we know exactly
-  // which roster this table is about, so we can show EVERY student in that
-  // class — not just the ones who already have a saved score — with an
-  // explicit "Not submitted" placeholder for the rest. With looser filters
-  // (or none) there is no single well-defined roster to complete against,
-  // so the table just lists the grade records that exist, as before.
-  const recordsFiltersComplete = !!(fClass && fSubject && fExam);
+  // Class + Subject define the roster; exam category narrows the score.
+  // The roster always shows EVERY student, including those with no saved score.
+  // 
+  // 
+  // 
+  // When class or subject is not selected, only existing grade records are listed.
+  const recordsRosterSelected = !!(fClass && fSubject);
   const recordsRosterUrl = useMemo(
-    () => (recordsFiltersComplete ? `/api/students?classId=${fClass}&subjectId=${fSubject}&strict=1` : null),
-    [recordsFiltersComplete, fClass, fSubject],
+    () => (recordsRosterSelected ? `/api/students?classId=${fClass}&subjectId=${fSubject}&strict=1` : null),
+    [recordsRosterSelected, fClass, fSubject],
   );
   const recordsRoster = useFetch<StudentRow[]>(recordsRosterUrl);
 
   type DisplayRow = { student: StudentRow; grade: GradeRow | null };
   const displayRows: DisplayRow[] | null = useMemo(() => {
-    if (!recordsFiltersComplete) return null;
+    if (!recordsRosterSelected) return null;
     const roster = recordsRoster.data ?? [];
     return roster.map((s) => ({ student: s, grade: gradeList.find((g) => g.studentId === s.id) ?? null }));
-  }, [recordsFiltersComplete, recordsRoster.data, gradeList]);
+  }, [recordsRosterSelected, recordsRoster.data, gradeList]);
   const recordsFSubjectName = subjectList.find((s) => String(s.id) === fSubject)?.name ?? "";
 
   async function removeGrade(g: GradeRow) {
@@ -662,7 +662,7 @@ export default function GradesPage() {
               ))}
             </select>
           </div>
-          {recordsFiltersComplete ? (
+          {recordsRosterSelected ? (
             recordsRoster.loading && !displayRows?.length ? (
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="relative mb-4">
@@ -715,7 +715,7 @@ export default function GradesPage() {
                           <p className="text-[11px] font-normal text-slate-400">{s.admissionNo}</p>
                         </td>
                         <td className="px-4 py-3 text-slate-600">{g?.subjectName ?? recordsFSubjectName}</td>
-                        <td className="px-4 py-3 text-slate-600">{examLabel(fExam)}</td>
+                        <td className="px-4 py-3 text-slate-600">{examLabel(g?.examType ?? fExam) || "All exam types"}</td>
                         <td className="px-4 py-3 text-slate-600">{g?.term ?? "—"}</td>
                         <td className="px-4 py-3">
                           {g ? (
@@ -748,7 +748,7 @@ export default function GradesPage() {
               </div>
             )
           ) : gradeList.length === 0 ? (
-            <EmptyState icon="📭" title="No score records" message="Scores you save above will appear here. Pick a Class + Subject + Exam Category above to also see students who haven't been scored yet." />
+            <EmptyState icon="📭" title="No score records" message="Scores you save above will appear here. Pick a Class and Subject above to see every student, including those without a score." />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

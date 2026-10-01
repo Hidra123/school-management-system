@@ -289,7 +289,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
   return (
     <>
       {/* Mobile Header */}
-      <header className="sticky top-0 z-40 border-b border-blue-800 bg-indigo-700 text-white shadow-md backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 border-b-2 border-blue-300 bg-indigo-700 text-white shadow-md backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3 px-1">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-lg text-white shadow-md">
@@ -341,9 +341,9 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
       </header>
 
       {/* Desktop Sidebar with Glassmorphism & Accordion Submenus */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white shadow-[4px_0_24px_rgba(31,65,130,0.06)] lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r-2 border-blue-200 bg-white shadow-[4px_0_24px_rgba(31,65,130,0.06)] lg:flex">
         {/* Brand Header */}
-        <div className="border-b border-slate-200 px-5 pb-4 pt-6">
+        <div className="border-b-2 border-blue-200 px-5 pb-4 pt-6">
           <div className="flex items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-700 text-xl text-white shadow-lg shadow-blue-900/15 ring-1 ring-blue-100">
               🎓
@@ -375,7 +375,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
         </nav>
 
         {/* User Card & Logout Footer */}
-        <div className="border-t border-slate-200 bg-white px-4 py-3.5">
+        <div className="border-t-2 border-blue-200 bg-white px-4 py-3.5">
           {user && (
             <div className="flex items-center gap-3">
               <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-xs font-black text-white shadow-sm ring-1 ring-blue-100">

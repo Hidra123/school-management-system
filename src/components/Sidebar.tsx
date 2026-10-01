@@ -29,7 +29,7 @@ function ChevronIcon({ open }: { open: boolean }) {
       strokeLinecap="round"
       strokeLinejoin="round"
       className={cls(
-        "transition-transform duration-200 text-slate-400 group-hover:text-white",
+        "transition-transform duration-200 text-slate-400 group-hover:text-blue-700",
         open ? "rotate-90 text-indigo-400" : "rotate-0",
       )}
     >
@@ -115,8 +115,8 @@ function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: str
             className={cls(
               "rounded-2xl transition-all duration-200 border",
               hasActiveChild
-                ? "border-indigo-500/30 bg-slate-900/60 shadow-sm"
-                : "border-transparent hover:border-slate-800/80 bg-slate-950/40",
+                ? "border-blue-100 bg-blue-50/70 shadow-sm"
+                : "border-transparent bg-transparent hover:border-slate-200 hover:bg-white",
             )}
           >
             {/* Accordion header button */}
@@ -139,8 +139,8 @@ function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: str
                   className={cls(
                     "rounded-full px-1.5 py-0.2 text-[9.5px] font-extrabold",
                     hasActiveChild
-                      ? "bg-indigo-500/30 text-indigo-300"
-                      : "bg-slate-800/80 text-slate-500 group-hover:text-slate-400",
+                      ? "bg-blue-700 text-white"
+                      : "bg-slate-100 text-slate-500 group-hover:text-slate-700",
                   )}
                 >
                   {items.length}
@@ -164,8 +164,8 @@ function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: str
                       className={cls(
                         "group flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold transition relative pl-3.5",
                         active
-                          ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-bold shadow-md shadow-indigo-500/20"
-                          : "text-slate-300 hover:bg-white/5 hover:text-white",
+                          ? "bg-gradient-to-r from-indigo-700 to-violet-700 text-white font-bold shadow-md shadow-blue-900/15"
+                          : "text-slate-600 hover:bg-blue-50 hover:text-blue-800",
                       )}
                     >
                       <span
@@ -289,7 +289,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
   return (
     <>
       {/* Mobile Header */}
-      <header className="sticky top-0 z-40 border-b border-slate-800 bg-slate-950/95 backdrop-blur lg:hidden">
+      <header className="sticky top-0 z-40 border-b border-blue-800 bg-indigo-700 text-white shadow-md backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3 px-1">
             <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
@@ -299,7 +299,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
               <p className="text-base font-extrabold text-white">
                 {isAcademicMaster ? "Academic Panel" : "ShuleHub"}
               </p>
-              <p className="text-[11px] font-medium text-indigo-300">
+              <p className="text-[11px] font-medium text-blue-100">
                 {isAcademicMaster ? "School SMS" : roleLabel}
               </p>
             </div>
@@ -324,7 +324,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
                   "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
                   active
                     ? "bg-indigo-600 text-white shadow-sm"
-                    : "bg-white/5 text-indigo-200 hover:bg-white/10 hover:text-white",
+                    : "bg-white/10 text-blue-50 hover:bg-white/20 hover:text-white",
                 )}
               >
                 <span>{l.icon}</span>
@@ -341,26 +341,26 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
       </header>
 
       {/* Desktop Sidebar with Glassmorphism & Accordion Submenus */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 border-r border-slate-800/80 lg:flex shadow-2xl">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-slate-200 bg-white shadow-[4px_0_24px_rgba(31,65,130,0.06)] lg:flex">
         {/* Brand Header */}
-        <div className="px-5 pt-6 pb-4 border-b border-slate-800/60">
+        <div className="border-b border-slate-200 px-5 pb-4 pt-6">
           <div className="flex items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-600 to-purple-600 text-xl text-white shadow-lg shadow-indigo-500/20 ring-1 ring-white/20">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-indigo-600 via-violet-700 to-purple-700 text-xl text-white shadow-lg shadow-blue-900/15 ring-1 ring-blue-100">
               🎓
             </div>
             <div className="leading-tight min-w-0">
-              <p className="text-base font-black text-white tracking-tight flex items-center gap-1.5 truncate">
+              <p className="flex items-center gap-1.5 truncate text-base font-black tracking-tight text-blue-800">
                 <span>{isAcademicMaster ? "Academic Panel" : "ShuleHub"}</span>
               </p>
-              <p className="text-[11px] font-bold text-indigo-300/80 truncate">
+              <p className="truncate text-[11px] font-bold text-slate-500">
                 {isAcademicMaster ? "School SMS · Mangi Wingia" : roleLabel}
               </p>
             </div>
           </div>
 
           <div className="mt-3 flex items-center justify-between px-1">
-            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-600">
+              <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
               System Online
             </span>
             <span className="text-[10px] font-mono text-slate-500 font-bold uppercase">
@@ -370,19 +370,19 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
         </div>
 
         {/* Collapsible Accordion Navigation */}
-        <nav className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-thumb-slate-800">
+        <nav className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-thumb-slate-200">
           <AccordionNav links={links} pathname={pathname} />
         </nav>
 
         {/* User Card & Logout Footer */}
-        <div className="border-t border-slate-800/80 bg-slate-950/80 px-4 py-3.5 backdrop-blur-sm">
+        <div className="border-t border-slate-200 bg-white px-4 py-3.5">
           {user && (
             <div className="flex items-center gap-3">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-xs font-black text-white shadow-sm ring-1 ring-white/20">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-xs font-black text-white shadow-sm ring-1 ring-blue-100">
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-xs font-black text-white tracking-tight">
+                <p className="truncate truncate text-xs font-black tracking-tight text-slate-900">
                   {user.name}
                 </p>
                 <p className="truncate text-[10px] font-bold text-indigo-300/80">
@@ -396,7 +396,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
               <button
                 onClick={logout}
                 title="Logout of ShuleHub"
-                className="rounded-xl p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition"
+                className="rounded-xl p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
               >
                 <svg
                   width="17"

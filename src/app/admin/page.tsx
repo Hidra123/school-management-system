@@ -38,7 +38,7 @@ export default function AdminOverviewPage() {
               </span>
             </p>
             <p className="mt-2 text-sm text-slate-400">Welcome back,</p>
-            <h1 className="text-3xl font-extrabold tracking-tight">Administrator</h1>
+            <h1 className="inline-block border-b-2 border-blue-300 pb-1.5 text-3xl font-extrabold tracking-tight">Administrator</h1>
             <p className="mt-0.5 text-sm text-slate-500">
               {new Date().toLocaleDateString("en-US", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
             </p>

@@ -64,7 +64,7 @@ export default function DashboardPage() {
         <div className="relative flex flex-wrap items-end justify-between gap-6">
           <div>
             <p className="text-sm font-medium text-indigo-200">{longDate()}</p>
-            <h1 className="mt-1 text-3xl font-extrabold tracking-tight sm:text-4xl">
+            <h1 className="mt-1 inline-block border-b-2 border-blue-200/80 pb-1.5 text-3xl font-extrabold tracking-tight sm:text-4xl">
               Welcome back! 👋
             </h1>
             <p className="mt-2 max-w-xl text-sm text-indigo-100/90">

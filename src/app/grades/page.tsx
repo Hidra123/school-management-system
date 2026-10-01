@@ -526,34 +526,43 @@ export default function GradesPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[520px] overflow-x-auto overflow-y-auto p-6">
-                  <table className="w-full min-w-[560px] text-sm">
-                    <thead className="sticky top-0 z-[1] bg-gradient-to-r from-slate-100 to-violet-50/50 backdrop-blur-sm">
+                <div className="max-h-[560px] overflow-auto px-4 py-4 sm:px-6">
+                  <table className="w-full min-w-[680px] border-separate border-spacing-0 text-sm">
+                    <thead className="sticky top-0 z-[1] bg-slate-900 text-white shadow-sm">
                       <tr>
-                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">#</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Adm No</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Student</th>
-                        <th className="px-4 py-3 text-left text-[11px] font-bold uppercase tracking-wide text-slate-600">Score / 100</th>
-                        <th className="w-10 px-4 py-3 text-center text-[11px] font-bold uppercase tracking-wide text-slate-600"> </th>
+                        <th scope="col" className="w-12 border-b border-white/10 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">#</th>
+                        <th scope="col" className="min-w-[180px] border-b border-white/10 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Student name</th>
+                        <th scope="col" className="w-24 border-b border-white/10 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Sex</th>
+                        <th scope="col" className="w-32 border-b border-white/10 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Adm no.</th>
+                        <th scope="col" className="w-36 border-b border-white/10 px-3 py-3 text-left text-[11px] font-bold uppercase tracking-wide">Score / 100</th>
+                        <th scope="col" className="w-12 border-b border-white/10 px-3 py-3 text-center text-[11px] font-bold uppercase tracking-wide"><span className="sr-only">Submission status</span></th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100">
+                    <tbody>
                       {studentList.map((s, i) => {
                         const submitted = isSubmitted(s.id);
                         return (
                           <tr
                             key={s.id}
                             className={cls(
-                              "transition-all duration-200 hover:bg-violet-50/60 hover:shadow-sm",
-                              submitted ? "bg-gradient-to-r from-emerald-50/40 to-green-50/40" : i % 2 === 1 && "bg-slate-50/60",
+                              "transition-colors hover:bg-violet-50",
+                              submitted ? "bg-emerald-50/70" : i % 2 === 1 ? "bg-slate-50" : "bg-white",
                             )}
                           >
-                            <td className="px-4 py-3 text-slate-500 font-medium">{i + 1}</td>
-                            <td className="px-4 py-3">
-                              <code className="rounded-lg bg-gradient-to-r from-slate-100 to-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 border border-slate-200">{s.admissionNo}</code>
+                            <td className="border-b border-slate-200 px-3 py-3 text-sm font-semibold tabular-nums text-slate-700">{i + 1}</td>
+                            <td className="border-b border-slate-200 px-3 py-3 font-semibold text-slate-900">{s.name}</td>
+                            <td className="border-b border-slate-200 px-3 py-3">
+                              <span className={cls(
+                                "inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold",
+                                s.gender === "female" ? "bg-amber-100 text-amber-900" : "bg-sky-100 text-sky-900",
+                              )}>
+                                {s.gender === "female" ? "Female" : "Male"}
+                              </span>
                             </td>
-                            <td className="px-4 py-3 font-semibold text-slate-800">{s.name}</td>
-                            <td className="px-4 py-3">
+                            <td className="border-b border-slate-200 px-3 py-3">
+                              <code className="whitespace-nowrap text-xs font-medium text-slate-600">{s.admissionNo}</code>
+                            </td>
+                            <td className="border-b border-slate-200 px-3 py-2.5">
                               <input
                                 type="number"
                                 min={0}
@@ -562,15 +571,16 @@ export default function GradesPage() {
                                 value={scores[s.id] ?? ""}
                                 disabled={!editing}
                                 onChange={(e) => setScores({ ...scores, [s.id]: e.target.value })}
+                                aria-label={`Score out of 100 for ${s.name}`}
                                 className={cls(
                                   inputCls,
-                                  "w-28 font-semibold",
+                                  "w-24 text-center font-semibold tabular-nums sm:w-28",
                                   !editing && "bg-slate-50 text-slate-700",
                                   submitted && "border-emerald-400 bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-800 focus:border-emerald-500 focus:ring-emerald-200",
                                 )}
                               />
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="border-b border-slate-200 px-3 py-3 text-center">
                               {submitted && <span className="text-lg text-emerald-600" title="Submitted and saved">✅</span>}
                             </td>
                           </tr>

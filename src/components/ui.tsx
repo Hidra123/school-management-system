@@ -72,12 +72,12 @@ export function Modal({
     >
       <div
         className={cls(
-          "my-8 w-full rounded-2xl bg-white shadow-2xl",
+          "my-8 w-full overflow-hidden rounded-2xl border border-blue-200 bg-white shadow-2xl",
           wide ? "max-w-3xl" : "max-w-lg",
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+        <div className="flex items-center justify-between border-b-2 border-blue-200 border-t-4 border-t-blue-600 px-6 py-4">
           <h3 className="text-lg font-bold text-slate-900">{title}</h3>
           <button
             type="button"
@@ -131,7 +131,7 @@ export function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-blue-200 border-l-4 border-l-blue-600 bg-white px-4 py-3 shadow-sm sm:px-5 sm:py-4">
       <div className="flex items-center gap-3.5">
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-indigo-600/10 text-2xl">
           {icon}

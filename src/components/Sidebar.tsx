@@ -127,7 +127,7 @@ function AccordionNav({ links, pathname }: { links: SidebarLink[]; pathname: str
                 "group flex w-full items-center justify-between gap-2.5 px-3.5 py-2.5 text-left text-xs font-bold transition rounded-xl select-none",
                 hasActiveChild
                   ? "text-white"
-                  : "text-slate-400 hover:text-slate-200",
+                  : "text-slate-500 hover:text-slate-900",
               )}
             >
               <div className="flex items-center gap-2.5 min-w-0">
@@ -292,7 +292,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
       <header className="sticky top-0 z-40 border-b border-blue-800 bg-indigo-700 text-white shadow-md backdrop-blur lg:hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3 px-1">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 text-lg text-white shadow-md">
+            <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-indigo-600 to-violet-700 text-lg text-white shadow-md">
               🎓
             </div>
             <div className="leading-tight">
@@ -323,7 +323,7 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
                 className={cls(
                   "flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
                   active
-                    ? "bg-indigo-600 text-white shadow-sm"
+                    ? "bg-blue-700 text-white shadow-sm"
                     : "bg-white/10 text-blue-50 hover:bg-white/20 hover:text-white",
                 )}
               >
@@ -382,10 +382,10 @@ export default function Sidebar({ locked = false }: { locked?: boolean }) {
                 {user.name.charAt(0).toUpperCase()}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate truncate text-xs font-black tracking-tight text-slate-900">
+                <p className="truncate text-xs font-black tracking-tight text-slate-900">
                   {user.name}
                 </p>
-                <p className="truncate text-[10px] font-bold text-indigo-300/80">
+                <p className="truncate text-[10px] font-bold text-slate-500">
                   {isAdmin
                     ? "🛡️ Administrator"
                     : isAcademicMaster

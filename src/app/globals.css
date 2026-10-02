@@ -163,3 +163,21 @@ html {
     display: none !important;
   }
   }
+
+@media print {
+    .exam-report {
+          border: 1px solid #cbd5e1 !important;
+          border-radius: 12px !important;
+          padding: 12px !important;
+          background: #fff !important;
+    }
+
+  .exam-report-panel {
+        break-inside: avoid;
+        page-break-inside: avoid;
+  }
+
+  .exam-report .overflow-x-auto table {
+        border-collapse: collapse !important;
+  }
+}

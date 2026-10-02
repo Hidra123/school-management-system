@@ -181,3 +181,25 @@ html {
         border-collapse: collapse !important;
   }
 }
+
+
+  .exam-report table {
+      border-collapse: collapse;
+  }
+
+.exam-report th,
+.exam-report td {
+    border: 1px solid #475569;
+}
+
+@media print {
+    body *:not(.exam-print-area):not(.exam-print-area *):not(:has(.exam-print-area)) {
+          display: none !important;
+    }
+
+  *:has(.exam-print-area) {
+        margin: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        box-shadow: no

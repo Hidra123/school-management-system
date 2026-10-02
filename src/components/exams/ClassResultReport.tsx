@@ -61,26 +61,26 @@ function DivisionPill({ division }: { division: string }) {
 
 const DIVISIONS = ["I", "II", "III", "IV", "0"];
 
-export default function ClassResultReport({ data }: { data: ClassResultsData }) {
+export default function ClassResultReport({ data, identity }: { data: ClassResultsData; identity: { schoolName: string; councilName: string; motto: string; logoData: string } | null }) {
   const totalReg = data.attendance.F.reg + data.attendance.M.reg;
   const totalPre = data.attendance.F.pre + data.attendance.M.pre;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm print:border-0 print:p-0">
+    <div className="exam-report rounded-2xl border border-slate-200 bg-white p-6 text-sm print:p-4">
       {/* Header */}
       <div className="mb-5 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">ShuleHub School Management System</p>
-        <h1 className="mt-1 text-xl font-extrabold text-slate-900">STUDENT&apos;S EXAMINATION RESULT</h1>
-        <div className="mt-2 inline-block rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-1.5 font-bold text-indigo-800">
+        <div className="mb-3 flex items-center justify-center gap-3">{identity?.logoData && <img src={identity.logoData} alt={`${identity.schoolName} logo`} className="h-16 w-16 object-contain print:h-14 print:w-14" />}<div>{identity?.councilName && <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{identity.councilName}</p>}<p className="text-lg font-extrabold uppercase text-slate-900 sm:text-xl">{identity?.schoolName || "Loading school identity…"}</p>{identity?.motto && <p className="text-xs italic text-slate-600">{identity.motto}</p>}</div></div>
+        <h1 className="mt-1 text-xl font-extrabold text-slate-900">CLASS EXAMINATION RESULTS</h1>
+        <div className="mt-2 inline-block rounded-lg border border-blue-200 bg-blue-50 px-4 py-1.5 font-bold text-blue-900">
           {data.className}{data.section ? ` ${data.section}` : ""} ({data.examName}) Examination Result
           {data.academicYear ? ` — ${data.academicYear}` : ""}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
         {/* Attendance */}
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S ATTENDANCE</p>
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S ATTENDANCE</p>
           <table className="w-full text-xs">
             <thead className="bg-slate-100">
               <tr><th className="px-2 py-1.5 text-left">SEX</th><th className="px-2 py-1.5">F</th><th className="px-2 py-1.5">M</th><th className="px-2 py-1.5">TOTAL</th></tr>
@@ -94,8 +94,8 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
         </div>
 
         {/* Ranking */}
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">SCHOOL EXAMINATION RANKING</p>
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">SCHOOL EXAMINATION RANKING</p>
           <div className="grid grid-cols-3 divide-x divide-slate-100 text-center">
             <div className="p-3">
               <p className="text-[10px] font-bold uppercase text-slate-500">Examination GPA</p>
@@ -115,9 +115,9 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
       </div>
 
       {/* Subject Performance + Division Performance */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">SUBJECT PERFORMANCE</p>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">SUBJECT PERFORMANCE</p>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead className="bg-slate-100">
@@ -146,8 +146,8 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
           </div>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">DIVISION PERFORMANCE</p>
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">DIVISION PERFORMANCE</p>
           <table className="w-full text-xs">
             <thead className="bg-slate-100">
               <tr><th className="px-2 py-1.5 text-left">SEX</th>{DIVISIONS.map((d) => <th key={d} className="px-2 py-1.5">{d}</th>)}<th className="px-2 py-1.5">TOTAL</th></tr>
@@ -174,9 +174,9 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
       </div>
 
       {/* Student's Division + Grade Performance */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S DIVISION</p>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S DIVISION</p>
           <table className="w-full text-xs">
             <thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">SEX</th>{DIVISIONS.map((d) => <th key={d} className="px-2 py-1.5">{d}</th>)}<th className="px-2 py-1.5">TOTAL</th></tr></thead>
             <tbody>
@@ -193,8 +193,8 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
             </tbody>
           </table>
         </div>
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S GRADE PERFORMANCE</p>
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S GRADE PERFORMANCE</p>
           <table className="w-full text-xs">
             <thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">SEX</th><th className="px-2 py-1.5">A</th><th className="px-2 py-1.5">B</th><th className="px-2 py-1.5">C</th><th className="px-2 py-1.5">D</th><th className="px-2 py-1.5">F</th><th className="px-2 py-1.5">TOTAL</th></tr></thead>
             <tbody>
@@ -216,8 +216,8 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
       </div>
 
       {/* Full scoresheet */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-        <p className="bg-slate-900 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S EXAMINATION GRADING SCORES SHEET</p>
+      <div className="mt-4 exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+        <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S EXAMINATION GRADING SCORES SHEET</p>
         <div className="overflow-x-auto">
           <table className="w-full text-[11px]">
             <thead className="bg-slate-100">
@@ -275,8 +275,8 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
       </div>
 
       {/* Passed + Failed lists */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="overflow-hidden rounded-xl border border-emerald-200">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-emerald-200">
           <p className="bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S WHO PASSED THE EXAMINATION</p>
           <table className="w-full text-xs">
             <thead className="bg-emerald-50">
@@ -303,7 +303,7 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
           </table>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-rose-200">
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-rose-200">
           <p className="bg-rose-600 px-3 py-1.5 text-xs font-bold text-white">STUDENT&apos;S WHO FAILED THE EXAMINATION</p>
           <table className="w-full text-xs">
             <thead className="bg-rose-50">
@@ -336,7 +336,7 @@ export default function ClassResultReport({ data }: { data: ClassResultsData }) 
           <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500">
             Core Subject Intervention List — students with D/F in compulsory subjects
           </p>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
             {data.coreRisk.map((subj) => (
               <div key={subj.subjectId} className="overflow-hidden rounded-xl border border-amber-200">
                 <p className="bg-amber-500 px-3 py-1.5 text-xs font-bold text-white">{subj.subjectName.toUpperCase()} — AT RISK / FAILED</p>

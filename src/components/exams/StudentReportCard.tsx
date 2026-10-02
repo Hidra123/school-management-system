@@ -35,7 +35,7 @@ const GRADE_COLOR: Record<string, string> = {
   A: "text-emerald-600", B: "text-sky-600", C: "text-violet-600", D: "text-amber-600", F: "text-rose-600",
 };
 
-export default function StudentReportCard({ data, examId, editable = true }: { data: StudentReportData; examId: number; editable?: boolean }) {
+export default function StudentReportCard({ data, examId, editable = true, identity }: { data: StudentReportData; examId: number; editable?: boolean; identity: { schoolName: string; councilName: string; motto: string; logoData: string } | null }) {
   const remarksFetch = useFetch<Remarks>(`/api/exams/remarks?studentId=${data.student.id}&examId=${examId}`);
   const [ratings, setRatings] = useState<Record<string, string>>({});
   const [academicComment, setAcademicComment] = useState("");
@@ -72,12 +72,12 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm print:border-0 print:p-0">
+    <div className="exam-report rounded-2xl border border-slate-200 bg-white p-6 text-sm print:p-4">
       <div className="mb-4 text-center">
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">ShuleHub School Management System</p>
+        <div className="mb-3 flex items-center justify-center gap-3">{identity?.logoData && <img src={identity.logoData} alt={`${identity.schoolName} logo`} className="h-16 w-16 object-contain print:h-14 print:w-14" />}<div>{identity?.councilName && <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{identity.councilName}</p>}<p className="text-lg font-extrabold uppercase text-slate-900 sm:text-xl">{identity?.schoolName || "Loading school identity…"}</p>{identity?.motto && <p className="text-xs italic text-slate-600">{identity.motto}</p>}</div></div>
         <h1 className="mt-1 text-lg font-extrabold text-slate-900">INDIVIDUAL STUDENT&apos;S EXAMINATION REPORT</h1>
         <p className="text-xs text-slate-500">{data.academicYear}</p>
-        <div className="mt-2 inline-block rounded-lg bg-slate-900 px-4 py-1.5 font-bold text-white">
+        <div className="mt-2 inline-block rounded-lg border border-blue-200 bg-blue-50 px-4 py-1.5 font-bold text-blue-900">
           STUDENT&apos;S EXAMINATION REPORT — {data.examName.toUpperCase()}
         </div>
         <p className="mt-3 text-xl font-extrabold text-indigo-700">{data.student.name}</p>
@@ -90,8 +90,8 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
         <div className="bg-white p-2"><p className="text-slate-400">Date</p><p className="font-bold text-slate-800">{new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}</p></div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="overflow-hidden rounded-xl border border-slate-200 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 print:grid-cols-3">
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200 lg:col-span-2">
           <table className="w-full text-xs">
             <thead className="bg-slate-100">
               <tr><th className="px-3 py-2 text-left">SUBJECT</th><th className="px-3 py-2">SCORE</th><th className="px-3 py-2">GRADE</th><th className="px-3 py-2 text-left">REMARKS</th></tr>
@@ -108,8 +108,8 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
             </tbody>
           </table>
         </div>
-        <div className="overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600">GRADING SYSTEM 100%</p>
+        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">GRADING SYSTEM 100%</p>
           <table className="w-full text-xs">
             <tbody>
               <tr className="border-t border-slate-100"><td className="px-3 py-1 font-bold text-emerald-600">A</td><td className="px-3 py-1">75 – 100</td></tr>
@@ -131,8 +131,8 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
       </div>
 
       {/* Behaviour & Personality Assessment */}
-      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-        <div className="flex items-center justify-between bg-slate-100 px-3 py-1.5">
+      <div className="mt-4 exam-report-panel overflow-hidden rounded-xl border border-slate-200">
+        <div className="flex items-center justify-between bg-blue-100 px-3 py-1.5">
           <p className="text-xs font-bold text-slate-600">BEHAVIOUR &amp; PERSONALITY ASSESSMENT</p>
           {remarksFetch.data?.isApproved ? (
             <span className="rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold px-2 py-0.5 border border-emerald-300">
@@ -144,7 +144,7 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
             </span>
           )}
         </div>
-        <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-px bg-slate-200 sm:grid-cols-2 lg:grid-cols-3 print:grid-cols-3">
           {DEFAULT_BEHAVIOR_CRITERIA.map((crit) => (
             <div key={crit} className="flex items-center justify-between gap-2 bg-white px-3 py-2">
               <span className="text-xs font-semibold text-slate-700">{crit}</span>
@@ -180,7 +180,7 @@ export default function StudentReportCard({ data, examId, editable = true }: { d
       </div>
 
       {/* Comments & signatures */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
         <div>
           <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-slate-500">Academic Master&apos;s Comment</label>
           {editable ? (

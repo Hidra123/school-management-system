@@ -105,7 +105,7 @@ export default function ClassResultReport({ data, identity }: { data: ClassResul
           <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">REGIONAL ADMINISTRATION AND LOCAL GOVERNMENT</p>
           {identity?.councilName && <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">{identity.councilName}</p>}
           <p className="mt-0.5 text-lg font-extrabold uppercase leading-tight text-blue-800 print:text-base">{identity?.schoolName || "Loading school identity…"}</p>
-          <h1 className="text-xs font-normal uppercase leading-tight text-slate-800 print:text-[10px]">STUDENT&apos;S EXAMINATION RESULT</h1>
+          <h1 className="text-xs font-normal uppercase leading-tight text-slate-800 print:text-[10px]">CLASS EXAMINATION RESULTS</h1>
           <div className="mt-1.5 inline-block rounded-lg border border-blue-500 bg-blue-50 px-4 py-1 text-xs font-bold text-blue-900 print:py-0.5">
             {data.className}{data.section ? ` ${data.section}` : ""} ({data.examName}) Examination Result
             {data.academicYear ? `: ${data.academicYear}` : ""}
@@ -186,10 +186,24 @@ export default function ClassResultReport({ data, identity }: { data: ClassResul
         <Panel title="DIVISION PERFORMANCE">
           <table className={TBL}>
             <thead>
-              <tr>{DIVISIONS.map((d) => <th key={d} className={TH}>{d}</th>)}<th className={TH}>ABS</th><th className={TH}>TOTAL</th></tr>
+              <tr>
+                <th className={TH}>SEX</th>
+                {DIVISIONS.map((d) => <th key={d} className={TH}>{d}</th>)}
+                <th className={TH}>ABS</th>
+                <th className={TH}>TOTAL</th>
+              </tr>
             </thead>
             <tbody>
-              <tr>
+              {(["F", "M"] as const).map((sex) => (
+                <tr key={sex}>
+                  <td className={cls(TD, "font-bold")}>{sex}</td>
+                  {DIVISIONS.map((d) => <td key={d} className={TD}>{divCount(sex, d)}</td>)}
+                  <td className={TD}>{sex === "F" ? absF : absM}</td>
+                  <td className={cls(TD, "font-bold")}>{data.attendance[sex].reg}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-50 font-bold">
+                <td className={TD}>TOTAL</td>
                 {DIVISIONS.map((d) => <td key={d} className={TD}>{divTotal(d)}</td>)}
                 <td className={TD}>{totalReg - totalPre}</td>
                 <td className={TD}>{data.totalStudents}</td>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Badge } from "@/components/ui";
 import { cls } from "@/lib/utils";
 
@@ -31,12 +31,13 @@ export type ClassResultsData = {
   totalStudents: number;
 };
 
-const GRADE_TONE: Record<Grade, "emerald" | "blue" | "violet" | "amber" | "rose"> = {
-  A: "emerald", B: "blue", C: "violet", D: "amber", F: "rose",
-};
-
 const GRADE_TEXT: Record<Grade, string> = {
   A: "text-emerald-600", B: "text-sky-600", C: "text-violet-600", D: "text-amber-600", F: "text-rose-600",
+};
+
+/* Solid pills used for the competency column (as in the printed report) */
+const GRADE_PILL: Record<Grade, string> = {
+  A: "bg-emerald-600", B: "bg-blue-600", C: "bg-purple-700", D: "bg-orange-700", F: "bg-red-600",
 };
 
 const DIVISION_BADGE: Record<string, string> = {
@@ -47,8 +48,20 @@ const DIVISION_BADGE: Record<string, string> = {
   "0": "bg-rose-50 text-rose-700 ring-rose-200",
 };
 
-function GradeBadge({ grade, label }: { grade: Grade; label: string }) {
-  return <Badge tone={GRADE_TONE[grade]}>Grade {grade} ({label})</Badge>;
+/* Compact, fully-bordered table styling */
+const TBL = "w-full border-collapse bg-white text-[9px] leading-tight";
+const TH = "border border-slate-700 bg-slate-100 px-1 py-px text-center font-bold uppercase";
+const TD = "border border-slate-700 px-1 py-px text-center";
+const TDL = "border border-slate-700 px-1 py-px text-left font-semibold";
+
+const DIVISIONS = ["I", "II", "III", "IV", "0"];
+
+function GradePill({ grade, label, className }: { grade: Grade; label: string; className?: string }) {
+  return (
+    <span className={cls("inline-block whitespace-nowrap rounded-full px-2 py-px text-[8px] font-bold text-white", GRADE_PILL[grade], className)}>
+      Grade {grade} ({label})
+    </span>
+  );
 }
 
 function DivisionPill({ division }: { division: string }) {
@@ -59,222 +72,228 @@ function DivisionPill({ division }: { division: string }) {
   );
 }
 
-const DIVISIONS = ["I", "II", "III", "IV", "0"];
+function Panel({ title, children, center, className }: { title: string; children: ReactNode; center?: boolean; className?: string }) {
+  return (
+    <div className={cls("exam-report-panel rounded-lg border border-blue-200 bg-blue-50 p-1.5", className)}>
+      <p className={cls("mb-1 px-1 text-[10px] font-extrabold uppercase text-slate-900", center && "text-center")}>{title}</p>
+      {children}
+    </div>
+  );
+}
 
 export default function ClassResultReport({ data, identity }: { data: ClassResultsData; identity: { schoolName: string; councilName: string; motto: string; logoLeftData: string; logoRightData: string } | null }) {
   const totalReg = data.attendance.F.reg + data.attendance.M.reg;
   const totalPre = data.attendance.F.pre + data.attendance.M.pre;
+  const absF = data.attendance.F.reg - data.attendance.F.pre;
+  const absM = data.attendance.M.reg - data.attendance.M.pre;
+  const divCount = (sex: "F" | "M", d: string) => data.divisionPerformance[sex][d] ?? 0;
+  const divTotal = (d: string) => divCount("F", d) + divCount("M", d);
+  const gradeSum = (sex: "F" | "M") => { const g = data.gradePerformance[sex]; return g.A + g.B + g.C + g.D + g.F; };
+  const GRADES: Grade[] = ["A", "B", "C", "D", "F"];
 
   return (
     <div className="exam-print-area exam-report rounded-2xl border border-slate-400 bg-white p-4 text-sm print:p-2">
       {/* Header */}
-      <div className="exam-report-heading mb-3 grid grid-cols-[64px_minmax(0,1fr)_64px] items-center gap-3 rounded-xl border border-slate-500 bg-slate-50 px-3 py-2 text-center print:grid-cols-[52px_minmax(0,1fr)_52px] print:gap-2 print:px-2 print:py-1">
+      <div className="exam-report-heading mb-3 grid grid-cols-[64px_minmax(0,1fr)_64px] items-center gap-3 rounded-xl border border-slate-400 bg-slate-50 px-3 py-2 text-center print:grid-cols-[52px_minmax(0,1fr)_52px] print:gap-2 print:px-2 print:py-1">
         <div className="flex h-16 items-center justify-center print:h-12">
-          {identity?.logoLeftData && <img src={identity.logoLeftData} alt={`${identity.schoolName} left logo`} className="max-h-14 max-w-full object-contain print:max-h-11" />}
+          {identity?.logoLeftData && (
+            <img src={identity.logoLeftData} alt={`${identity.schoolName} left logo`} className="max-h-14 max-w-full rounded-md border border-slate-300 bg-white object-contain p-0.5 shadow-sm print:max-h-11" />
+          )}
         </div>
         <div className="min-w-0">
+          <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">THE PRIME MINISTER&apos;S OFFICE</p>
+          <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">REGIONAL ADMINISTRATION AND LOCAL GOVERNMENT</p>
           {identity?.councilName && <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">{identity.councilName}</p>}
-          <p className="text-lg font-extrabold uppercase leading-tight text-slate-900 print:text-base">{identity?.schoolName || "Loading school identity…"}</p>
-          {identity?.motto && <p className="text-[10px] italic leading-tight text-slate-700 print:text-[9px]">{identity.motto}</p>}
-          <h1 className="mt-1 text-sm font-extrabold leading-tight text-slate-900 print:text-xs">CLASS EXAMINATION RESULTS</h1>
-          <div className="mt-1 inline-block rounded-lg border border-blue-500 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-900 print:py-0.5">
+          <p className="mt-0.5 text-lg font-extrabold uppercase leading-tight text-blue-800 print:text-base">{identity?.schoolName || "Loading school identity…"}</p>
+          <h1 className="text-xs font-normal uppercase leading-tight text-slate-800 print:text-[10px]">STUDENT&apos;S EXAMINATION RESULT</h1>
+          <div className="mt-1.5 inline-block rounded-lg border border-blue-500 bg-blue-50 px-4 py-1 text-xs font-bold text-blue-900 print:py-0.5">
             {data.className}{data.section ? ` ${data.section}` : ""} ({data.examName}) Examination Result
-            {data.academicYear ? ` — ${data.academicYear}` : ""}
+            {data.academicYear ? `: ${data.academicYear}` : ""}
           </div>
         </div>
         <div className="flex h-16 items-center justify-center print:h-12">
-          {identity?.logoRightData && <img src={identity.logoRightData} alt={`${identity.schoolName} right logo`} className="max-h-14 max-w-full object-contain print:max-h-11" />}
+          {identity?.logoRightData && (
+            <img src={identity.logoRightData} alt={`${identity.schoolName} right logo`} className="max-h-14 max-w-full rounded-md border border-slate-300 bg-white object-contain p-0.5 shadow-sm print:max-h-11" />
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
-        {/* Attendance */}
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S ATTENDANCE</p>
-          <table className="w-full text-xs">
-            <thead className="bg-slate-100">
-              <tr><th className="px-2 py-1.5 text-left">SEX</th><th className="px-2 py-1.5">F</th><th className="px-2 py-1.5">M</th><th className="px-2 py-1.5">TOTAL</th></tr>
+      {/* Attendance + Ranking */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 print:grid-cols-2">
+        <Panel title="STUDENT'S ATTENDANCE">
+          <table className={TBL}>
+            <thead>
+              <tr><th className={TH}>SEX</th><th className={TH}>F</th><th className={TH}>M</th><th className={TH}>TOTAL</th></tr>
             </thead>
             <tbody>
-              <tr className="border-t border-slate-100"><td className="px-2 py-1.5 font-semibold">REG</td><td className="px-2 py-1.5 text-center">{data.attendance.F.reg}</td><td className="px-2 py-1.5 text-center">{data.attendance.M.reg}</td><td className="px-2 py-1.5 text-center font-bold">{totalReg}</td></tr>
-              <tr className="border-t border-slate-100"><td className="px-2 py-1.5 font-semibold">PRE</td><td className="px-2 py-1.5 text-center">{data.attendance.F.pre}</td><td className="px-2 py-1.5 text-center">{data.attendance.M.pre}</td><td className="px-2 py-1.5 text-center font-bold">{totalPre}</td></tr>
-              <tr className="border-t border-slate-100"><td className="px-2 py-1.5 font-semibold">ABS</td><td className="px-2 py-1.5 text-center">{data.attendance.F.reg - data.attendance.F.pre}</td><td className="px-2 py-1.5 text-center">{data.attendance.M.reg - data.attendance.M.pre}</td><td className="px-2 py-1.5 text-center font-bold">{totalReg - totalPre}</td></tr>
+              <tr><td className={cls(TD, "font-bold")}>REG</td><td className={TD}>{data.attendance.F.reg}</td><td className={TD}>{data.attendance.M.reg}</td><td className={cls(TD, "font-bold")}>{totalReg}</td></tr>
+              <tr><td className={cls(TD, "font-bold")}>PRE</td><td className={TD}>{data.attendance.F.pre}</td><td className={TD}>{data.attendance.M.pre}</td><td className={cls(TD, "font-bold")}>{totalPre}</td></tr>
+              <tr><td className={cls(TD, "font-bold")}>ABS</td><td className={TD}>{absF}</td><td className={TD}>{absM}</td><td className={cls(TD, "font-bold")}>{totalReg - totalPre}</td></tr>
             </tbody>
           </table>
-        </div>
+        </Panel>
 
-        {/* Ranking */}
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">SCHOOL EXAMINATION RANKING</p>
-          <div className="grid grid-cols-3 divide-x divide-slate-100 text-center">
-            <div className="p-3">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Examination GPA</p>
-              <div className="mt-1"><GradeBadge grade={data.ranking.competency.grade} label={data.ranking.competency.label} /></div>
-              <p className="mt-1 text-xs text-slate-500">{data.ranking.gpa} GPA</p>
-            </div>
-            <div className="p-3">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Passed Candidates</p>
-              <p className="mt-1 text-2xl font-extrabold text-emerald-600">{data.ranking.passedCandidates}</p>
-            </div>
-            <div className="p-3">
-              <p className="text-[10px] font-bold uppercase text-slate-500">Failed Candidates</p>
-              <p className="mt-1 text-2xl font-extrabold text-rose-600">{data.ranking.failedCandidates}</p>
-            </div>
-          </div>
-        </div>
+        <Panel title="SCHOOL EXAMINATION RANKING">
+          <table className={TBL}>
+            <thead>
+              <tr><th className={TH}>EXAMINATION GPA</th><th className={TH}>PASSED CANDIDATES</th><th className={TH}>FAILED CANDIDATES</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className={TD}>
+                  <span className={cls("inline-block whitespace-nowrap rounded-full px-2 py-px text-[8px] font-bold uppercase text-white", GRADE_PILL[data.ranking.competency.grade])}>
+                    {data.ranking.gpa.toFixed(4)} Grade {data.ranking.competency.grade} ({data.ranking.competency.label})
+                  </span>
+                </td>
+                <td className={TD}>{data.ranking.passedCandidates}</td>
+                <td className={TD}>{data.ranking.failedCandidates}</td>
+              </tr>
+            </tbody>
+          </table>
+        </Panel>
       </div>
 
       {/* Subject Performance + Division Performance */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">SUBJECT PERFORMANCE</p>
+      <div className="mt-3 grid grid-cols-1 items-start gap-3 lg:grid-cols-2 print:grid-cols-2">
+        <Panel title="SUBJECT PERFORMANCE">
           <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-100">
+            <table className={TBL}>
+              <thead>
                 <tr>
-                  <th className="px-2 py-1.5">S/N</th><th className="px-2 py-1.5 text-left">SUBJECT</th>
-                  <th className="px-2 py-1.5">PASS</th><th className="px-2 py-1.5">FAIL</th>
-                  <th className="px-2 py-1.5">A</th><th className="px-2 py-1.5">B</th><th className="px-2 py-1.5">C</th><th className="px-2 py-1.5">D</th><th className="px-2 py-1.5">F</th>
-                  <th className="px-2 py-1.5">GPA</th><th className="px-2 py-1.5 text-left">COMPETENCY</th>
+                  <th className={TH}>S/N</th><th className={TH}>SUBJECT</th>
+                  <th className={TH}>PASS</th><th className={TH}>FAIL</th>
+                  <th className={TH}>A</th><th className={TH}>B</th><th className={TH}>C</th><th className={TH}>D</th><th className={TH}>F</th>
+                  <th className={TH}>GPA</th><th className={TH}>COMPETENCY</th>
                 </tr>
               </thead>
               <tbody>
                 {data.subjectPerformance.map((s, i) => (
-                  <tr key={s.subjectId} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5 text-center">{i + 1}</td>
-                    <td className="px-2 py-1.5 font-semibold">{s.name}</td>
-                    <td className="px-2 py-1.5 text-center font-bold text-emerald-600">{s.pass}</td>
-                    <td className="px-2 py-1.5 text-center font-bold text-rose-600">{s.fail}</td>
-                    <td className="px-2 py-1.5 text-center">{s.A}</td><td className="px-2 py-1.5 text-center">{s.B}</td>
-                    <td className="px-2 py-1.5 text-center">{s.C}</td><td className="px-2 py-1.5 text-center">{s.D}</td><td className="px-2 py-1.5 text-center">{s.F}</td>
-                    <td className="px-2 py-1.5 text-center font-bold">{s.gpa}</td>
-                    <td className="px-2 py-1.5"><GradeBadge grade={s.competencyGrade} label={s.competencyLabel} /></td>
+                  <tr key={s.subjectId}>
+                    <td className={TD}>{i + 1}</td>
+                    <td className={TDL}>{s.name}</td>
+                    <td className={TD}>{s.pass}</td>
+                    <td className={TD}>{s.fail}</td>
+                    <td className={TD}>{s.A}</td><td className={TD}>{s.B}</td><td className={TD}>{s.C}</td><td className={TD}>{s.D}</td><td className={TD}>{s.F}</td>
+                    <td className={TD}>{Number(s.gpa).toFixed(2)}</td>
+                    <td className={TD}><GradePill grade={s.competencyGrade} label={s.competencyLabel} /></td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
+        </Panel>
 
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">DIVISION PERFORMANCE</p>
-          <table className="w-full text-xs">
-            <thead className="bg-slate-100">
-              <tr><th className="px-2 py-1.5 text-left">SEX</th>{DIVISIONS.map((d) => <th key={d} className="px-2 py-1.5">{d}</th>)}<th className="px-2 py-1.5">TOTAL</th></tr>
+        <Panel title="DIVISION PERFORMANCE">
+          <table className={TBL}>
+            <thead>
+              <tr>{DIVISIONS.map((d) => <th key={d} className={TH}>{d}</th>)}<th className={TH}>ABS</th><th className={TH}>TOTAL</th></tr>
             </thead>
             <tbody>
-              {(["F", "M"] as const).map((sex) => {
-                const rowTotal = DIVISIONS.reduce((s, d) => s + (data.divisionPerformance[sex][d] ?? 0), 0);
-                return (
-                  <tr key={sex} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5 font-semibold">{sex}</td>
-                    {DIVISIONS.map((d) => <td key={d} className="px-2 py-1.5 text-center">{data.divisionPerformance[sex][d] ?? 0}</td>)}
-                    <td className="px-2 py-1.5 text-center font-bold">{rowTotal}</td>
-                  </tr>
-                );
-              })}
-              <tr className="border-t border-slate-200 bg-slate-50 font-bold">
-                <td className="px-2 py-1.5">TOTAL</td>
-                {DIVISIONS.map((d) => <td key={d} className="px-2 py-1.5 text-center">{(data.divisionPerformance.F[d] ?? 0) + (data.divisionPerformance.M[d] ?? 0)}</td>)}
-                <td className="px-2 py-1.5 text-center">{data.totalStudents}</td>
+              <tr>
+                {DIVISIONS.map((d) => <td key={d} className={TD}>{divTotal(d)}</td>)}
+                <td className={TD}>{totalReg - totalPre}</td>
+                <td className={TD}>{data.totalStudents}</td>
               </tr>
             </tbody>
           </table>
-        </div>
+        </Panel>
       </div>
 
       {/* Student's Division + Grade Performance */}
-      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S DIVISION</p>
-          <table className="w-full text-xs">
-            <thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">SEX</th>{DIVISIONS.map((d) => <th key={d} className="px-2 py-1.5">{d}</th>)}<th className="px-2 py-1.5">TOTAL</th></tr></thead>
+      <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-2 print:grid-cols-2">
+        <Panel title="STUDENT'S DIVISION">
+          <table className={TBL}>
+            <thead>
+              <tr><th className={TH}>SEX</th>{DIVISIONS.map((d) => <th key={d} className={TH}>{d}</th>)}<th className={TH}>TOTAL</th></tr>
+            </thead>
             <tbody>
-              {(["F", "M"] as const).map((sex) => {
-                const rowTotal = DIVISIONS.reduce((s, d) => s + (data.divisionPerformance[sex][d] ?? 0), 0);
-                return (
-                  <tr key={sex} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5 font-semibold">{sex}</td>
-                    {DIVISIONS.map((d) => <td key={d} className="px-2 py-1.5 text-center">{data.divisionPerformance[sex][d] ?? 0}</td>)}
-                    <td className="px-2 py-1.5 text-center font-bold">{rowTotal}</td>
-                  </tr>
-                );
-              })}
+              {(["F", "M"] as const).map((sex) => (
+                <tr key={sex}>
+                  <td className={cls(TD, "font-bold")}>{sex}</td>
+                  {DIVISIONS.map((d) => <td key={d} className={TD}>{divCount(sex, d)}</td>)}
+                  <td className={cls(TD, "font-bold")}>{data.attendance[sex].reg}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-50 font-bold">
+                <td className={TD}>TOTAL</td>
+                {DIVISIONS.map((d) => <td key={d} className={TD}>{divTotal(d)}</td>)}
+                <td className={TD}>{data.totalStudents}</td>
+              </tr>
             </tbody>
           </table>
-        </div>
-        <div className="exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-          <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S GRADE PERFORMANCE</p>
-          <table className="w-full text-xs">
-            <thead className="bg-slate-100"><tr><th className="px-2 py-1.5 text-left">SEX</th><th className="px-2 py-1.5">A</th><th className="px-2 py-1.5">B</th><th className="px-2 py-1.5">C</th><th className="px-2 py-1.5">D</th><th className="px-2 py-1.5">F</th><th className="px-2 py-1.5">TOTAL</th></tr></thead>
+        </Panel>
+
+        <Panel title="STUDENT'S GRADE PERFORMANCE">
+          <table className={TBL}>
+            <thead>
+              <tr><th className={TH}>SEX</th>{GRADES.map((g) => <th key={g} className={TH}>{g}</th>)}<th className={TH}>TOTAL</th></tr>
+            </thead>
             <tbody>
-              {(["F", "M"] as const).map((sex) => {
-                const g = data.gradePerformance[sex];
-                const total = g.A + g.B + g.C + g.D + g.F;
-                return (
-                  <tr key={sex} className="border-t border-slate-100">
-                    <td className="px-2 py-1.5 font-semibold">{sex}</td>
-                    <td className="px-2 py-1.5 text-center">{g.A}</td><td className="px-2 py-1.5 text-center">{g.B}</td>
-                    <td className="px-2 py-1.5 text-center">{g.C}</td><td className="px-2 py-1.5 text-center">{g.D}</td><td className="px-2 py-1.5 text-center">{g.F}</td>
-                    <td className="px-2 py-1.5 text-center font-bold">{total}</td>
-                  </tr>
-                );
-              })}
+              {(["F", "M"] as const).map((sex) => (
+                <tr key={sex}>
+                  <td className={cls(TD, "font-bold")}>{sex}</td>
+                  {GRADES.map((g) => <td key={g} className={TD}>{data.gradePerformance[sex][g]}</td>)}
+                  <td className={cls(TD, "font-bold")}>{gradeSum(sex)}</td>
+                </tr>
+              ))}
+              <tr className="bg-slate-50 font-bold">
+                <td className={TD}>TOTAL</td>
+                {GRADES.map((g) => <td key={g} className={TD}>{data.gradePerformance.F[g] + data.gradePerformance.M[g]}</td>)}
+                <td className={TD}>{gradeSum("F") + gradeSum("M")}</td>
+              </tr>
             </tbody>
           </table>
-        </div>
+        </Panel>
       </div>
 
       {/* Full scoresheet */}
-      <div className="mt-4 exam-report-panel overflow-hidden rounded-xl border border-slate-200">
-        <p className="bg-blue-100 px-3 py-1.5 text-xs font-bold text-blue-900">STUDENT&apos;S EXAMINATION GRADING SCORES SHEET</p>
+      <Panel title="STUDENT'S EXAMINATION GRADING SCORES SHEET" center className="mt-3">
         <div className="overflow-x-auto">
-          <table className="w-full text-[11px]">
-            <thead className="bg-slate-100">
+          <table className={cls(TBL, "text-[8px]")}>
+            <thead>
               <tr>
-                <th className="px-2 py-1.5">S/N</th><th className="px-2 py-1.5 text-left">NAME</th><th className="px-2 py-1.5">SEX</th>
+                <th rowSpan={2} className={TH}>S/N</th>
+                <th rowSpan={2} className={cls(TH, "text-left")}>NAME</th>
+                <th rowSpan={2} className={TH}>SEX</th>
                 {data.subjectList.map((s) => (
-                  <th key={s.id} colSpan={2} className="px-2 py-1.5">{s.code}</th>
+                  <th key={s.id} colSpan={2} className={TH}>{s.code}</th>
                 ))}
-                <th className="px-2 py-1.5">DIVISION</th><th className="px-2 py-1.5">POINT</th>
+                <th rowSpan={2} className={TH}>DIVISION</th>
+                <th rowSpan={2} className={TH}>POINT</th>
               </tr>
-              <tr className="bg-slate-50 text-slate-400">
-                <th /><th /><th />
+              <tr>
                 {data.subjectList.map((s) => (
                   <Fragment key={s.id}>
-                    <th className="px-1 py-1 font-semibold">S</th>
-                    <th className="px-1 py-1 font-semibold">G</th>
+                    <th className={cls(TH, "px-0.5")}>S</th>
+                    <th className={cls(TH, "px-0.5")}>G</th>
                   </Fragment>
                 ))}
-                <th /><th />
               </tr>
             </thead>
             <tbody>
               {data.sheet.map((row, i) => (
-                <tr key={row.id} className="border-t border-slate-100 odd:bg-white even:bg-slate-50/50">
-                  <td className="px-2 py-1 text-center">{i + 1}</td>
-                  <td className="px-2 py-1 font-semibold">{row.name}</td>
-                  <td className="px-2 py-1 text-center">{row.gender === "female" ? "Female" : "Male"}</td>
+                <tr key={row.id}>
+                  <td className={TD}>{i + 1}</td>
+                  <td className={TDL}>{row.name}</td>
+                  <td className={TD}>{row.gender === "female" ? "Female" : "Male"}</td>
                   {data.subjectList.map((subj) => {
                     const entry = row.subjectScores.find((ss) => ss.subjectId === subj.id);
                     return (
                       <Fragment key={subj.id}>
-                        <td className={cls("px-1 py-1 text-center", entry?.grade === "F" ? "font-bold text-rose-600" : "text-slate-700")}>
-                          {entry && entry.score !== null ? entry.score : "—"}
+                        <td className={cls(TD, "px-0.5", entry?.grade === "F" && "font-bold text-rose-600")}>
+                          {entry && entry.score !== null ? entry.score : "-"}
                         </td>
-                        <td className={cls("px-1 py-1 text-center font-bold", entry?.grade ? GRADE_TEXT[entry.grade] : "text-slate-300")}>
-                          {entry?.grade ?? "—"}
-                        </td>
+                        <td className={cls(TD, "px-0.5")}>{entry?.grade ?? "-"}</td>
                       </Fragment>
                     );
                   })}
-                  <td className="px-2 py-1 text-center"><DivisionPill division={row.division} /></td>
-                  <td className="px-2 py-1 text-center font-bold">{row.points ?? "—"}</td>
+                  <td className={cls(TD, "font-bold")}>{row.division}</td>
+                  <td className={cls(TD, "font-bold")}>{row.points ?? "-"}</td>
                 </tr>
               ))}
               {data.sheet.length === 0 && (
                 <tr>
-                  <td colSpan={5 + data.subjectList.length * 2} className="px-3 py-6 text-center text-slate-400">
+                  <td colSpan={5 + data.subjectList.length * 2} className="border border-slate-700 px-3 py-6 text-center text-slate-400">
                     No scores have been submitted for this examination yet.
                   </td>
                 </tr>
@@ -282,7 +301,7 @@ export default function ClassResultReport({ data, identity }: { data: ClassResul
             </tbody>
           </table>
         </div>
-      </div>
+      </Panel>
 
       {/* Passed + Failed lists */}
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 print:grid-cols-2">

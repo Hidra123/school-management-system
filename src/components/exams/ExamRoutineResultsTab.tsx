@@ -91,11 +91,11 @@ export default function ExamRoutineResultsTab() {
   return (
     <div className="space-y-6">       {schoolIdentityFetch.error && <p className="no-print rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">School identity could not be loaded for reports: {schoolIdentityFetch.error}</p>}
       {/* Deadline settings */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm print:border-0 print:bg-transparent print:shadow-none">
         <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
           <p className="text-sm font-bold text-blue-900">⏰ Score Submission Deadline Settings</p>
         </div>
-        <div className="p-5">
+        <div className="p-5 print:p-0">
           {isClosed && (
             <div className="mb-4 flex items-center justify-between rounded-xl bg-rose-100 px-4 py-3">
               <div>
@@ -133,7 +133,7 @@ export default function ExamRoutineResultsTab() {
       </div>
 
       {/* Publish results */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm print:border-0 print:bg-transparent print:shadow-none">
         <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
           <p className="text-sm font-bold text-blue-900">📊 Publish Exam Results</p>
         </div>
@@ -172,11 +172,11 @@ export default function ExamRoutineResultsTab() {
       </div>
 
       {/* Individual Report Cards */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
+      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm print:border-0 print:bg-transparent print:shadow-none">
         <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
           <p className="text-sm font-bold text-blue-900">🪪 Individual Student Report Cards</p>
         </div>
-        <div className="p-5">
+        <div className="p-5 print:p-0">
           <div className="no-print grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
               <p className="mb-2 flex items-center gap-2 text-xs font-bold text-violet-700"><span className="grid h-5 w-5 place-items-center rounded-full bg-violet-500 text-white">1</span> SELECT CLASS</p>

@@ -109,7 +109,7 @@ export default function ManageExaminationsTab() {
       {/* Create / Edit Examination */}
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
         <div className="border-b border-blue-200 bg-blue-50 px-5 py-3">
-          <p className="text-sm font-bold text-white">➕ {editingId ? "Edit Examination" : "Create Examination"}</p>
+          <p className="text-sm font-bold text-blue-900">➕ {editingId ? "Edit Examination" : "Create Examination"}</p>
         </div>
         <div className="space-y-4 p-5">
           <div>
@@ -217,8 +217,8 @@ export default function ManageExaminationsTab() {
       {/* Examination List */}
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-blue-200 bg-blue-50 px-5 py-3">
-          <p className="text-sm font-bold text-white">📋 Examination List</p>
-          <button onClick={() => refresh()} className="rounded-lg bg-white/10 px-3 py-1 text-xs font-bold text-white hover:bg-white/20">🔄 Reload</button>
+          <p className="text-sm font-bold text-blue-900">📋 Examination List</p>
+          <button onClick={() => refresh()} className="rounded-lg bg-white px-3 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100">🔄 Reload</button>
         </div>
         {examList.some((e) => e.approvalStatus === "pending") && (
           <p className="border-b border-amber-100 bg-amber-50 px-5 py-2.5 text-xs font-semibold text-amber-800">

@@ -35,7 +35,7 @@ const GRADE_COLOR: Record<string, string> = {
   A: "text-emerald-600", B: "text-sky-600", C: "text-violet-600", D: "text-amber-600", F: "text-rose-600",
 };
 
-export default function StudentReportCard({ data, examId, editable = true, identity }: { data: StudentReportData; examId: number; editable?: boolean; identity: { schoolName: string; councilName: string; motto: string; logoData: string } | null }) {
+export default function StudentReportCard({ data, examId, editable = true, identity }: { data: StudentReportData; examId: number; editable?: boolean; identity: { schoolName: string; councilName: string; motto: string; logoLeftData: string; logoRightData: string } | null }) {
   const remarksFetch = useFetch<Remarks>(`/api/exams/remarks?studentId=${data.student.id}&examId=${examId}`);
   const [ratings, setRatings] = useState<Record<string, string>>({});
   const [academicComment, setAcademicComment] = useState("");
@@ -72,16 +72,25 @@ export default function StudentReportCard({ data, examId, editable = true, ident
   }
 
   return (
-    <div className="exam-report rounded-2xl border border-slate-200 bg-white p-6 text-sm print:p-4">
-      <div className="mb-4 text-center">
-        <div className="mb-3 flex items-center justify-center gap-3">{identity?.logoData && <img src={identity.logoData} alt={`${identity.schoolName} logo`} className="h-16 w-16 object-contain print:h-14 print:w-14" />}<div>{identity?.councilName && <p className="text-xs font-bold uppercase tracking-wide text-blue-700">{identity.councilName}</p>}<p className="text-lg font-extrabold uppercase text-slate-900 sm:text-xl">{identity?.schoolName || "Loading school identity…"}</p>{identity?.motto && <p className="text-xs italic text-slate-600">{identity.motto}</p>}</div></div>
-        <h1 className="mt-1 text-lg font-extrabold text-slate-900">INDIVIDUAL STUDENT&apos;S EXAMINATION REPORT</h1>
-        <p className="text-xs text-slate-500">{data.academicYear}</p>
-        <div className="mt-2 inline-block rounded-lg border border-blue-200 bg-blue-50 px-4 py-1.5 font-bold text-blue-900">
-          STUDENT&apos;S EXAMINATION REPORT — {data.examName.toUpperCase()}
+    <div className="exam-print-area exam-report rounded-2xl border border-slate-400 bg-white p-4 text-sm print:p-2">
+      <div className="exam-report-heading mb-3 grid grid-cols-[64px_minmax(0,1fr)_64px] items-center gap-3 rounded-xl border border-slate-500 bg-slate-50 px-3 py-2 text-center print:grid-cols-[52px_minmax(0,1fr)_52px] print:gap-2 print:px-2 print:py-1">
+        <div className="flex h-16 items-center justify-center print:h-12">
+          {identity?.logoLeftData && <img src={identity.logoLeftData} alt={`${identity.schoolName} left logo`} className="max-h-14 max-w-full object-contain print:max-h-11" />}
         </div>
-        <p className="mt-3 text-xl font-extrabold text-indigo-700">{data.student.name}</p>
+        <div className="min-w-0">
+          {identity?.councilName && <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-blue-800 print:text-[9px]">{identity.councilName}</p>}
+          <p className="text-lg font-extrabold uppercase leading-tight text-blue-900 print:text-base">{identity?.schoolName || "Loading school identity…"}</p>
+          {identity?.motto && <p className="text-[10px] italic leading-tight text-slate-700 print:text-[9px]">{identity.motto}</p>}
+          <h1 className="mt-1 text-sm font-extrabold leading-tight text-slate-900 print:text-xs">STUDENT&apos;S EXAMINATION RESULT</h1>
+          <div className="mt-1 inline-block rounded-lg border border-slate-500 bg-blue-50 px-3 py-1 text-xs font-bold text-blue-900 print:py-0.5">
+            {data.examName.toUpperCase()} · {data.academicYear}
+          </div>
+        </div>
+        <div className="flex h-16 items-center justify-center print:h-12">
+          {identity?.logoRightData && <img src={identity.logoRightData} alt={`${identity.schoolName} right logo`} className="max-h-14 max-w-full object-contain print:max-h-11" />}
+        </div>
       </div>
+      <p className="mb-2 text-center text-lg font-extrabold text-indigo-700">{data.student.name}</p>
 
       <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-slate-200 bg-slate-200 text-xs sm:grid-cols-4">
         <div className="bg-white p-2"><p className="text-slate-400">Class/Section</p><p className="font-bold text-slate-800">{data.className}{data.section ? ` ${data.section}` : ""}</p></div>

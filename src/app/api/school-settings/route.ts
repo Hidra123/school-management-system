@@ -4,6 +4,7 @@ import { appSettings } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { ensureAppSettings } from "@/lib/approvals";
 import { getSessionUser, requireAdmin, requireAuth } from "@/lib/auth";
+import { readSchoolLogos, storeSchoolLogos } from "@/lib/schoolLogos";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +16,15 @@ export async function GET() {
 
   try {
     const row = await ensureAppSettings();
+    const logos = readSchoolLogos(row.logoData);
     return Response.json({
       schoolName: row.schoolName,
       councilName: row.councilName,
       motto: row.motto,
       headOfSchoolName: row.headOfSchoolName,
-      logoData: row.logoData,
+      logoData: logos.left,
+      logoLeftData: logos.left,
+      logoRightData: logos.right,
     });
   } catch (e) {
     return dbErrorResponse(e, "load school settings");
@@ -38,6 +42,24 @@ export async function PUT(req: Request) {
 
   try {
     const existing = await ensureAppSettings();
+    const existingLogos = readSchoolLogos(existing.logoData);
+    const logoLeftData =
+      typeof body.logoLeftData === "string"
+        ? body.logoLeftData
+        : typeof body.logoData === "string"
+          ? body.logoData
+          : existingLogos.left;
+    const logoRightData =
+      typeof body.logoRightData === "string" ? body.logoRightData : existingLogos.right;
+    const shouldStoreLogoPair =
+      typeof body.logoLeftData === "string" ||
+      typeof body.logoRightData === "string" ||
+      (typeof body.logoData === "string" && !!existingLogos.right);
+    const logoDataToStore = shouldStoreLogoPair
+      ? storeSchoolLogos({ left: logoLeftData, right: logoRightData })
+      : typeof body.logoData === "string"
+        ? body.logoData
+        : existing.logoData;
     const [updated] = await db
       .update(appSettings)
       .set({
@@ -45,17 +67,20 @@ export async function PUT(req: Request) {
         councilName: typeof body.councilName === "string" ? body.councilName.trim() : existing.councilName,
         motto: typeof body.motto === "string" ? body.motto.trim() : existing.motto,
         headOfSchoolName: typeof body.headOfSchoolName === "string" ? body.headOfSchoolName.trim() : existing.headOfSchoolName,
-        logoData: typeof body.logoData === "string" ? body.logoData : existing.logoData,
+        logoData: logoDataToStore,
         updatedAt: new Date(),
       })
       .where(eq(appSettings.id, existing.id))
       .returning();
+    const updatedLogos = readSchoolLogos(updated.logoData);
     return Response.json({
       schoolName: updated.schoolName,
       councilName: updated.councilName,
       motto: updated.motto,
       headOfSchoolName: updated.headOfSchoolName,
-      logoData: updated.logoData,
+      logoData: updatedLogos.left,
+      logoLeftData: updatedLogos.left,
+      logoRightData: updatedLogos.right,
     });
   } catch (e) {
     return dbErrorResponse(e, "save school settings");

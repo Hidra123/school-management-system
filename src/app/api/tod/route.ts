@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { classes, students, teachers, todReports } from "@/db/schema";
 import { dbErrorResponse } from "@/lib/apiError";
 import { ensureAppSettings } from "@/lib/approvals";
+import { readSchoolLogos } from "@/lib/schoolLogos";
 import { getSessionUser, requirePermission } from "@/lib/auth";
 import { getTeacherByUserId } from "@/lib/teachers";
 
@@ -127,7 +128,7 @@ export async function GET(req: Request) {
         schoolName: existingReport?.schoolName || schoolSettings.schoolName,
         headOfSchoolName: existingReport?.headmasterName || schoolSettings.headOfSchoolName,
         motto: existingReport?.motto || schoolSettings.motto,
-        logoData: schoolSettings.logoData,
+        logoData: readSchoolLogos(schoolSettings.logoData).left,
       },
       reports: recentReports,
       isAdmin: user.role === "admin" || user.staffRole === "academic_master",

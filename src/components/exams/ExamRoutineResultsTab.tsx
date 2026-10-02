@@ -9,7 +9,8 @@ import StudentReportCard, { type StudentReportData } from "./StudentReportCard";
 type ClassRow = { id: number; name: string; section: string };
 type ExamRow = { id: number; name: string; status: string };
 type StudentLight = { id: number; name: string; admissionNo: string };
-type Settings = { id: number; submissionOpensAt: string | null; submissionClosesAt: string | null }; type SchoolIdentity = { schoolName: string; councilName: string; motto: string; logoData: string };
+type Settings = { id: number; submissionOpensAt: string | null; submissionClosesAt: string | null };
+type SchoolIdentity = { schoolName: string; councilName: string; motto: string; logoLeftData: string; logoRightData: string };
 
 function toLocalInputValue(iso: string | null): string {
   if (!iso) return "";
@@ -20,7 +21,8 @@ function toLocalInputValue(iso: string | null): string {
 
 export default function ExamRoutineResultsTab() {
   const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const examsFetch = useFetch<ExamRow[]>("/api/exams");   const schoolIdentityFetch = useFetch<SchoolIdentity>("/api/school-settings");
+  const examsFetch = useFetch<ExamRow[]>("/api/exams");
+  const schoolIdentityFetch = useFetch<SchoolIdentity>("/api/school-settings");
   const classList = classesFetch.data ?? [];
   const examList = examsFetch.data ?? [];
 
@@ -89,9 +91,10 @@ export default function ExamRoutineResultsTab() {
   }
 
   return (
-    <div className="space-y-6">       {schoolIdentityFetch.error && <p className="no-print rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">School identity could not be loaded for reports: {schoolIdentityFetch.error}</p>}
+    <div className="space-y-6">
+      {schoolIdentityFetch.error && <p className="no-print rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">School identity could not be loaded for reports: {schoolIdentityFetch.error}</p>}
       {/* Deadline settings */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm print:border-0 print:bg-transparent print:shadow-none">
+      <div className="no-print overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm print:border-0 print:bg-transparent print:shadow-none">
         <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
           <p className="text-sm font-bold text-blue-900">⏰ Score Submission Deadline Settings</p>
         </div>
@@ -260,9 +263,11 @@ function AllReportsList({ classId, examId, students, identity }: { classId: stri
       <div className="flex justify-end print:hidden">
         <button onClick={() => window.print()} disabled={!identity} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">🖨️ Print All Reports</button>
       </div>
-      {students.map((s) => (
-        <SingleAllReport key={s.id} studentId={s.id} examId={Number(examId)} identity={identity} />
-      ))}
+      <div className="exam-print-area space-y-6">
+        {students.map((s) => (
+          <SingleAllReport key={s.id} studentId={s.id} examId={Number(examId)} identity={identity} />
+        ))}
+      </div>
     </div>
   );
 }

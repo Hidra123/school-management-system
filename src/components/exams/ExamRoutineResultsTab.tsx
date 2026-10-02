@@ -9,7 +9,7 @@ import StudentReportCard, { type StudentReportData } from "./StudentReportCard";
 type ClassRow = { id: number; name: string; section: string };
 type ExamRow = { id: number; name: string; status: string };
 type StudentLight = { id: number; name: string; admissionNo: string };
-type Settings = { id: number; submissionOpensAt: string | null; submissionClosesAt: string | null };
+type Settings = { id: number; submissionOpensAt: string | null; submissionClosesAt: string | null }; type SchoolIdentity = { schoolName: string; councilName: string; motto: string; logoData: string };
 
 function toLocalInputValue(iso: string | null): string {
   if (!iso) return "";
@@ -20,7 +20,7 @@ function toLocalInputValue(iso: string | null): string {
 
 export default function ExamRoutineResultsTab() {
   const classesFetch = useFetch<ClassRow[]>("/api/classes");
-  const examsFetch = useFetch<ExamRow[]>("/api/exams");
+  const examsFetch = useFetch<ExamRow[]>("/api/exams");   const schoolIdentityFetch = useFetch<SchoolIdentity>("/api/school-settings");
   const classList = classesFetch.data ?? [];
   const examList = examsFetch.data ?? [];
 
@@ -89,11 +89,11 @@ export default function ExamRoutineResultsTab() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6">       {schoolIdentityFetch.error && <p className="no-print rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700">School identity could not be loaded for reports: {schoolIdentityFetch.error}</p>}
       {/* Deadline settings */}
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-        <div className="bg-slate-900 px-5 py-3">
-          <p className="text-sm font-bold text-white">⏰ Score Submission Deadline Settings</p>
+        <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
+          <p className="text-sm font-bold text-blue-900">⏰ Score Submission Deadline Settings</p>
         </div>
         <div className="p-5">
           {isClosed && (
@@ -116,7 +116,7 @@ export default function ExamRoutineResultsTab() {
               <p className="text-sm font-bold text-emerald-800">✅ Submission is OPEN</p>
             </div>
           )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="no-print grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Submission Opens (Start)</label>
               <input type="datetime-local" className={inputCls} value={opensAt} onChange={(e) => setOpensAt(e.target.value)} />
@@ -134,10 +134,10 @@ export default function ExamRoutineResultsTab() {
 
       {/* Publish results */}
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-        <div className="bg-slate-900 px-5 py-3">
-          <p className="text-sm font-bold text-white">📊 Publish Exam Results</p>
+        <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
+          <p className="text-sm font-bold text-blue-900">📊 Publish Exam Results</p>
         </div>
-        <div className="flex flex-wrap items-end gap-3 p-5">
+        <div className="no-print flex flex-wrap items-end gap-3 p-5">
           <div>
             <label className="mb-1.5 block text-xs font-bold uppercase tracking-wide text-slate-500">Class</label>
             <select className={cls(inputCls, "sm:w-52")} value={resultsClassId} onChange={(e) => setResultsClassId(e.target.value)}>
@@ -155,17 +155,17 @@ export default function ExamRoutineResultsTab() {
           <button onClick={previewResults} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700">👁️ Preview Results</button>
           <button onClick={previewResults} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700">🚩 Publish Results</button>
           {classResults.data && (
-            <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700">🖨️ Print Report</button>
+            <button onClick={() => window.print()} disabled={!schoolIdentityFetch.data} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50">🖨️ Print Report</button>
           )}
         </div>
         {resultsUrl && (
-          <div className="border-t border-slate-100 p-5">
+          <div className="p-5 print:p-0">
             {classResults.loading ? (
               <Loader label="Generating report..." />
             ) : classResults.error ? (
               <EmptyState icon="⚠️" title="Could not generate report" message={classResults.error} />
             ) : classResults.data ? (
-              <ClassResultReport data={classResults.data} />
+              <ClassResultReport data={classResults.data} identity={schoolIdentityFetch.data} />
             ) : null}
           </div>
         )}
@@ -173,11 +173,11 @@ export default function ExamRoutineResultsTab() {
 
       {/* Individual Report Cards */}
       <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm">
-        <div className="bg-slate-900 px-5 py-3">
-          <p className="text-sm font-bold text-white">🪪 Individual Student Report Cards</p>
+        <div className="no-print border-b border-blue-200 bg-blue-50 px-5 py-3">
+          <p className="text-sm font-bold text-blue-900">🪪 Individual Student Report Cards</p>
         </div>
         <div className="p-5">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div className="no-print grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-violet-100 bg-violet-50/40 p-3">
               <p className="mb-2 flex items-center gap-2 text-xs font-bold text-violet-700"><span className="grid h-5 w-5 place-items-center rounded-full bg-violet-500 text-white">1</span> SELECT CLASS</p>
               <select className={inputCls} value={reportClassId} onChange={(e) => { setReportClassId(e.target.value); setSelectedStudentId(""); setStudentReportUrl(null); }}>
@@ -197,12 +197,12 @@ export default function ExamRoutineResultsTab() {
           <button
             onClick={() => { if (reportClassId && reportExamId) setShowAll(true); }}
             disabled={!reportClassId || !reportExamId}
-            className="mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="no-print mt-3 inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             📚 Generate All Reports
           </button>
 
-          <div className="mt-4 rounded-xl border border-slate-200 p-3">
+          <div className="no-print mt-4 rounded-xl border border-slate-200 p-3">
             <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-slate-500">🔍 Search &amp; Print Single Student</p>
             <div className="flex flex-col gap-2 sm:flex-row">
               <input
@@ -234,16 +234,16 @@ export default function ExamRoutineResultsTab() {
               ) : studentReportFetch.data ? (
                 <>
                   <div className="mb-2 flex justify-end print:hidden">
-                    <button onClick={() => window.print()} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">🖨️ Print</button>
+                    <button onClick={() => window.print()} disabled={!schoolIdentityFetch.data} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">🖨️ Print</button>
                   </div>
-                  <StudentReportCard data={studentReportFetch.data} examId={Number(reportExamId)} />
+                  <StudentReportCard data={studentReportFetch.data} examId={Number(reportExamId)} identity={schoolIdentityFetch.data} />
                 </>
               ) : null}
             </div>
           )}
 
           {showAll && reportClassId && reportExamId && (
-            <AllReportsList classId={reportClassId} examId={reportExamId} students={studentList} />
+            <AllReportsList classId={reportClassId} examId={reportExamId} students={studentList} identity={schoolIdentityFetch.data} />
           )}
         </div>
       </div>
@@ -251,29 +251,29 @@ export default function ExamRoutineResultsTab() {
   );
 }
 
-function AllReportsList({ classId, examId, students }: { classId: string; examId: string; students: StudentLight[] }) {
+function AllReportsList({ classId, examId, students, identity }: { classId: string; examId: string; students: StudentLight[]; identity: SchoolIdentity | null }) {
   if (students.length === 0) {
     return <EmptyState icon="👨‍🎓" title="No students in this class" message="Add students to this class first." />;
   }
   return (
-    <div className="mt-5 space-y-6">
+    <div className="mt-5 space-y-6 print:space-y-0">
       <div className="flex justify-end print:hidden">
-        <button onClick={() => window.print()} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700">🖨️ Print All Reports</button>
+        <button onClick={() => window.print()} disabled={!identity} className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">🖨️ Print All Reports</button>
       </div>
       {students.map((s) => (
-        <SingleAllReport key={s.id} studentId={s.id} examId={Number(examId)} />
+        <SingleAllReport key={s.id} studentId={s.id} examId={Number(examId)} identity={identity} />
       ))}
     </div>
   );
 }
 
-function SingleAllReport({ studentId, examId }: { studentId: number; examId: number }) {
+function SingleAllReport({ studentId, examId, identity }: { studentId: number; examId: number; identity: SchoolIdentity | null }) {
   const { data, loading, error } = useFetch<StudentReportData>(`/api/exams/results/student?studentId=${studentId}&examId=${examId}`);
   if (loading) return <Loader label="Loading..." />;
   if (error || !data) return null;
   return (
     <div className="break-after-page">
-      <StudentReportCard data={data} examId={examId} editable={false} />
+      <StudentReportCard data={data} examId={examId} editable={false} identity={identity} />
     </div>
   );
 }

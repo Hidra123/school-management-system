@@ -30,8 +30,6 @@ const emptyForm = { name: "", code: "" };
 
 export default function SubjectsPage() {
   const { user } = useAuth();
-  const hasSubjectsView = user && user.permissions.includes("subjects.view");
-  const hasSubjectsManage = user && user.permissions.includes("subjects.manage");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<SubjectRow | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -92,7 +90,7 @@ export default function SubjectsPage() {
       )}
       <PageHeader icon="📚" title="Subjects" subtitle={`${list.length} subject${list.length === 1 ? "" : "s"}`}>
         <button onClick={openAdd} className={btnPrimary}>
-          {hasSubjectsManage && <button onClick={openAdd} className={btnPrimary}>+ Add Subject</button>}
+          + Add Subject
         </button>
       </PageHeader>
 
@@ -130,7 +128,7 @@ export default function SubjectsPage() {
                   title="Delete"
                   className="rounded-lg px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50"
                 >
-                  {hasSubjectsManage && (<button onClick={() => remove(s)} className="rounded-lg px-2 py-1 text-xs text-rose-500 transition hover:bg-rose-50">🗑️</button>)}
+                  🗑️
                 </button>
               </div>
               <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-slate-50 px-3.5 py-2.5">
@@ -148,7 +146,7 @@ export default function SubjectsPage() {
                 onClick={() => openEdit(s)}
                 className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
               >
-                {hasSubjectsManage && (<button onClick={() => openEdit(s)} className="mt-4 w-full rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit Subject</button>)}
+                ✏️ Edit Subject
               </button>
             </div>
           ))}

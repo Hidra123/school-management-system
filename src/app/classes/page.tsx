@@ -37,8 +37,6 @@ const colors = [
 
 export default function ClassesPage() {
   const { user } = useAuth();
-  const hasClassesView = user && user.permissions.includes("classes.view");
-  const hasClassesManage = user && user.permissions.includes("classes.manage");
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
@@ -99,7 +97,7 @@ export default function ClassesPage() {
       )}
       <PageHeader icon="🏫" title="Classes" subtitle={`${list.length} class${list.length === 1 ? "" : "es"}`}>
         <button onClick={openAdd} className={btnPrimary}>
-          {hasClassesManage && <button onClick={openAdd} className={btnPrimary}>+ Add Class</button>}
+          + Add Class
         </button>
       </PageHeader>
 
@@ -156,13 +154,13 @@ export default function ClassesPage() {
                       onClick={() => openEdit(c)}
                       className="flex-1 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100"
                     >
-                      {hasClassesManage && (<button onClick={() => openEdit(c)} className="flex-1 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 text-sm font-bold text-indigo-700 transition hover:bg-indigo-100">✏️ Edit</button>)}
+                      ✏️ Edit
                     </button>
                     <button
                       onClick={() => remove(c)}
                       className="rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-100"
                     >
-                      {hasClassesManage && (<button onClick={() => remove(c)} className="rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-sm font-bold text-rose-600 transition hover:bg-rose-100">🗑️</button>)}
+                      🗑️
                     </button>
                   </div>
                 </div>

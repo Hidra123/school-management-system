@@ -13,7 +13,6 @@ import {
   btnPrimary,
   inputCls,
 } from "@/components/ui";
-import { useAuth } from "@/components/AuthProvider";
 import AppShell from "@/components/AppShell";
 import ImportStudentsModal from "@/components/ImportStudentsModal";
 import { cls, delJSON, postJSON, putJSON, shortDate, todayStr, useFetch } from "@/lib/utils";
@@ -48,7 +47,6 @@ const emptyForm = {
 };
 
 export default function StudentsPage() {
-  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [open, setOpen] = useState(false);
@@ -57,11 +55,6 @@ export default function StudentsPage() {
   const [form, setForm] = useState({ ...emptyForm });
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-
-  const hasStudentsView = user && user.permissions.includes("students.view");
-  const hasStudentsCreate = user && user.permissions.includes("students.create");
-  const hasStudentsEdit = user && user.permissions.includes("students.edit");
-  const hasStudentsDelete = user && user.permissions.includes("students.delete");
 
   const url = useMemo(() => {
     const p = new URLSearchParams();
@@ -148,10 +141,10 @@ export default function StudentsPage() {
         subtitle={`${filtered.length} student${filtered.length === 1 ? "" : "s"}`}
       >
         <button onClick={() => setImportOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100">
-          {hasStudentsView && <button onClick={() => setImportOpen(true)} className="inline-flex items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-700 shadow-sm transition hover:bg-indigo-100">📤 Import from Excel</button>}
+          📤 Import from Excel
         </button>
         <button onClick={openAdd} className={btnPrimary}>
-          {hasStudentsCreate && <button onClick={openAdd} className={btnPrimary}>+ Add Student</button>}
+          + Add Student
         </button>
       </PageHeader>
 
@@ -230,13 +223,13 @@ export default function StudentsPage() {
                           onClick={() => openEdit(s)}
                           className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50"
                         >
-                          {hasStudentsEdit && (<button onClick={() => openEdit(s)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-indigo-600 transition hover:bg-indigo-50">✏️ Edit</button>)}
+                          ✏️ Edit
                         </button>
                         <button
                           onClick={() => remove(s)}
                           className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50"
                         >
-                          {hasStudentsDelete && (<button onClick={() => remove(s)} className="rounded-lg px-2.5 py-1.5 text-xs font-bold text-rose-600 transition hover:bg-rose-50">🗑️ Delete</button>)}
+                          🗑️ Delete
                         </button>
                       </div>
                     </td>

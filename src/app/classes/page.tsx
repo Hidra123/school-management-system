@@ -36,7 +36,7 @@ const colors = [
 ];
 
 export default function ClassesPage() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const hasClassesView = user && user.permissions.includes("classes.view");
   const hasClassesManage = user && user.permissions.includes("classes.manage");
   const [open, setOpen] = useState(false);

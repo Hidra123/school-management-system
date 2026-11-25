@@ -48,7 +48,7 @@ const emptyForm = {
 };
 
 export default function StudentsPage() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const [open, setOpen] = useState(false);

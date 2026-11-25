@@ -29,7 +29,7 @@ type SubjectRow = {
 const emptyForm = { name: "", code: "" };
 
 export default function SubjectsPage() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const hasSubjectsView = user && user.permissions.includes("subjects.view");
   const hasSubjectsManage = user && user.permissions.includes("subjects.manage");
   const [open, setOpen] = useState(false);
